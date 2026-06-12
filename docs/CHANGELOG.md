@@ -1,5 +1,15 @@
 # Energy Hub Changelog
 
+## 2026-06-12 - v1.0: mobile pass + final polish
+
+- Side panels converted to bottom sheets on mobile (< 640px), right-side panel on sm+
+- Nav collapses to icon-only on small screens; sibling links hidden on mobile
+- Price legend hidden on mobile to keep map usable
+- EU stat strip hides "vs 5yr avg" chip on mobile
+- nginx: immutable cache headers for Vite hashed /assets/ (1y max-age)
+- Cross-links from quant-portfolio gas-storage/spark-dark/power-spreads pages
+- ROADMAP Phase 4 marked complete; tagged v1.0
+
 ## 2026-06-12 - Initial build: Phase 1-4 + Rebase generation mix
 
 ### Phase 1: Gas storage dashboard

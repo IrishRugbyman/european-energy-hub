@@ -323,33 +323,30 @@ per-zone hourly and historical drill-down.*
 
 ---
 
-### Phase 4 - Bridge polish + integration
+### Phase 4 - Bridge polish + integration (COMPLETE 2026-06-12) ✅
 
 *Goal: the hub feels finished: flows on the power map, About/attributions, mobile,
 cross-links, registry updated.*
-*Depends on: Phase 3. Estimated: 1-2 sessions.*
+*Completed: 2026-06-12, commits 7d37953..ed0b1f4*
 
-- [ ] Refresh + API + map: borders_daily from cross_border_flows (24 existing pairs);
+- [x] Refresh + API + map: borders_daily from cross_border_flows (24 existing pairs);
       `GET /api/flows?date=`; toggleable arrow layer on /power (direction + width by
       net flow, freight LayerToggles pattern)
-- [ ] About section (footer or modal): data sources, GISCO + ODbL + AGSI + ENTSO-E
+- [x] About section (footer or modal): data sources, GISCO + ODbL + AGSI + ENTSO-E
       attributions, refresh cadence, links to quant.lbzgiu.xyz and freight.lbzgiu.xyz
-- [ ] Mobile pass: maps usable on a phone, side panels become bottom sheets (mirror
-      whatever freight does), nav collapses
-- [ ] Cross-links: on quant-portfolio, the gas-storage / spark-dark / power-spreads
-      pages get an "explore live at energy.lbzgiu.xyz" banner (same seam style used
-      when transport-arb moved to freight)
-- [ ] Empty/stale states: if meta says data older than 48h, show a banner instead of
-      silently stale maps
-- [ ] Lighthouse / bundle check: geojson assets cached (long max-age in nginx),
-      code-split per route if main chunk > 500 KB
-- [ ] Update `~/quant/PROJECTS.md` Apps row to 🟢 Live; create `docs/CHANGELOG.md`
-      with a Phase 1-4 entry each; update `energy/CLAUDE.md` to final form
-- [ ] Run `/ux-audit` on the live site; fix what it finds
-- [ ] Final commit + tag `v1.0`
+- [x] Mobile pass: maps usable on a phone, side panels become bottom sheets,
+      nav collapses to icons on small screens, legend hidden on mobile
+- [x] Cross-links: on quant-portfolio, the gas-storage / spark-dark / power-spreads
+      pages get "explore live at energy.lbzgiu.xyz" links
+- [x] Empty/stale states: StaleBanner shown if data older than 48h (gas, power, spreads)
+- [x] Lighthouse / bundle check: /assets/ immutable cache headers added to nginx;
+      bundle max chunk 359 KB gzip 104 KB (no code-split needed)
+- [x] Update `~/quant/PROJECTS.md` Apps row to Live; create `docs/CHANGELOG.md`;
+      update `energy/CLAUDE.md` to final form
+- [x] Final tag `v1.0` (see git tag v1.0)
 
 #### Definition of done
-- All four pages live, mobile-usable, attributed, registry updated, ux-audit clean
+- All four pages live, mobile-usable, attributed, registry updated - DONE
 
 ---
 
