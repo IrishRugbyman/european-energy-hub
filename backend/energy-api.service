@@ -1,0 +1,27 @@
+# energy-api -- European Energy Hub FastAPI backend.
+#
+# Install:
+#   sudo cp ~/quant/energy/backend/energy-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now energy-api.service
+# Check:
+#   systemctl status energy-api.service
+#   journalctl -u energy-api.service -n 50 --no-pager
+
+[Unit]
+Description=European Energy Hub API (gas + power dashboards)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=lbzgiu
+WorkingDirectory=/home/lbzgiu/quant/energy/backend
+EnvironmentFile=-/home/lbzgiu/quant/energy/backend/.env
+ExecStart=/home/lbzgiu/quant/energy/backend/.venv/bin/python -m uvicorn app.main:app --host 127.0.0.1 --port 8004
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

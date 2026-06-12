@@ -1,0 +1,259 @@
+import { X } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import { api, type StorageLatestRow } from '@/lib/api'
+import { countryName, gasFillColor } from '@/lib/scales'
+import { fmtDelta, fmtPct } from '@/lib/utils'
+
+interface Props {
+  country: string
+  latest: StorageLatestRow | null
+  onClose: () => void
+}
+
+export function CountryPanel({ country, latest, onClose }: Props) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['gas-country', country],
+    queryFn: () => api.gasCountry(country),
+  })
+
+  const fillColor = gasFillColor(latest?.full_pct)
+
+  // Build seasonal chart data: merge band + current + prior year by DOY
+  const seasonalChartData = buildSeasonalChart(data)
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: fillColor }} />
+          <span className="font-medium text-sm">{countryName(country)}</span>
+        </div>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Stats */}
+      {latest && (
+        <div className="grid grid-cols-2 gap-2 p-4 border-b border-border">
+          <StatBox label="Fill" value={fmtPct(latest.full_pct)} big />
+          <StatBox label="vs 5yr avg" value={fmtDelta(latest.vs_avg5_pct, 1, 'pp')} signed />
+          <StatBox label="7-day change" value={fmtDelta(latest.d7_pct, 1, 'pp')} signed />
+          <StatBox label="YoY" value={fmtDelta(latest.yoy_pct, 1, 'pp')} signed />
+          {latest.working_gas_volume != null && (
+            <StatBox label="Working gas" value={`${(latest.working_gas_volume / 1000).toFixed(0)} TWh`} />
+          )}
+          <StatBox label="As of" value={latest.gas_day} />
+        </div>
+      )}
+
+      {/* Seasonal chart */}
+      <div className="flex-1 p-4 overflow-y-auto">
+        <p className="text-xs text-muted-foreground mb-2">Fill % - seasonal overlay</p>
+        {isLoading ? (
+          <div className="flex items-center justify-center h-32 text-muted-foreground text-xs">Loading...</div>
+        ) : seasonalChartData.length > 0 ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={seasonalChartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis
+                dataKey="label"
+                tick={{ fontSize: 10, fill: '#64748b' }}
+                tickLine={false}
+                interval={30}
+              />
+              <YAxis
+                domain={[0, 100]}
+                tick={{ fontSize: 10, fill: '#64748b' }}
+                tickLine={false}
+                tickFormatter={(v) => `${v}%`}
+                width={32}
+              />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+                formatter={(v, name) => {
+                  const num = typeof v === 'number' ? v : null
+                  return num != null ? [`${num.toFixed(1)}%`, String(name)] : ['--', String(name)]
+                }}
+              />
+              {/* 5yr band */}
+              <Area
+                type="monotone"
+                dataKey="max5"
+                stroke="none"
+                fill="#16a34a"
+                fillOpacity={0.1}
+                legendType="none"
+                name="5yr max"
+              />
+              <Area
+                type="monotone"
+                dataKey="min5"
+                stroke="none"
+                fill="#0f1117"
+                fillOpacity={1}
+                legendType="none"
+                name="5yr min"
+              />
+              {/* 5yr avg */}
+              <Line
+                type="monotone"
+                dataKey="avg5"
+                stroke="#64748b"
+                strokeWidth={1}
+                dot={false}
+                name="5yr avg"
+                strokeDasharray="4 2"
+              />
+              {/* Prior year */}
+              <Line
+                type="monotone"
+                dataKey="prior"
+                stroke="#94a3b8"
+                strokeWidth={1}
+                dot={false}
+                name="Prior year"
+              />
+              {/* Current year */}
+              <Line
+                type="monotone"
+                dataKey="current"
+                stroke="#38bdf8"
+                strokeWidth={2}
+                dot={false}
+                name="Current year"
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        ) : (
+          <div className="flex items-center justify-center h-32 text-muted-foreground text-xs">No data</div>
+        )}
+
+        {/* Injection / withdrawal bars */}
+        {latest?.injection != null && latest.withdrawal != null && (
+          <div className="mt-4">
+            <p className="text-xs text-muted-foreground mb-2">Latest day flows (GWh)</p>
+            <div className="space-y-1">
+              <FlowBar label="Injection" value={latest.injection} color="#16a34a" max={500} />
+              <FlowBar label="Withdrawal" value={latest.withdrawal} color="#dc2626" max={500} />
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function StatBox({
+  label,
+  value,
+  big,
+  signed,
+}: {
+  label: string
+  value: string
+  big?: boolean
+  signed?: boolean
+}) {
+  const isNeg = signed && value.startsWith('-')
+  const isPos = signed && value.startsWith('+')
+  return (
+    <div className="bg-secondary rounded p-2">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p
+        className={`${big ? 'text-xl' : 'text-sm'} font-medium ${
+          isNeg ? 'text-red-400' : isPos ? 'text-green-400' : 'text-foreground'
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function FlowBar({ label, value, color, max }: { label: string; value: number; color: string; max: number }) {
+  const pct = Math.min(100, (Math.abs(value) / max) * 100)
+  return (
+    <div>
+      <div className="flex justify-between text-xs text-muted-foreground mb-0.5">
+        <span>{label}</span>
+        <span>{value.toFixed(0)}</span>
+      </div>
+      <div className="h-1.5 bg-secondary rounded overflow-hidden">
+        <div className="h-full rounded" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  )
+}
+
+interface ChartPoint {
+  label: string
+  avg5: number | null
+  min5: number | null
+  max5: number | null
+  current: number | null
+  prior: number | null
+}
+
+function buildSeasonalChart(data: Awaited<ReturnType<typeof api.gasCountry>> | undefined): ChartPoint[] {
+  if (!data) return []
+
+  // Index band by DOY
+  const bandByDoy: Record<number, { avg5: number | null; min5: number | null; max5: number | null }> = {}
+  for (const b of data.seasonal_band) {
+    bandByDoy[b.doy] = { avg5: b.avg5, min5: b.min5, max5: b.max5 }
+  }
+
+  // Index current/prior by DOY
+  const currentByDoy: Record<number, number | null> = {}
+  for (const p of data.current_year) {
+    const d = new Date(p.gas_day)
+    const doy = Math.ceil((d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 86400000)
+    currentByDoy[doy] = p.full_pct
+  }
+  const priorByDoy: Record<number, number | null> = {}
+  for (const p of data.prior_year) {
+    const d = new Date(p.gas_day)
+    const doy = Math.ceil((d.getTime() - new Date(d.getFullYear(), 0, 0).getTime()) / 86400000)
+    priorByDoy[doy] = p.full_pct
+  }
+
+  const points: ChartPoint[] = []
+  for (let doy = 1; doy <= 365; doy++) {
+    const band = bandByDoy[doy] ?? { avg5: null, min5: null, max5: null }
+    const monthLabel = doyToMonthLabel(doy)
+    points.push({
+      label: monthLabel,
+      avg5: band.avg5,
+      min5: band.min5,
+      max5: band.max5,
+      current: currentByDoy[doy] ?? null,
+      prior: priorByDoy[doy] ?? null,
+    })
+  }
+  return points
+}
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const MONTH_STARTS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+
+function doyToMonthLabel(doy: number): string {
+  for (let i = MONTH_STARTS.length - 1; i >= 0; i--) {
+    if (doy >= MONTH_STARTS[i]) {
+      const dayInMonth = doy - MONTH_STARTS[i] + 1
+      return dayInMonth === 1 ? MONTH_LABELS[i] : ''
+    }
+  }
+  return ''
+}

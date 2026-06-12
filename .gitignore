@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+.pytest_cache/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+*.duckdb
+*.duckdb.wal
+.env

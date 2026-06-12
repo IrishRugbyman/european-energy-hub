@@ -1,0 +1,24 @@
+# energy-refresh -- rebuild energy_hub.duckdb from commo.duckdb.
+#
+# Install:
+#   sudo cp ~/quant/energy/backend/energy-refresh.service /etc/systemd/system/
+#   sudo cp ~/quant/energy/backend/energy-refresh.timer  /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now energy-refresh.timer
+# Check:
+#   systemctl status energy-refresh.service energy-refresh.timer
+#   journalctl -u energy-refresh.service -n 50 --no-pager
+
+[Unit]
+Description=European Energy Hub data refresh (commo.duckdb -> energy_hub.duckdb)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=lbzgiu
+WorkingDirectory=/home/lbzgiu/quant/energy/backend
+ExecStart=/home/lbzgiu/quant/energy/backend/.venv/bin/python scripts/refresh.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+# energy-refresh.timer -- fires energy-refresh.service twice daily.
+# 13:45 Europe/Berlin (after ENTSO-E ~13:00 DA price publish)
+# 20:15 Europe/Berlin (after AGSI ~19:30 gas day publish)
+# Persistent=true means any missed runs (downtime) fire once on next start.
+
+[Unit]
+Description=Run European Energy Hub data refresh twice daily
+Requires=energy-refresh.service
+
+[Timer]
+OnCalendar=13:45
+OnCalendar=20:15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

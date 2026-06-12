@@ -1,0 +1,205 @@
+#!/usr/bin/env python
+"""energy-refresh: rebuild energy_hub.duckdb from commo.duckdb.
+
+Usage:
+    python scripts/refresh.py              # run ingest then rebuild
+    python scripts/refresh.py --skip-ingest  # rebuild only (for tests / commo locked)
+
+Exit codes: 0 = ok, 1 = rebuild failed (ingest failures are warnings only).
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+import duckdb
+from loguru import logger
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+ENERGY_DB = BACKEND_DIR / "data" / "energy_hub.duckdb"
+MARKET_DATA_DIR = Path(__file__).resolve().parents[3] / "shared" / "market-data"
+MARKET_DATA_VENV = MARKET_DATA_DIR / ".venv" / "bin" / "python"
+COMMO_DB = MARKET_DATA_DIR / "data" / "commo.duckdb"
+
+# Import analytics modules (script lives in scripts/, analytics one level up in backend/)
+sys.path.insert(0, str(BACKEND_DIR))
+from analytics.gas import build_storage_tables
+from analytics.power import build_power_tables
+
+
+def run_ingest(fetcher: str) -> bool:
+    """Run market-data ingest.py for one fetcher. Returns True if OK."""
+    try:
+        result = subprocess.run(
+            [str(MARKET_DATA_VENV), "ingest.py", fetcher],
+            cwd=str(MARKET_DATA_DIR),
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if result.returncode != 0:
+            logger.warning(f"ingest {fetcher} exited {result.returncode}: {result.stderr[:500]}")
+            return False
+        logger.info(f"ingest {fetcher}: OK")
+        return True
+    except subprocess.TimeoutExpired:
+        logger.warning(f"ingest {fetcher}: timed out after 600s")
+        return False
+    except Exception as e:
+        logger.warning(f"ingest {fetcher}: {e!r}")
+        return False
+
+
+def rebuild(skip_ingest: bool = False) -> None:
+    if not skip_ingest:
+        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices"]:
+            run_ingest(fetcher)
+    else:
+        logger.info("--skip-ingest: skipping market-data fetch")
+
+    if not COMMO_DB.exists():
+        raise RuntimeError(f"commo.duckdb not found at {COMMO_DB}")
+
+    logger.info("Building storage tables from commo.duckdb...")
+    storage_tables = build_storage_tables(COMMO_DB)
+
+    logger.info("Building power tables from commo.duckdb...")
+    power_tables = build_power_tables(COMMO_DB)
+
+    ENERGY_DB.parent.mkdir(exist_ok=True)
+    conn = duckdb.connect(str(ENERGY_DB))
+    try:
+        conn.execute("BEGIN TRANSACTION")
+
+        _write_storage(conn, storage_tables)
+        _write_power(conn, power_tables)
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR)"
+        )
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_power", now_iso])
+        conn.execute("COMMIT")
+        logger.info(f"energy_hub.duckdb rebuilt at {now_iso}")
+    except Exception:
+        conn.execute("ROLLBACK")
+        conn.close()
+        raise
+    conn.close()
+
+
+def _write_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    history = tables["storage_history"]
+    seasonal = tables["storage_seasonal"]
+    latest = tables["storage_latest"]
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE storage_history (
+            country VARCHAR,
+            gas_day DATE,
+            full_pct REAL,
+            injection REAL,
+            withdrawal REAL,
+            working_gas_volume REAL
+        )
+    """)
+    if not history.empty:
+        conn.register("_h", history)
+        conn.execute("INSERT INTO storage_history SELECT * FROM _h")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE storage_seasonal (
+            country VARCHAR,
+            doy SMALLINT,
+            avg5 REAL,
+            min5 REAL,
+            max5 REAL
+        )
+    """)
+    if not seasonal.empty:
+        conn.register("_s", seasonal)
+        conn.execute("INSERT INTO storage_seasonal SELECT * FROM _s")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE storage_latest (
+            country VARCHAR,
+            gas_day DATE,
+            full_pct REAL,
+            d7_pct REAL,
+            vs_avg5_pct REAL,
+            yoy_pct REAL,
+            injection REAL,
+            withdrawal REAL,
+            working_gas_volume REAL
+        )
+    """)
+    if not latest.empty:
+        conn.register("_l", latest)
+        conn.execute("INSERT INTO storage_latest SELECT * FROM _l")
+
+    logger.info(
+        f"storage: {len(history)} history rows, {len(seasonal)} seasonal rows, {len(latest)} latest rows"
+    )
+
+
+def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    daily = tables["power_daily"]
+    hourly = tables["power_hourly_recent"]
+    latest = tables["power_latest"]
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE power_daily (
+            zone VARCHAR,
+            price_date DATE,
+            base_eur REAL,
+            peak_eur REAL,
+            offpeak_eur REAL
+        )
+    """)
+    if not daily.empty:
+        conn.register("_pd", daily)
+        conn.execute("INSERT INTO power_daily SELECT * FROM _pd")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE power_hourly_recent (
+            zone VARCHAR,
+            ts TIMESTAMP,
+            price_eur_mwh REAL
+        )
+    """)
+    if not hourly.empty:
+        conn.register("_ph", hourly)
+        conn.execute("INSERT INTO power_hourly_recent SELECT * FROM _ph")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE power_latest (
+            zone VARCHAR,
+            price_date DATE,
+            base_eur REAL,
+            peak_eur REAL,
+            vs_30d_pct REAL
+        )
+    """)
+    if not latest.empty:
+        conn.register("_pl", latest)
+        conn.execute("INSERT INTO power_latest SELECT * FROM _pl")
+
+    logger.info(
+        f"power: {len(daily)} daily rows, {len(hourly)} hourly-recent rows, {len(latest)} latest rows"
+    )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--skip-ingest", action="store_true")
+    args = parser.parse_args()
+    try:
+        rebuild(skip_ingest=args.skip_ingest)
+    except Exception as e:
+        logger.error(f"refresh failed: {e!r}")
+        sys.exit(1)
