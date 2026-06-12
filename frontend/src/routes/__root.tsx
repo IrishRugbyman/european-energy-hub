@@ -29,19 +29,19 @@ function Root() {
               <Link
                 key={to}
                 to={to}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors [&.active]:text-primary [&.active]:bg-secondary"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors [&.active]:text-primary [&.active]:bg-secondary"
               >
                 <Icon className="w-3.5 h-3.5" />
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </Link>
             ) : (
               <span
                 key={to}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-muted-foreground/40 cursor-not-allowed select-none"
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded text-sm text-muted-foreground/40 cursor-not-allowed select-none"
                 title="Coming soon"
               >
                 <Icon className="w-3.5 h-3.5" />
-                {label}
+                <span className="hidden sm:inline">{label}</span>
               </span>
             )
           )}
@@ -53,13 +53,13 @@ function Root() {
             aria-label="About"
           >
             <Info className="w-3.5 h-3.5" />
-            About
+            <span className="hidden sm:inline">About</span>
           </button>
-          <span className="text-border">|</span>
-          <a href="https://freight.lbzgiu.xyz" className="hover:text-foreground transition-colors">
+          <span className="hidden sm:block text-border">|</span>
+          <a href="https://freight.lbzgiu.xyz" className="hidden sm:block hover:text-foreground transition-colors">
             freight.lbzgiu.xyz
           </a>
-          <a href="https://quant.lbzgiu.xyz" className="hover:text-foreground transition-colors">
+          <a href="https://quant.lbzgiu.xyz" className="hidden sm:block hover:text-foreground transition-colors">
             quant.lbzgiu.xyz
           </a>
         </div>

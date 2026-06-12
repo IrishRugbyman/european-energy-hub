@@ -67,8 +67,8 @@ function PowerDashboard() {
         ) : null}
       </div>
 
-      {/* Price legend */}
-      <div className="absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
+      {/* Price legend (hidden on mobile to save space) */}
+      <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
         <p className="text-muted-foreground mb-1 font-medium">€/MWh</p>
         {[
           { label: '< 20',  color: '#1d4ed8' },
@@ -99,9 +99,12 @@ function PowerDashboard() {
 
       <StaleBanner datasetKey="power" />
 
-      {/* Side panel */}
+      {/* Side panel: bottom sheet on mobile, right-side on sm+ */}
       {selected && (
-        <div className="absolute right-0 top-0 h-full w-80 bg-card border-l border-border z-[1000] overflow-y-auto">
+        <div className="fixed bottom-0 left-0 right-0 max-h-[75vh] bg-card border-t border-border z-[1000] overflow-y-auto rounded-t-xl sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:border-t-0 sm:border-l sm:rounded-none">
+          <div className="flex justify-center pt-2 pb-1 sm:hidden">
+            <div className="w-8 h-1 rounded-full bg-border" />
+          </div>
           <ZonePanel
             zone={selected}
             latest={latestByZone[selected] ?? null}
