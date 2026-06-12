@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { api, type PowerLatestRow } from '@/lib/api'
 import { PowerMap } from '@/components/power/PowerMap'
 import { ZonePanel } from '@/components/power/ZonePanel'
+import { FlowArrowsLayer } from '@/components/power/FlowArrowsLayer'
+import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/power')({
   component: PowerDashboard,
@@ -11,10 +13,18 @@ export const Route = createFileRoute('/power')({
 
 function PowerDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
+  const [showFlows, setShowFlows] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['power-map'],
     queryFn: api.powerMap,
+  })
+
+  const { data: flowsData } = useQuery({
+    queryKey: ['flows'],
+    queryFn: api.flows,
+    staleTime: 15 * 60 * 1000,
+    enabled: showFlows,
   })
 
   const latestByZone: Record<string, PowerLatestRow> = {}
@@ -27,6 +37,21 @@ function PowerDashboard() {
 
   return (
     <div className="relative h-full flex">
+      {/* Flows toggle */}
+      <div className="absolute top-3 right-3 z-[1000]">
+        <button
+          onClick={() => setShowFlows((v) => !v)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
+            showFlows
+              ? 'bg-sky-900 border-sky-600 text-sky-200'
+              : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
+          } backdrop-blur shadow`}
+        >
+          <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0" />
+          Cross-border flows
+        </button>
+      </div>
+
       {/* Stat strip */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-4 px-4 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm pointer-events-none">
         {medianPrice != null ? (
@@ -65,8 +90,14 @@ function PowerDashboard() {
 
       {/* Map */}
       <div className="flex-1">
-        <PowerMap rows={data?.rows ?? []} selected={selected} onSelect={setSelected} />
+        <PowerMap rows={data?.rows ?? []} selected={selected} onSelect={setSelected}>
+          {showFlows && flowsData && flowsData.rows.length > 0 && (
+            <FlowArrowsLayer flows={flowsData.rows} />
+          )}
+        </PowerMap>
       </div>
+
+      <StaleBanner datasetKey="power" />
 
       {/* Side panel */}
       {selected && (

@@ -50,6 +50,7 @@ export interface MetaResponse {
   gas_refreshed_at: string | null
   power_zones: string[]
   power_refreshed_at: string | null
+  spreads_refreshed_at: string | null
 }
 
 export interface PowerLatestRow {
@@ -114,6 +115,17 @@ export interface PricesResponse {
   rows: PricesDailyPoint[]
 }
 
+export interface BorderFlowRow {
+  from_zone: string
+  to_zone: string
+  net_flow_mw: number | null
+}
+
+export interface FlowsResponse {
+  price_date: string | null
+  rows: BorderFlowRow[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -123,4 +135,5 @@ export const api = {
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   spreads: () => get<SpreadsResponse>('/spreads'),
   prices: () => get<PricesResponse>('/prices'),
+  flows: () => get<FlowsResponse>('/flows'),
 }

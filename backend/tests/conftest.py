@@ -156,6 +156,22 @@ def _seed_db(path: str) -> None:
         )
 
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_spreads", "2026-06-12T12:00:00+00:00"])
+
+    # Flows table
+    conn.execute("""
+        CREATE TABLE borders_daily (
+            price_date DATE,
+            from_zone VARCHAR,
+            to_zone VARCHAR,
+            net_flow_mw REAL
+        )
+    """)
+    for fz, tz, net in [("DE-LU", "FR", 1200.0), ("AT", "DE-LU", -500.0), ("BE", "FR", 300.0)]:
+        conn.execute(
+            "INSERT INTO borders_daily VALUES (?, ?, ?, ?)",
+            [today.isoformat(), fz, tz, net],
+        )
+
     conn.close()
 
 

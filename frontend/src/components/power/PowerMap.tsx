@@ -1,6 +1,6 @@
 import L, { type Layer, type PathOptions, type LeafletMouseEvent } from 'leaflet'
 import { MapContainer, TileLayer, Pane, useMap } from 'react-leaflet'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import type { GeoJsonObject, Feature } from 'geojson'
 import { powerPriceColor, CHOROPLETH_FILL_OPACITY, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, zoneName } from '@/lib/scales'
 import type { PowerLatestRow } from '@/lib/api'
@@ -13,9 +13,10 @@ interface Props {
   rows: PowerLatestRow[]
   selected: string | null
   onSelect: (zone: string | null) => void
+  children?: ReactNode
 }
 
-export function PowerMap({ rows, selected, onSelect }: Props) {
+export function PowerMap({ rows, selected, onSelect, children }: Props) {
   const latestByZone: Record<string, PowerLatestRow> = {}
   for (const r of rows) latestByZone[r.zone] = r
 
@@ -31,6 +32,7 @@ export function PowerMap({ rows, selected, onSelect }: Props) {
       {Object.keys(latestByZone).length > 0 && (
         <PowerChoroLayer latestByZone={latestByZone} selected={selected} onSelect={onSelect} />
       )}
+      {children}
       <Pane name="power-labels" style={{ zIndex: 650 }}>
         <TileLayer url={CARTO_LABELS} />
       </Pane>

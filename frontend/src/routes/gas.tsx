@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { api, type StorageLatestRow } from '@/lib/api'
 import { GasMap } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
+import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/gas')({
   component: GasDashboard,
@@ -58,6 +59,8 @@ function GasDashboard() {
           onSelect={setSelected}
         />
       </div>
+
+      <StaleBanner datasetKey="gas" />
 
       {/* Side panel slides in when a country is selected */}
       {selected && (

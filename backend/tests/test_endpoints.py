@@ -110,3 +110,22 @@ def test_prices(client):
     row = data["rows"][0]
     assert row["ttf_eur_mwh"] is not None
     assert row["eua_eur_t"] is not None
+
+
+def test_flows(client):
+    r = client.get("/api/flows")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["price_date"] is not None
+    assert len(data["rows"]) == 3
+    zones = {(row["from_zone"], row["to_zone"]) for row in data["rows"]}
+    assert ("DE-LU", "FR") in zones
+
+
+def test_flows_date_filter(client):
+    import datetime
+    today = datetime.date.today().isoformat()
+    r = client.get(f"/api/flows?date={today}")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["rows"]) == 3

@@ -30,6 +30,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 from analytics.gas import build_storage_tables
 from analytics.power import build_power_tables
 from analytics.spreads import build_spreads_tables
+from analytics.flows import build_flows_tables
 
 
 def run_ingest(fetcher: str) -> bool:
@@ -74,6 +75,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building spreads/prices tables from commo.duckdb...")
     spreads_tables = build_spreads_tables(COMMO_DB)
 
+    logger.info("Building cross-border flows from commo.duckdb...")
+    flows_tables = build_flows_tables(COMMO_DB)
+
     ENERGY_DB.parent.mkdir(exist_ok=True)
     conn = duckdb.connect(str(ENERGY_DB))
     try:
@@ -82,6 +86,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_storage(conn, storage_tables)
         _write_power(conn, power_tables)
         _write_spreads(conn, spreads_tables)
+        _write_flows(conn, flows_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -237,6 +242,22 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     logger.info(
         f"spreads: {len(spreads)} daily rows, prices: {len(prices)} daily rows"
     )
+
+
+def _write_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    borders = tables["borders_daily"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE borders_daily (
+            price_date DATE,
+            from_zone VARCHAR,
+            to_zone VARCHAR,
+            net_flow_mw REAL
+        )
+    """)
+    if not borders.empty:
+        conn.register("_bd", borders)
+        conn.execute("INSERT INTO borders_daily SELECT * FROM _bd")
+    logger.info(f"flows: {len(borders)} border-day rows")
 
 
 if __name__ == "__main__":

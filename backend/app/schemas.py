@@ -14,6 +14,7 @@ class MetaResponse(BaseModel):
     gas_refreshed_at: str | None = None
     power_zones: list[str] = []
     power_refreshed_at: str | None = None
+    spreads_refreshed_at: str | None = None
 
 
 # Gas map
@@ -127,3 +128,16 @@ class PricesDailyPoint(BaseModel):
 class PricesResponse(BaseModel):
     as_of: str | None
     rows: list[PricesDailyPoint]
+
+
+# Flows
+
+class BorderFlowRow(BaseModel):
+    from_zone: str
+    to_zone: str
+    net_flow_mw: float | None
+
+
+class FlowsResponse(BaseModel):
+    price_date: str | None
+    rows: list[BorderFlowRow]

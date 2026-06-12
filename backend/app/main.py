@@ -19,6 +19,8 @@ from slowapi.util import get_remote_address
 
 from . import db
 from .schemas import (
+    BorderFlowRow,
+    FlowsResponse,
     GasCountryResponse,
     GasMapResponse,
     HealthResponse,
@@ -88,6 +90,7 @@ def meta():
         gas_refreshed_at=_meta_val("refreshed_at_gas"),
         power_zones=zones,
         power_refreshed_at=_meta_val("refreshed_at_power"),
+        spreads_refreshed_at=_meta_val("refreshed_at_spreads"),
     )
 
 
@@ -280,6 +283,42 @@ def power_zone(zone_id: str):
     ]
 
     return PowerZoneResponse(zone=zone_id, latest=latest, hourly_recent=hourly, daily_history=daily)
+
+
+@app.get("/api/flows", response_model=FlowsResponse)
+def flows(date: str | None = None):
+    """Latest day's net cross-border flows, or a specific date (YYYY-MM-DD)."""
+    if date:
+        df = db.query(
+            """
+            SELECT price_date::VARCHAR AS price_date, from_zone, to_zone, net_flow_mw
+            FROM borders_daily
+            WHERE price_date = ?
+            ORDER BY from_zone, to_zone
+            """,
+            [date],
+        )
+    else:
+        df = db.query(
+            """
+            SELECT price_date::VARCHAR AS price_date, from_zone, to_zone, net_flow_mw
+            FROM borders_daily
+            WHERE price_date = (SELECT MAX(price_date) FROM borders_daily)
+            ORDER BY from_zone, to_zone
+            """
+        )
+    if df.empty:
+        return FlowsResponse(price_date=date, rows=[])
+    price_date = str(df["price_date"].iloc[0])
+    rows = [
+        BorderFlowRow(
+            from_zone=str(r.from_zone),
+            to_zone=str(r.to_zone),
+            net_flow_mw=_float(r.net_flow_mw),
+        )
+        for r in df.itertuples()
+    ]
+    return FlowsResponse(price_date=price_date, rows=rows)
 
 
 @app.get("/api/spreads", response_model=SpreadsResponse)
