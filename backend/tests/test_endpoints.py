@@ -89,3 +89,24 @@ def test_meta_includes_power(client):
     data = r.json()
     assert "DE-LU" in data["power_zones"]
     assert data["power_refreshed_at"] is not None
+
+
+def test_spreads(client):
+    r = client.get("/api/spreads")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["rows"]) > 0
+    row = data["rows"][0]
+    assert "css" in row and "cds" in row and "fss" in row
+    assert row["power_de"] is not None
+    assert row["regime_threshold"] in ("gas", "coal")
+
+
+def test_prices(client):
+    r = client.get("/api/prices")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["rows"]) > 0
+    row = data["rows"][0]
+    assert row["ttf_eur_mwh"] is not None
+    assert row["eua_eur_t"] is not None

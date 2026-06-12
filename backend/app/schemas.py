@@ -93,3 +93,37 @@ class PowerZoneResponse(BaseModel):
     latest: PowerLatestRow | None
     hourly_recent: list[PowerHourlyPoint]
     daily_history: list[PowerDailyPoint]
+
+
+# Spreads
+
+class SpreadsDailyPoint(BaseModel):
+    price_date: str
+    power_de: float | None
+    ttf: float | None
+    eua: float | None
+    coal_eur_mwh: float | None
+    css: float | None
+    cds: float | None
+    fss: float | None
+    regime_threshold: str | None = None
+
+
+class SpreadsResponse(BaseModel):
+    as_of: str | None
+    rows: list[SpreadsDailyPoint]
+
+
+# Prices
+
+class PricesDailyPoint(BaseModel):
+    price_date: str
+    ttf_eur_mwh: float | None
+    eua_eur_t: float | None
+    coal_usd_t: float | None
+    hh_usd_mmbtu: float | None
+
+
+class PricesResponse(BaseModel):
+    as_of: str | None
+    rows: list[PricesDailyPoint]

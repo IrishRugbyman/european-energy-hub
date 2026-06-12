@@ -28,8 +28,12 @@ from .schemas import (
     PowerLatestRow,
     PowerMapResponse,
     PowerZoneResponse,
+    PricesDailyPoint,
+    PricesResponse,
     SeasonalBandPoint,
     SeasonalPoint,
+    SpreadsDailyPoint,
+    SpreadsResponse,
     StorageLatestRow,
 )
 
@@ -276,6 +280,62 @@ def power_zone(zone_id: str):
     ]
 
     return PowerZoneResponse(zone=zone_id, latest=latest, hourly_recent=hourly, daily_history=daily)
+
+
+@app.get("/api/spreads", response_model=SpreadsResponse)
+def spreads():
+    df = db.query(
+        """
+        SELECT price_date::VARCHAR AS price_date,
+               power_de, ttf, eua, coal_eur_mwh, css, cds, fss, regime_threshold
+        FROM spreads_daily
+        ORDER BY price_date
+        """
+    )
+    as_of = _meta_val("refreshed_at_spreads")
+    if df.empty:
+        return SpreadsResponse(as_of=as_of, rows=[])
+    rows = [
+        SpreadsDailyPoint(
+            price_date=str(r.price_date),
+            power_de=_float(r.power_de),
+            ttf=_float(r.ttf),
+            eua=_float(r.eua),
+            coal_eur_mwh=_float(r.coal_eur_mwh),
+            css=_float(r.css),
+            cds=_float(r.cds),
+            fss=_float(r.fss),
+            regime_threshold=str(r.regime_threshold) if r.regime_threshold else None,
+        )
+        for r in df.itertuples()
+    ]
+    return SpreadsResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/prices", response_model=PricesResponse)
+def prices():
+    df = db.query(
+        """
+        SELECT price_date::VARCHAR AS price_date,
+               ttf_eur_mwh, eua_eur_t, coal_usd_t, hh_usd_mmbtu
+        FROM prices_daily
+        ORDER BY price_date
+        """
+    )
+    as_of = _meta_val("refreshed_at_spreads")
+    if df.empty:
+        return PricesResponse(as_of=as_of, rows=[])
+    rows = [
+        PricesDailyPoint(
+            price_date=str(r.price_date),
+            ttf_eur_mwh=_float(r.ttf_eur_mwh),
+            eua_eur_t=_float(r.eua_eur_t),
+            coal_usd_t=_float(r.coal_usd_t),
+            hh_usd_mmbtu=_float(r.hh_usd_mmbtu),
+        )
+        for r in df.itertuples()
+    ]
+    return PricesResponse(as_of=as_of, rows=rows)
 
 
 def _float(v) -> float | None:

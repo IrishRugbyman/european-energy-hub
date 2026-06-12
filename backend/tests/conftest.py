@@ -109,6 +109,53 @@ def _seed_db(path: str) -> None:
             [zone, today.isoformat(), base, round(base * 1.15, 2), 5.0],
         )
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_power", "2026-06-12T12:00:00+00:00"])
+
+    # Spreads tables
+    conn.execute("""
+        CREATE TABLE spreads_daily (
+            price_date DATE,
+            power_de REAL,
+            ttf REAL,
+            eua REAL,
+            coal_eur_mwh REAL,
+            css REAL,
+            cds REAL,
+            fss REAL,
+            regime_threshold VARCHAR
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE prices_daily (
+            price_date DATE,
+            ttf_eur_mwh REAL,
+            eua_eur_t REAL,
+            coal_usd_t REAL,
+            hh_usd_mmbtu REAL
+        )
+    """)
+
+    # Seed 1 year of spreads/prices data
+    spreads_start = date(today.year - 1, 1, 1)
+    for i in range((today - spreads_start).days + 1):
+        day = (spreads_start + timedelta(days=i)).isoformat()
+        power = 80.0 + (i % 365 - 182) * 0.2
+        ttf = 35.0 + (i % 365 - 182) * 0.05
+        eua = 65.0
+        coal_eur_mwh = 12.0
+        css = round(power - ttf / 0.49 - eua * 0.364, 4)
+        cds = round(power - coal_eur_mwh / 0.36 - eua * 0.96, 4)
+        fss = round(css - cds, 4)
+        regime = "gas" if fss > 0 else "coal"
+        conn.execute(
+            "INSERT INTO spreads_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [day, round(power, 2), round(ttf, 2), eua, coal_eur_mwh, css, cds, fss, regime],
+        )
+        conn.execute(
+            "INSERT INTO prices_daily VALUES (?, ?, ?, ?, ?)",
+            [day, round(ttf, 2), eua, 120.0, 2.5],
+        )
+
+    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_spreads", "2026-06-12T12:00:00+00:00"])
     conn.close()
 
 

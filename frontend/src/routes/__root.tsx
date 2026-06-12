@@ -8,8 +8,8 @@ export const Route = createRootRoute({
 const NAV = [
   { to: '/gas', label: 'Gas', icon: Flame, enabled: true },
   { to: '/power', label: 'Power', icon: Zap, enabled: true },
-  { to: '/spreads', label: 'Spreads', icon: TrendingUp, enabled: false },
-  { to: '/prices', label: 'Prices', icon: DollarSign, enabled: false },
+  { to: '/spreads', label: 'Spreads', icon: TrendingUp, enabled: true },
+  { to: '/prices', label: 'Prices', icon: DollarSign, enabled: true },
 ]
 
 function Root() {

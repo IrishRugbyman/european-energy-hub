@@ -84,6 +84,36 @@ export interface PowerZoneResponse {
   daily_history: PowerDailyPoint[]
 }
 
+export interface SpreadsDailyPoint {
+  price_date: string
+  power_de: number | null
+  ttf: number | null
+  eua: number | null
+  coal_eur_mwh: number | null
+  css: number | null
+  cds: number | null
+  fss: number | null
+  regime_threshold: string | null
+}
+
+export interface SpreadsResponse {
+  as_of: string | null
+  rows: SpreadsDailyPoint[]
+}
+
+export interface PricesDailyPoint {
+  price_date: string
+  ttf_eur_mwh: number | null
+  eua_eur_t: number | null
+  coal_usd_t: number | null
+  hh_usd_mmbtu: number | null
+}
+
+export interface PricesResponse {
+  as_of: string | null
+  rows: PricesDailyPoint[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -91,4 +121,6 @@ export const api = {
   gasCountry: (cc: string) => get<GasCountryResponse>(`/gas/country/${cc}`),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
+  spreads: () => get<SpreadsResponse>('/spreads'),
+  prices: () => get<PricesResponse>('/prices'),
 }
