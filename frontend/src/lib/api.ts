@@ -78,11 +78,28 @@ export interface PowerDailyPoint {
   peak_eur: number | null
 }
 
+export interface GenerationMixRow {
+  zone: string
+  gen_date: string | null
+  biomass: number | null
+  coal: number | null
+  gas: number | null
+  geothermal: number | null
+  hydro: number | null
+  oil: number | null
+  solar: number | null
+  unknown: number | null
+  wind: number | null
+  renewable_pct: number | null
+  total_mw: number | null
+}
+
 export interface PowerZoneResponse {
   zone: string
   latest: PowerLatestRow | null
   hourly_recent: PowerHourlyPoint[]
   daily_history: PowerDailyPoint[]
+  generation_mix: GenerationMixRow | null
 }
 
 export interface SpreadsDailyPoint {

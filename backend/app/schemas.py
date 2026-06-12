@@ -94,6 +94,7 @@ class PowerZoneResponse(BaseModel):
     latest: PowerLatestRow | None
     hourly_recent: list[PowerHourlyPoint]
     daily_history: list[PowerDailyPoint]
+    generation_mix: GenerationMixRow | None = None
 
 
 # Spreads
@@ -141,3 +142,21 @@ class BorderFlowRow(BaseModel):
 class FlowsResponse(BaseModel):
     price_date: str | None
     rows: list[BorderFlowRow]
+
+
+# Generation mix
+
+class GenerationMixRow(BaseModel):
+    zone: str
+    gen_date: str | None
+    biomass: float | None = None
+    coal: float | None = None
+    gas: float | None = None
+    geothermal: float | None = None
+    hydro: float | None = None
+    oil: float | None = None
+    solar: float | None = None
+    unknown: float | None = None
+    wind: float | None = None
+    renewable_pct: float | None = None
+    total_mw: float | None = None

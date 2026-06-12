@@ -76,6 +76,10 @@ def test_power_zone_delu(client):
     assert data["latest"]["base_eur"] == 80.0
     assert len(data["hourly_recent"]) > 0
     assert len(data["daily_history"]) > 0
+    # Generation mix
+    assert data["generation_mix"] is not None
+    assert data["generation_mix"]["renewable_pct"] is not None
+    assert data["generation_mix"]["wind"] == 12000.0
 
 
 def test_power_zone_unknown(client):

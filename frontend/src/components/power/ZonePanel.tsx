@@ -9,9 +9,23 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type PowerLatestRow } from '@/lib/api'
+import { api, type PowerLatestRow, type GenerationMixRow } from '@/lib/api'
 import { powerPriceColor, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
+
+const FUEL_COLORS: Record<string, string> = {
+  wind:      '#60a5fa',
+  solar:     '#fbbf24',
+  hydro:     '#34d399',
+  gas:       '#f97316',
+  coal:      '#78716c',
+  biomass:   '#86efac',
+  oil:       '#ef4444',
+  geothermal:'#a78bfa',
+  unknown:   '#4b5563',
+}
+
+const FUEL_ORDER = ['wind', 'solar', 'hydro', 'biomass', 'gas', 'oil', 'coal', 'geothermal', 'unknown'] as const
 
 interface Props {
   zone: string
@@ -81,6 +95,11 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
           )}
         </div>
 
+        {/* Generation mix */}
+        {data?.generation_mix && (
+          <GenerationMixSection mix={data.generation_mix} />
+        )}
+
         {/* Daily base/peak chart: trailing year */}
         <div>
           <p className="text-xs text-muted-foreground mb-2">Daily base / peak - trailing year (€/MWh)</p>
@@ -125,6 +144,45 @@ function StatBox({ label, value, big, signed }: { label: string; value: string; 
       <p className={`${big ? 'text-xl' : 'text-sm'} font-medium ${isNeg ? 'text-red-400' : isPos ? 'text-green-400' : 'text-foreground'}`}>
         {value}
       </p>
+    </div>
+  )
+}
+
+function GenerationMixSection({ mix }: { mix: GenerationMixRow }) {
+  const total = mix.total_mw ?? 1
+  const fuels = FUEL_ORDER.map((key) => ({
+    key,
+    mw: (mix[key as keyof GenerationMixRow] as number | null) ?? 0,
+    color: FUEL_COLORS[key] ?? '#6b7280',
+  })).filter((f) => f.mw > 0)
+
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Generation mix{mix.gen_date ? ` (${mix.gen_date})` : ''} - avg MW
+        {mix.renewable_pct != null && (
+          <span className="ml-2 text-green-400 font-medium">{mix.renewable_pct.toFixed(0)}% renewable</span>
+        )}
+      </p>
+      {/* Stacked bar */}
+      <div className="flex h-4 rounded overflow-hidden mb-2">
+        {fuels.map((f) => (
+          <div
+            key={f.key}
+            style={{ width: `${(f.mw / total) * 100}%`, backgroundColor: f.color }}
+            title={`${f.key}: ${f.mw.toFixed(0)} MW`}
+          />
+        ))}
+      </div>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {fuels.map((f) => (
+          <div key={f.key} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: f.color }} />
+            <span>{f.key} {f.mw.toFixed(0)}</span>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

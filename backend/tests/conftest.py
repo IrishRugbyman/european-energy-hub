@@ -172,6 +172,21 @@ def _seed_db(path: str) -> None:
             [today.isoformat(), fz, tz, net],
         )
 
+    # Generation mix table
+    conn.execute("""
+        CREATE TABLE generation_latest (
+            zone VARCHAR,
+            gen_date DATE,
+            biomass REAL, coal REAL, gas REAL, geothermal REAL,
+            hydro REAL, oil REAL, solar REAL, unknown REAL, wind REAL,
+            renewable_pct REAL, total_mw REAL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO generation_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ["DE-LU", today.isoformat(), 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 200.0, 6000.0, 500.0, 12000.0, 57.4, 34400.0],
+    )
+
     conn.close()
 
 

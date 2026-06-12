@@ -23,6 +23,7 @@ from .schemas import (
     FlowsResponse,
     GasCountryResponse,
     GasMapResponse,
+    GenerationMixRow,
     HealthResponse,
     MetaResponse,
     PowerDailyPoint,
@@ -282,7 +283,41 @@ def power_zone(zone_id: str):
         for row in (daily_df.itertuples() if not daily_df.empty else [])
     ]
 
-    return PowerZoneResponse(zone=zone_id, latest=latest, hourly_recent=hourly, daily_history=daily)
+    gen_df = db.query(
+        """
+        SELECT zone, gen_date::VARCHAR AS gen_date,
+               biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind,
+               renewable_pct, total_mw
+        FROM generation_latest WHERE zone = ?
+        """,
+        [zone_id],
+    )
+    gen_mix: GenerationMixRow | None = None
+    if not gen_df.empty:
+        gr = gen_df.iloc[0]
+        gen_mix = GenerationMixRow(
+            zone=zone_id,
+            gen_date=str(gr["gen_date"]),
+            biomass=_float(gr["biomass"]),
+            coal=_float(gr["coal"]),
+            gas=_float(gr["gas"]),
+            geothermal=_float(gr["geothermal"]),
+            hydro=_float(gr["hydro"]),
+            oil=_float(gr["oil"]),
+            solar=_float(gr["solar"]),
+            unknown=_float(gr["unknown"]),
+            wind=_float(gr["wind"]),
+            renewable_pct=_float(gr["renewable_pct"]),
+            total_mw=_float(gr["total_mw"]),
+        )
+
+    return PowerZoneResponse(
+        zone=zone_id,
+        latest=latest,
+        hourly_recent=hourly,
+        daily_history=daily,
+        generation_mix=gen_mix,
+    )
 
 
 @app.get("/api/flows", response_model=FlowsResponse)

@@ -28,6 +28,7 @@ COMMO_DB = MARKET_DATA_DIR / "data" / "commo.duckdb"
 # Import analytics modules (script lives in scripts/, analytics one level up in backend/)
 sys.path.insert(0, str(BACKEND_DIR))
 from analytics.gas import build_storage_tables
+from analytics.generation import build_generation_tables
 from analytics.power import build_power_tables
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
@@ -78,6 +79,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building cross-border flows from commo.duckdb...")
     flows_tables = build_flows_tables(COMMO_DB)
 
+    logger.info("Building generation mix from commo.duckdb...")
+    generation_tables = build_generation_tables(COMMO_DB)
+
     ENERGY_DB.parent.mkdir(exist_ok=True)
     conn = duckdb.connect(str(ENERGY_DB))
     try:
@@ -87,6 +91,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_power(conn, power_tables)
         _write_spreads(conn, spreads_tables)
         _write_flows(conn, flows_tables)
+        _write_generation(conn, generation_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -242,6 +247,31 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     logger.info(
         f"spreads: {len(spreads)} daily rows, prices: {len(prices)} daily rows"
     )
+
+
+def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    gen = tables["generation_latest"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE generation_latest (
+            zone VARCHAR,
+            gen_date DATE,
+            biomass REAL,
+            coal REAL,
+            gas REAL,
+            geothermal REAL,
+            hydro REAL,
+            oil REAL,
+            solar REAL,
+            unknown REAL,
+            wind REAL,
+            renewable_pct REAL,
+            total_mw REAL
+        )
+    """)
+    if not gen.empty:
+        conn.register("_gen", gen)
+        conn.execute("INSERT INTO generation_latest SELECT * FROM _gen")
+    logger.info(f"generation: {len(gen)} zone rows")
 
 
 def _write_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
