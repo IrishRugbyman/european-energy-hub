@@ -1,5 +1,6 @@
 import { X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
 import {
   CartesianGrid,
   Line,
@@ -12,6 +13,8 @@ import {
 import { api, type PowerLatestRow, type GenerationMixRow } from '@/lib/api'
 import { powerPriceColor, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
+
+type DailyWindow = '1Y' | '2Y'
 
 const FUEL_COLORS: Record<string, string> = {
   wind:      '#60a5fa',
@@ -34,6 +37,8 @@ interface Props {
 }
 
 export function ZonePanel({ zone, latest, onClose }: Props) {
+  const [dailyWindow, setDailyWindow] = useState<DailyWindow>('1Y')
+
   const { data, isLoading } = useQuery({
     queryKey: ['power-zone', zone],
     queryFn: () => api.powerZone(zone),
@@ -42,7 +47,8 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
   const fillColor = powerPriceColor(latest?.base_eur)
 
   const hourlyData = buildHourlyChart(data?.hourly_recent)
-  const dailyData = data?.daily_history?.slice(-365) ?? []
+  const allDaily = data?.daily_history ?? []
+  const dailyData = dailyWindow === '1Y' ? allDaily.slice(-365) : allDaily
 
   return (
     <div className="flex flex-col h-full">
@@ -100,9 +106,26 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
           <GenerationMixSection mix={data.generation_mix} />
         )}
 
-        {/* Daily base/peak chart: trailing year */}
+        {/* Daily base/peak chart */}
         <div>
-          <p className="text-xs text-muted-foreground mb-2">Daily base / peak - trailing year (€/MWh)</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-muted-foreground">Daily base / peak (€/MWh)</p>
+            <div className="flex items-center gap-1">
+              {(['1Y', '2Y'] as DailyWindow[]).map((w) => (
+                <button
+                  key={w}
+                  onClick={() => setDailyWindow(w)}
+                  className={`px-1.5 py-0.5 rounded text-xs ${
+                    w === dailyWindow
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                  }`}
+                >
+                  {w}
+                </button>
+              ))}
+            </div>
+          </div>
           {isLoading ? (
             <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">Loading...</div>
           ) : dailyData.length > 0 ? (
