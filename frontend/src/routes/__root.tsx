@@ -128,6 +128,10 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             <li>
               <span className="text-foreground">Cross-border flows</span> - ENTSO-E Transparency Platform
             </li>
+            <li>
+              <span className="text-foreground">Generation mix</span> - Rebase Grid API,{' '}
+              <a href="https://grid.rebase.energy" className="text-primary hover:underline" target="_blank" rel="noreferrer">grid.rebase.energy</a>
+            </li>
           </ul>
         </div>
 
