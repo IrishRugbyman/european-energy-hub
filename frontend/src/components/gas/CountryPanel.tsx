@@ -145,8 +145,15 @@ export function CountryPanel({ country, latest, onClose }: Props) {
           <div className="mt-4">
             <p className="text-xs text-muted-foreground mb-2">Latest day flows (GWh)</p>
             <div className="space-y-1">
-              <FlowBar label="Injection" value={latest.injection} color="#16a34a" max={500} />
-              <FlowBar label="Withdrawal" value={latest.withdrawal} color="#dc2626" max={500} />
+              {(() => {
+                const flowMax = Math.max(latest.injection ?? 0, latest.withdrawal ?? 0, 1)
+                return (
+                  <>
+                    <FlowBar label="Injection" value={latest.injection} color="#16a34a" max={flowMax} />
+                    <FlowBar label="Withdrawal" value={latest.withdrawal} color="#dc2626" max={flowMax} />
+                  </>
+                )
+              })()}
             </div>
           </div>
         )}
