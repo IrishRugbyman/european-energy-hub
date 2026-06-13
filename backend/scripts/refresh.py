@@ -59,7 +59,7 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices"]:
+        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "rebase-generation"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
