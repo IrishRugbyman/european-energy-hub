@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gasFillColor, powerPriceColor, countryName, zoneName } from './scales'
+import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName } from './scales'
 
 describe('gasFillColor', () => {
   it('returns grey for null/undefined', () => {
@@ -78,5 +78,47 @@ describe('zoneName', () => {
 
   it('returns zone key for unknown', () => {
     expect(zoneName('XY-1')).toBe('XY-1')
+  })
+})
+
+describe('renewablePctColor', () => {
+  it('returns grey for null/undefined', () => {
+    expect(renewablePctColor(null)).toBe('#374151')
+    expect(renewablePctColor(undefined)).toBe('#374151')
+  })
+
+  it('brown for low renewables', () => {
+    expect(renewablePctColor(0)).toBe('#78350f')
+    expect(renewablePctColor(15)).toBe('#78350f')
+    expect(renewablePctColor(19)).toBe('#78350f')
+  })
+
+  it('amber-brown for 20-40%', () => {
+    expect(renewablePctColor(20)).toBe('#92400e')
+    expect(renewablePctColor(35)).toBe('#92400e')
+    expect(renewablePctColor(39)).toBe('#92400e')
+  })
+
+  it('lime for 40-60%', () => {
+    expect(renewablePctColor(40)).toBe('#4d7c0f')
+    expect(renewablePctColor(55)).toBe('#4d7c0f')
+    expect(renewablePctColor(59)).toBe('#4d7c0f')
+  })
+
+  it('green for 60-80%', () => {
+    expect(renewablePctColor(60)).toBe('#15803d')
+    expect(renewablePctColor(75)).toBe('#15803d')
+    expect(renewablePctColor(79)).toBe('#15803d')
+  })
+
+  it('deep green for 80%+', () => {
+    expect(renewablePctColor(80)).toBe('#166534')
+    expect(renewablePctColor(95)).toBe('#166534')
+    expect(renewablePctColor(100)).toBe('#166534')
+  })
+
+  it('clamps out-of-range values', () => {
+    expect(renewablePctColor(-10)).toBe('#78350f')
+    expect(renewablePctColor(110)).toBe('#166534')
   })
 })

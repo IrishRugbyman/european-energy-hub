@@ -172,20 +172,60 @@ def _seed_db(path: str) -> None:
             [today.isoformat(), fz, tz, net],
         )
 
-    # Generation mix table
-    conn.execute("""
+    fuel_cols = "biomass REAL, coal REAL, gas REAL, geothermal REAL, hydro REAL, oil REAL, solar REAL, unknown REAL, wind REAL"
+
+    # generation_latest
+    conn.execute(f"""
         CREATE TABLE generation_latest (
-            zone VARCHAR,
-            gen_date DATE,
-            biomass REAL, coal REAL, gas REAL, geothermal REAL,
-            hydro REAL, oil REAL, solar REAL, unknown REAL, wind REAL,
-            renewable_pct REAL, total_mw REAL
+            zone VARCHAR, gen_date DATE, {fuel_cols}, renewable_pct REAL, total_mw REAL
         )
     """)
     conn.execute(
         "INSERT INTO generation_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ["DE-LU", today.isoformat(), 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 200.0, 6000.0, 500.0, 12000.0, 57.4, 34400.0],
     )
+    conn.execute(
+        "INSERT INTO generation_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ["FR", today.isoformat(), 800.0, 1000.0, 2000.0, 0.0, 8000.0, 100.0, 4000.0, 200.0, 5000.0, 81.0, 21100.0],
+    )
+
+    # generation_daily (2 years of daily data for DE-LU, 1 zone for coverage)
+    conn.execute(f"""
+        CREATE TABLE generation_daily (
+            zone VARCHAR, gen_date DATE, {fuel_cols}, renewable_pct REAL, total_mw REAL
+        )
+    """)
+    daily_start = date(today.year - 2, 1, 1)
+    gen_rows = []
+    for i in range((today - daily_start).days + 1):
+        day = (daily_start + timedelta(days=i)).isoformat()
+        # Seasonal solar: peaks in summer (DOY ~180)
+        solar = round(4000.0 + 2000.0 * ((i % 365 - 180) / 365), 1)
+        wind = round(10000.0 + 2000.0 * ((i % 365 - 90) / 365), 1)
+        hydro = 1500.0
+        gas = 5000.0
+        coal = 8000.0
+        total = solar + wind + hydro + gas + coal + 1200.0 + 200.0 + 500.0
+        renewable_pct = round((solar + wind + hydro) / total * 100, 1)
+        gen_rows.append(["DE-LU", day, 1200.0, coal, gas, 0.0, hydro, 200.0, solar, 500.0, wind, renewable_pct, round(total, 1)])
+    conn.executemany("INSERT INTO generation_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_rows)
+
+    # generation_hourly_recent (10 days of hourly data for DE-LU)
+    conn.execute(f"""
+        CREATE TABLE generation_hourly_recent (
+            zone VARCHAR, ts TIMESTAMPTZ, {fuel_cols}
+        )
+    """)
+    from datetime import datetime
+    hourly_start = datetime(today.year, today.month, today.day) - timedelta(days=10)
+    gen_hourly = []
+    for i in range(10 * 24):
+        ts = (hourly_start + timedelta(hours=i)).strftime("%Y-%m-%d %H:%M:%S+00:00")
+        hour = i % 24
+        solar_h = round(max(0.0, 6000.0 * ((hour - 6) / 6) if 6 <= hour <= 12 else max(0.0, 6000.0 * (1 - (hour - 12) / 8))), 1)
+        wind_h = round(10000.0 + 1000.0 * ((hour - 12) / 12), 1)
+        gen_hourly.append(["DE-LU", ts, 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 200.0, solar_h, 500.0, wind_h])
+    conn.executemany("INSERT INTO generation_hourly_recent VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_hourly)
 
     conn.close()
 

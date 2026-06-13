@@ -111,3 +111,16 @@ const ZONE_NAMES: Record<string, string> = {
 export function zoneName(zone: string): string {
   return ZONE_NAMES[zone] ?? zone
 }
+
+// Renewable % -> color. Fixed thresholds: 0-20 brown, 20-40 amber, 40-60 olive,
+// 60-80 mid-green, 80-100 deep green. Null = grey (no data).
+export function renewablePctColor(pct: number | null | undefined): string {
+  if (pct == null) return '#374151'  // grey-700
+
+  const p = Math.max(0, Math.min(100, pct))
+  if (p < 20) return '#78350f'   // amber-900
+  if (p < 40) return '#92400e'   // amber-800 (warm brown-amber)
+  if (p < 60) return '#4d7c0f'   // lime-700
+  if (p < 80) return '#15803d'   // green-600
+  return '#166534'               // green-800
+}

@@ -23,6 +23,11 @@ from .schemas import (
     FlowsResponse,
     GasCountryResponse,
     GasMapResponse,
+    GenDailyPoint,
+    GenHourlyPoint,
+    GenMapItem,
+    GenMapResponse,
+    GenZoneResponse,
     GenerationMixRow,
     HealthResponse,
     MetaResponse,
@@ -311,12 +316,39 @@ def power_zone(zone_id: str):
             total_mw=_float(gr["total_mw"]),
         )
 
+    gen_hourly_df = db.query(
+        """
+        SELECT ts::VARCHAR AS ts,
+               biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+        FROM generation_hourly_recent
+        WHERE zone = ?
+        ORDER BY ts
+        """,
+        [zone_id],
+    )
+    gen_hourly = [
+        GenHourlyPoint(
+            ts=str(r.ts),
+            biomass=_float(r.biomass),
+            coal=_float(r.coal),
+            gas=_float(r.gas),
+            geothermal=_float(r.geothermal),
+            hydro=_float(r.hydro),
+            oil=_float(r.oil),
+            solar=_float(r.solar),
+            unknown=_float(r.unknown),
+            wind=_float(r.wind),
+        )
+        for r in (gen_hourly_df.itertuples() if not gen_hourly_df.empty else [])
+    ]
+
     return PowerZoneResponse(
         zone=zone_id,
         latest=latest,
         hourly_recent=hourly,
         daily_history=daily,
         generation_mix=gen_mix,
+        generation_hourly=gen_hourly,
     )
 
 
@@ -410,6 +442,119 @@ def prices():
         for r in df.itertuples()
     ]
     return PricesResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/generation/map", response_model=GenMapResponse)
+def generation_map():
+    """Current renewable % and fuel summary per bidding zone."""
+    df = db.query("""
+        SELECT zone, gen_date::VARCHAR AS gen_date,
+               renewable_pct, solar AS solar_mw, wind AS wind_mw,
+               hydro AS hydro_mw, gas AS gas_mw, coal AS coal_mw, total_mw
+        FROM generation_latest
+        ORDER BY zone
+    """)
+    if df.empty:
+        raise HTTPException(status_code=503, detail="generation data not yet available")
+    as_of = _meta_val("refreshed_at_power")
+    zones = [
+        GenMapItem(
+            zone=str(r.zone),
+            gen_date=_iso(r.gen_date),
+            renewable_pct=_float(r.renewable_pct),
+            solar_mw=_float(r.solar_mw),
+            wind_mw=_float(r.wind_mw),
+            hydro_mw=_float(r.hydro_mw),
+            gas_mw=_float(r.gas_mw),
+            coal_mw=_float(r.coal_mw),
+            total_mw=_float(r.total_mw),
+        )
+        for r in df.itertuples()
+    ]
+    return GenMapResponse(as_of=as_of, zones=zones)
+
+
+_FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "oil", "solar", "unknown", "wind")
+
+
+@app.get("/api/generation/zone/{zone_id}", response_model=GenZoneResponse)
+def generation_zone(zone_id: str):
+    """Hourly fuel mix (last 10 days) and daily renewable trend (2Y) for a zone."""
+    zone_id = zone_id.upper()
+
+    latest_df = db.query(
+        """
+        SELECT gen_date::VARCHAR AS gen_date, renewable_pct, total_mw,
+               biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+        FROM generation_latest WHERE zone = ?
+        """,
+        [zone_id],
+    )
+    if latest_df.empty:
+        raise HTTPException(status_code=404, detail=f"Zone {zone_id!r} not found")
+
+    lr = latest_df.iloc[0]
+    fuel_vals = {k: (_float(lr[k]) or 0.0) for k in _FUEL_COLS}
+    dominant_fuel = max(fuel_vals, key=lambda k: fuel_vals[k]) if fuel_vals else None
+
+    hourly_df = db.query(
+        """
+        SELECT ts::VARCHAR AS ts, biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+        FROM generation_hourly_recent
+        WHERE zone = ?
+        ORDER BY ts
+        """,
+        [zone_id],
+    )
+    hourly = [
+        GenHourlyPoint(
+            ts=str(r.ts),
+            biomass=_float(r.biomass),
+            coal=_float(r.coal),
+            gas=_float(r.gas),
+            geothermal=_float(r.geothermal),
+            hydro=_float(r.hydro),
+            oil=_float(r.oil),
+            solar=_float(r.solar),
+            unknown=_float(r.unknown),
+            wind=_float(r.wind),
+        )
+        for r in (hourly_df.itertuples() if not hourly_df.empty else [])
+    ]
+
+    daily_df = db.query(
+        """
+        SELECT gen_date::VARCHAR AS gen_date, renewable_pct,
+               solar, wind, hydro, gas, coal, total_mw
+        FROM generation_daily
+        WHERE zone = ? AND gen_date >= current_date - interval '2 years'
+        ORDER BY gen_date
+        """,
+        [zone_id],
+    )
+    daily = [
+        GenDailyPoint(
+            gen_date=str(r.gen_date),
+            renewable_pct=_float(r.renewable_pct),
+            solar=_float(r.solar),
+            wind=_float(r.wind),
+            hydro=_float(r.hydro),
+            gas=_float(r.gas),
+            coal=_float(r.coal),
+            total_mw=_float(r.total_mw),
+        )
+        for r in (daily_df.itertuples() if not daily_df.empty else [])
+    ]
+
+    return GenZoneResponse(
+        zone=zone_id,
+        gen_date=_iso(lr["gen_date"]),
+        renewable_pct=_float(lr["renewable_pct"]),
+        total_mw=_float(lr["total_mw"]),
+        dominant_fuel=dominant_fuel,
+        hourly=hourly,
+        daily=daily,
+    )
 
 
 def _float(v) -> float | None:

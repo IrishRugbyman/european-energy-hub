@@ -95,6 +95,7 @@ class PowerZoneResponse(BaseModel):
     hourly_recent: list[PowerHourlyPoint]
     daily_history: list[PowerDailyPoint]
     generation_mix: GenerationMixRow | None = None
+    generation_hourly: list["GenHourlyPoint"] = []
 
 
 # Spreads
@@ -144,7 +145,7 @@ class FlowsResponse(BaseModel):
     rows: list[BorderFlowRow]
 
 
-# Generation mix
+# Generation mix (used in PowerZoneResponse)
 
 class GenerationMixRow(BaseModel):
     zone: str
@@ -160,3 +161,56 @@ class GenerationMixRow(BaseModel):
     wind: float | None = None
     renewable_pct: float | None = None
     total_mw: float | None = None
+
+
+# Generation map + zone endpoints
+
+class GenMapItem(BaseModel):
+    zone: str
+    gen_date: str | None
+    renewable_pct: float | None
+    solar_mw: float | None = None
+    wind_mw: float | None = None
+    hydro_mw: float | None = None
+    gas_mw: float | None = None
+    coal_mw: float | None = None
+    total_mw: float | None = None
+
+
+class GenMapResponse(BaseModel):
+    as_of: str | None
+    zones: list[GenMapItem]
+
+
+class GenHourlyPoint(BaseModel):
+    ts: str
+    biomass: float | None = None
+    coal: float | None = None
+    gas: float | None = None
+    geothermal: float | None = None
+    hydro: float | None = None
+    oil: float | None = None
+    solar: float | None = None
+    unknown: float | None = None
+    wind: float | None = None
+
+
+class GenDailyPoint(BaseModel):
+    gen_date: str
+    renewable_pct: float | None
+    solar: float | None = None
+    wind: float | None = None
+    hydro: float | None = None
+    gas: float | None = None
+    coal: float | None = None
+    total_mw: float | None = None
+
+
+class GenZoneResponse(BaseModel):
+    zone: str
+    gen_date: str | None
+    renewable_pct: float | None = None
+    total_mw: float | None = None
+    dominant_fuel: str | None = None
+    hourly: list[GenHourlyPoint]
+    daily: list[GenDailyPoint]

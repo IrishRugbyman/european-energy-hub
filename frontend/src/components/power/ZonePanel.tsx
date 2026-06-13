@@ -2,6 +2,8 @@ import { X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
   Line,
   LineChart,
@@ -10,7 +12,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type PowerLatestRow, type GenerationMixRow } from '@/lib/api'
+import { api, type PowerLatestRow, type GenerationMixRow, type GenHourlyPoint } from '@/lib/api'
 import { powerPriceColor, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
@@ -103,7 +105,7 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
 
         {/* Generation mix */}
         {data?.generation_mix && (
-          <GenerationMixSection mix={data.generation_mix} />
+          <GenerationMixSection mix={data.generation_mix} hourly={data.generation_hourly ?? []} />
         )}
 
         {/* Daily base/peak chart */}
@@ -171,43 +173,127 @@ function StatBox({ label, value, big, signed }: { label: string; value: string; 
   )
 }
 
-function GenerationMixSection({ mix }: { mix: GenerationMixRow }) {
-  const total = mix.total_mw ?? 1
-  const fuels = FUEL_ORDER.map((key) => ({
-    key,
-    mw: (mix[key as keyof GenerationMixRow] as number | null) ?? 0,
-    color: FUEL_COLORS[key] ?? '#6b7280',
-  })).filter((f) => f.mw > 0)
+// Bottom-to-top: fossil at bottom, renewables on top
+const STACK_ORDER_POWER = ['unknown', 'oil', 'coal', 'geothermal', 'gas', 'biomass', 'hydro', 'solar', 'wind'] as const
+
+function GenerationMixSection({ mix, hourly }: { mix: GenerationMixRow; hourly: GenHourlyPoint[] }) {
+  const chart = buildGenHourlyChart(hourly)
+  const hasHourly = chart.length > 0
 
   return (
     <div>
       <p className="text-xs text-muted-foreground mb-2">
-        Generation mix{mix.gen_date ? ` (${mix.gen_date})` : ''} - avg MW
+        Generation mix{mix.gen_date ? ` (${mix.gen_date})` : ''}
         {mix.renewable_pct != null && (
           <span className="ml-2 text-green-400 font-medium">{mix.renewable_pct.toFixed(0)}% renewable</span>
         )}
       </p>
-      {/* Stacked bar */}
-      <div className="flex h-4 rounded overflow-hidden mb-2">
-        {fuels.map((f) => (
-          <div
-            key={f.key}
-            style={{ width: `${(f.mw / total) * 100}%`, backgroundColor: f.color }}
-            title={`${f.key}: ${f.mw.toFixed(0)} MW`}
-          />
-        ))}
-      </div>
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1">
-        {fuels.map((f) => (
-          <div key={f.key} className="flex items-center gap-1 text-xs text-muted-foreground">
-            <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: f.color }} />
-            <span>{f.key} {f.mw.toFixed(0)}</span>
+
+      {hasHourly ? (
+        <div>
+          <ResponsiveContainer width="100%" height={120}>
+            <AreaChart data={chart} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis
+                dataKey="hour"
+                tick={{ fontSize: 8, fill: '#64748b' }}
+                tickLine={false}
+                interval={5}
+              />
+              <YAxis
+                tick={{ fontSize: 8, fill: '#64748b' }}
+                tickLine={false}
+                width={30}
+                tickFormatter={(v) => `${Math.round(v / 1000)}k`}
+              />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                formatter={(v, name) => {
+                  const mw = typeof v === 'number' ? v : null
+                  return mw != null ? [`${mw.toFixed(0)} MW`, String(name)] : ['--', String(name)]
+                }}
+              />
+              {STACK_ORDER_POWER.map((fuel) => (
+                <Area
+                  key={fuel}
+                  type="monotone"
+                  dataKey={fuel}
+                  stackId="1"
+                  stroke={FUEL_COLORS[fuel] ?? '#6b7280'}
+                  fill={FUEL_COLORS[fuel] ?? '#6b7280'}
+                  fillOpacity={0.85}
+                  strokeWidth={0}
+                  name={fuel}
+                />
+              ))}
+            </AreaChart>
+          </ResponsiveContainer>
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-1">
+            {STACK_ORDER_POWER.slice().reverse().map((fuel) => {
+              const mw = (mix[fuel as keyof GenerationMixRow] as number | null) ?? 0
+              if (mw <= 0) return null
+              return (
+                <div key={fuel} className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                  <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: FUEL_COLORS[fuel] }} />
+                  {fuel}
+                </div>
+              )
+            })}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        // Fallback: flat stacked bar when no hourly data
+        (() => {
+          const total = mix.total_mw ?? 1
+          const fuels = FUEL_ORDER.map((key) => ({
+            key,
+            mw: (mix[key as keyof GenerationMixRow] as number | null) ?? 0,
+            color: FUEL_COLORS[key] ?? '#6b7280',
+          })).filter((f) => f.mw > 0)
+          return (
+            <>
+              <div className="flex h-4 rounded overflow-hidden mb-2">
+                {fuels.map((f) => (
+                  <div
+                    key={f.key}
+                    style={{ width: `${(f.mw / total) * 100}%`, backgroundColor: f.color }}
+                    title={`${f.key}: ${f.mw.toFixed(0)} MW`}
+                  />
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1">
+                {fuels.map((f) => (
+                  <div key={f.key} className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: f.color }} />
+                    <span>{f.key} {f.mw.toFixed(0)}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )
+        })()
+      )}
     </div>
   )
+}
+
+function buildGenHourlyChart(hourly: GenHourlyPoint[]) {
+  if (!hourly || hourly.length === 0) return []
+  const cutoff = new Date(Date.now() - 24 * 3600 * 1000)
+  return hourly
+    .filter((p) => new Date(p.ts) >= cutoff)
+    .map((p) => ({
+      hour: `${String(new Date(p.ts).getUTCHours()).padStart(2, '0')}:00`,
+      wind: p.wind ?? 0,
+      solar: p.solar ?? 0,
+      hydro: p.hydro ?? 0,
+      biomass: p.biomass ?? 0,
+      gas: p.gas ?? 0,
+      oil: p.oil ?? 0,
+      coal: p.coal ?? 0,
+      geothermal: p.geothermal ?? 0,
+      unknown: p.unknown ?? 0,
+    }))
 }
 
 function buildHourlyChart(hourly: { ts: string; price_eur_mwh: number | null }[] | undefined) {

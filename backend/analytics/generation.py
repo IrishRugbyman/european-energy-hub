@@ -1,12 +1,13 @@
 """Generation mix analytics from rebase_generation (Rebase Grid API).
 
-Builds generation_latest: one row per zone with today's average MW per fuel type
-and a renewable_pct (wind + solar + hydro) for the latest available day.
+Tables produced for energy_hub.duckdb:
+  generation_daily        - daily avg MW per fuel per zone, 2019-present
+  generation_hourly_recent - last 10 days of hourly mix per zone
+  generation_latest       - most recent generation_daily row per zone
 """
 
 from __future__ import annotations
 
-from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -16,40 +17,60 @@ FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "oil", "solar", "u
 
 
 def build_generation_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
-    """Return generation_latest DataFrame ready for energy_hub.duckdb."""
-    gen_latest = _build_generation_latest(str(commo_db))
-    return {"generation_latest": gen_latest}
+    """Return all three generation DataFrames ready for energy_hub.duckdb."""
+    db = str(commo_db)
+    daily = _build_generation_daily(db)
+    hourly_recent = _build_generation_hourly_recent(db)
+    latest = _build_generation_latest_from_daily(daily)
+    return {
+        "generation_daily": daily,
+        "generation_hourly_recent": hourly_recent,
+        "generation_latest": latest,
+    }
 
 
-def _build_generation_latest(db: str) -> pd.DataFrame:
-    empty = pd.DataFrame(
-        columns=["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"]
-    )
+def _open(db: str):
+    import duckdb
+    return duckdb.connect(db, read_only=True)
+
+
+def _empty_fuel_df(extra_cols: list[str]) -> pd.DataFrame:
+    return pd.DataFrame(columns=["zone"] + extra_cols + list(FUEL_COLS) + ["renewable_pct", "total_mw"])
+
+
+def _add_renewable_stats(df: pd.DataFrame) -> pd.DataFrame:
+    for col in FUEL_COLS:
+        if col in df.columns:
+            df[col] = df[col].fillna(0.0).round(1)
+    df["total_mw"] = df[list(FUEL_COLS)].sum(axis=1)
+    renewable_sum = df[list(RENEWABLE_COLS)].sum(axis=1)
+    df["renewable_pct"] = (
+        renewable_sum / df["total_mw"].replace(0, float("nan")) * 100
+    ).round(1)
+    return df
+
+
+def _build_generation_daily(db: str) -> pd.DataFrame:
+    """Daily average MW per fuel per zone for the full available history."""
+    empty = _empty_fuel_df(["gen_date"])
     try:
-        import duckdb
-        con = duckdb.connect(db, read_only=True)
-        # For each zone, take the most recent day with data and average over its hours
+        con = _open(db)
         df = con.execute("""
-            WITH latest_per_zone AS (
-                SELECT zone, MAX(ts::DATE) AS gen_date
-                FROM rebase_generation
-                GROUP BY zone
-            )
             SELECT
-                r.zone,
-                l.gen_date,
-                AVG(r.biomass)    AS biomass,
-                AVG(r.coal)       AS coal,
-                AVG(r.gas)        AS gas,
-                AVG(r.geothermal) AS geothermal,
-                AVG(r.hydro)      AS hydro,
-                AVG(r.oil)        AS oil,
-                AVG(r.solar)      AS solar,
-                AVG(r.unknown)    AS unknown,
-                AVG(r.wind)       AS wind
-            FROM rebase_generation r
-            JOIN latest_per_zone l ON r.zone = l.zone AND r.ts::DATE = l.gen_date
-            GROUP BY r.zone, l.gen_date
+                zone,
+                ts::DATE AS gen_date,
+                AVG(biomass)    AS biomass,
+                AVG(coal)       AS coal,
+                AVG(gas)        AS gas,
+                AVG(geothermal) AS geothermal,
+                AVG(hydro)      AS hydro,
+                AVG(oil)        AS oil,
+                AVG(solar)      AS solar,
+                AVG(unknown)    AS unknown,
+                AVG(wind)       AS wind
+            FROM rebase_generation
+            GROUP BY zone, gen_date
+            ORDER BY zone, gen_date
         """).df()
         con.close()
     except Exception:
@@ -58,11 +79,44 @@ def _build_generation_latest(db: str) -> pd.DataFrame:
     if df.empty:
         return empty
 
-    df["total_mw"] = df[list(FUEL_COLS)].fillna(0).sum(axis=1)
-    renewable_sum = df[list(RENEWABLE_COLS)].fillna(0).sum(axis=1)
-    df["renewable_pct"] = (renewable_sum / df["total_mw"].replace(0, float("nan")) * 100).round(1)
+    df = _add_renewable_stats(df)
     df["gen_date"] = df["gen_date"].astype(str)
-    for col in FUEL_COLS:
-        df[col] = df[col].round(1)
-
     return df[["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"]].copy()
+
+
+def _build_generation_hourly_recent(db: str) -> pd.DataFrame:
+    """Last 10 days of hourly generation mix per zone."""
+    empty = pd.DataFrame(columns=["zone", "ts"] + list(FUEL_COLS))
+    try:
+        con = _open(db)
+        df = con.execute("""
+            SELECT
+                zone,
+                ts,
+                biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+            FROM rebase_generation
+            WHERE ts >= now() - interval '10 days'
+            ORDER BY zone, ts
+        """).df()
+        con.close()
+    except Exception:
+        return empty
+
+    if df.empty:
+        return empty
+
+    for col in FUEL_COLS:
+        if col in df.columns:
+            df[col] = df[col].fillna(0.0).round(1)
+    return df[["zone", "ts"] + list(FUEL_COLS)].copy()
+
+
+def _build_generation_latest_from_daily(daily: pd.DataFrame) -> pd.DataFrame:
+    """Most recent generation_daily row per zone."""
+    empty = pd.DataFrame(columns=["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"])
+    if daily.empty:
+        return empty
+
+    idx = daily.groupby("zone")["gen_date"].idxmax()
+    latest = daily.loc[idx].reset_index(drop=True)
+    return latest[["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"]].copy()

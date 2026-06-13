@@ -250,28 +250,44 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
 
 def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    fuel_cols = "biomass REAL, coal REAL, gas REAL, geothermal REAL, hydro REAL, oil REAL, solar REAL, unknown REAL, wind REAL"
+
+    # generation_latest
     gen = tables["generation_latest"]
-    conn.execute("""
+    conn.execute(f"""
         CREATE OR REPLACE TABLE generation_latest (
-            zone VARCHAR,
-            gen_date DATE,
-            biomass REAL,
-            coal REAL,
-            gas REAL,
-            geothermal REAL,
-            hydro REAL,
-            oil REAL,
-            solar REAL,
-            unknown REAL,
-            wind REAL,
-            renewable_pct REAL,
-            total_mw REAL
+            zone VARCHAR, gen_date DATE, {fuel_cols}, renewable_pct REAL, total_mw REAL
         )
     """)
     if not gen.empty:
         conn.register("_gen", gen)
         conn.execute("INSERT INTO generation_latest SELECT * FROM _gen")
-    logger.info(f"generation: {len(gen)} zone rows")
+
+    # generation_daily
+    daily = tables.get("generation_daily", gen.__class__())
+    conn.execute(f"""
+        CREATE OR REPLACE TABLE generation_daily (
+            zone VARCHAR, gen_date DATE, {fuel_cols}, renewable_pct REAL, total_mw REAL
+        )
+    """)
+    if not daily.empty:
+        conn.register("_gen_daily", daily)
+        conn.execute("INSERT INTO generation_daily SELECT * FROM _gen_daily")
+
+    # generation_hourly_recent
+    hourly = tables.get("generation_hourly_recent", gen.__class__())
+    conn.execute(f"""
+        CREATE OR REPLACE TABLE generation_hourly_recent (
+            zone VARCHAR, ts TIMESTAMPTZ, {fuel_cols}
+        )
+    """)
+    if not hourly.empty:
+        conn.register("_gen_hourly", hourly)
+        conn.execute("INSERT INTO generation_hourly_recent SELECT * FROM _gen_hourly")
+
+    logger.info(
+        f"generation: {len(gen)} latest rows, {len(daily)} daily rows, {len(hourly)} hourly rows"
+    )
 
 
 def _write_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

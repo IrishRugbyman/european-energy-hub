@@ -94,12 +94,64 @@ export interface GenerationMixRow {
   total_mw: number | null
 }
 
+export interface GenHourlyPoint {
+  ts: string
+  biomass: number | null
+  coal: number | null
+  gas: number | null
+  geothermal: number | null
+  hydro: number | null
+  oil: number | null
+  solar: number | null
+  unknown: number | null
+  wind: number | null
+}
+
 export interface PowerZoneResponse {
   zone: string
   latest: PowerLatestRow | null
   hourly_recent: PowerHourlyPoint[]
   daily_history: PowerDailyPoint[]
   generation_mix: GenerationMixRow | null
+  generation_hourly: GenHourlyPoint[]
+}
+
+export interface GenMapItem {
+  zone: string
+  gen_date: string | null
+  renewable_pct: number | null
+  solar_mw: number | null
+  wind_mw: number | null
+  hydro_mw: number | null
+  gas_mw: number | null
+  coal_mw: number | null
+  total_mw: number | null
+}
+
+export interface GenMapResponse {
+  as_of: string | null
+  zones: GenMapItem[]
+}
+
+export interface GenDailyPoint {
+  gen_date: string
+  renewable_pct: number | null
+  solar: number | null
+  wind: number | null
+  hydro: number | null
+  gas: number | null
+  coal: number | null
+  total_mw: number | null
+}
+
+export interface GenZoneResponse {
+  zone: string
+  gen_date: string | null
+  renewable_pct: number | null
+  total_mw: number | null
+  dominant_fuel: string | null
+  hourly: GenHourlyPoint[]
+  daily: GenDailyPoint[]
 }
 
 export interface SpreadsDailyPoint {
@@ -153,4 +205,6 @@ export const api = {
   spreads: () => get<SpreadsResponse>('/spreads'),
   prices: () => get<PricesResponse>('/prices'),
   flows: () => get<FlowsResponse>('/flows'),
+  genMap: () => get<GenMapResponse>('/generation/map'),
+  genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
 }
