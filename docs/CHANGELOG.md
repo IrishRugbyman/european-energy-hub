@@ -1,5 +1,21 @@
 # Energy Hub Changelog
 
+## 2026-06-13 - Phase 5: Generation Mix Dashboard
+
+- New `/generation` route: bidding-zone choropleth colored by renewable % (green gradient,
+  fixed thresholds: 0-20 brown through 80-100 deep green), EU-weighted avg stat strip,
+  color legend, StaleBanner, mobile bottom-sheet panel
+- ZoneGenPanel: 24h stacked area chart (9 fuel types stacked bottom-to-top fossil-to-renewable),
+  renewable % trend chart with 30d rolling average, 3M/1Y/ALL window toggle
+- generation_daily + generation_hourly_recent tables in energy_hub.duckdb (daily avg MW per
+  fuel per zone full history; last 10 days hourly); generation_latest derived from daily
+- New API endpoints: GET /api/generation/map, GET /api/generation/zone/{zone}
+- ZonePanel on /power upgraded: GenerationMixSection now shows 24h stacked area chart
+  (falls back to flat bar when hourly data absent)
+- 8 new backend tests (23 total green); 7 new vitest tests (21 total green)
+- Generation nav item added (Wind icon); 5-tab nav: Gas / Power / Generation / Spreads / Prices
+- /generation returns 503 until rebase-generation backfill finishes and refresh.py runs
+
 ## 2026-06-13 - Post-v1 UX improvements
 
 - prices: indexed-to-100 toggle for cross-commodity trend comparison (TTF/EUA/coal/HH on different units)
