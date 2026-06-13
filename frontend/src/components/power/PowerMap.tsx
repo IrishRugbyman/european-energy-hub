@@ -1,6 +1,6 @@
 import L, { type Layer, type PathOptions, type LeafletMouseEvent } from 'leaflet'
 import { MapContainer, TileLayer, Pane, useMap } from 'react-leaflet'
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode, type MutableRefObject } from 'react'
 import type { GeoJsonObject, Feature } from 'geojson'
 import { powerPriceColor, CHOROPLETH_FILL_OPACITY, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, zoneName } from '@/lib/scales'
 import type { PowerLatestRow } from '@/lib/api'
@@ -51,6 +51,12 @@ function PowerChoroLayer({
 }) {
   const map = useMap()
   const geoRef = useRef<L.GeoJSON | null>(null)
+  const selectedRef = useRef<string | null>(selected)
+
+  // Keep ref in sync so click handlers always see current selection
+  useEffect(() => {
+    selectedRef.current = selected
+  }, [selected])
 
   useEffect(() => {
     let cancelled = false
@@ -59,7 +65,7 @@ function PowerChoroLayer({
       .then((geo: GeoJsonObject) => {
         if (cancelled) return
         if (geoRef.current) map.removeLayer(geoRef.current)
-        const layer = createLayer(geo, latestByZone, selected, onSelect)
+        const layer = createLayer(geo, latestByZone, selectedRef, onSelect)
         layer.addTo(map)
         geoRef.current = layer
       })
@@ -91,18 +97,19 @@ function PowerChoroLayer({
 function createLayer(
   geo: GeoJsonObject,
   latestByZone: Record<string, PowerLatestRow>,
-  selected: string | null,
+  selectedRef: MutableRefObject<string | null>,
   onSelect: (zone: string | null) => void,
 ): L.GeoJSON {
   return L.geoJSON(geo, {
     style: (feature: Feature | undefined): PathOptions => {
       const zone = feature?.properties?.['zone'] ?? ''
       const row = latestByZone[zone]
+      const sel = selectedRef.current
       return {
         fillColor: powerPriceColor(row?.base_eur),
-        fillOpacity: zone === selected ? 0.95 : CHOROPLETH_FILL_OPACITY,
-        color: zone === selected ? '#38bdf8' : CHOROPLETH_STROKE,
-        weight: zone === selected ? 2 : CHOROPLETH_STROKE_WIDTH,
+        fillOpacity: zone === sel ? 0.95 : CHOROPLETH_FILL_OPACITY,
+        color: zone === sel ? '#38bdf8' : CHOROPLETH_STROKE,
+        weight: zone === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
       }
     },
     onEachFeature: (feature: Feature, layer: Layer) => {
@@ -112,7 +119,7 @@ function createLayer(
       layer.on({
         click: (e: LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e)
-          onSelect(zone === selected ? null : zone)
+          onSelect(zone === selectedRef.current ? null : zone)
         },
         mouseover: (e: LeafletMouseEvent) => {
           ;(e.target as L.Path).setStyle({ weight: 2, color: '#94a3b8' })
@@ -124,9 +131,10 @@ function createLayer(
             .openOn(m)
         },
         mouseout: (e: LeafletMouseEvent) => {
+          const isSel = zone === selectedRef.current
           ;(e.target as L.Path).setStyle({
-            weight: zone === selected ? 2 : CHOROPLETH_STROKE_WIDTH,
-            color: zone === selected ? '#38bdf8' : CHOROPLETH_STROKE,
+            weight: isSel ? 2 : CHOROPLETH_STROKE_WIDTH,
+            color: isSel ? '#38bdf8' : CHOROPLETH_STROKE,
           })
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ;(e.target as any)._map?.closePopup()
