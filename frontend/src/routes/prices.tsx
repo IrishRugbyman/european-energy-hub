@@ -10,6 +10,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  ReferenceLine,
 } from 'recharts'
 import { api, type PricesDailyPoint } from '@/lib/api'
 
@@ -40,20 +41,59 @@ const SERIES = [
   { key: 'ttf_eur_mwh', label: 'TTF (€/MWh)', color: '#60a5fa', unit: '€/MWh' },
   { key: 'eua_eur_t',   label: 'EUA (€/tCO2)', color: '#34d399', unit: '€/t' },
   { key: 'coal_usd_t',  label: 'Coal ($/t)', color: '#f59e0b', unit: '$/t' },
-  { key: 'hh_usd_mmbtu',label: 'Henry Hub ($/MMBtu)', color: '#f87171', unit: '$/MMBtu' },
+  { key: 'hh_usd_mmbtu', label: 'Henry Hub ($/MMBtu)', color: '#f87171', unit: '$/MMBtu' },
 ] as const
 
-function PricesTooltip({ active, payload, label }: any) {
+type SeriesKey = (typeof SERIES)[number]['key']
+
+function computeIndexed(
+  rows: (PricesDailyPoint & { label: string })[],
+): (PricesDailyPoint & { label: string })[] {
+  const bases: Partial<Record<SeriesKey, number>> = {}
+  for (const row of rows) {
+    for (const { key } of SERIES) {
+      if (bases[key] == null) {
+        const v = row[key as keyof PricesDailyPoint]
+        if (v != null && (v as number) !== 0) bases[key] = v as number
+      }
+    }
+    if (SERIES.every(({ key }) => bases[key] != null)) break
+  }
+  return rows.map((row) => {
+    const out: PricesDailyPoint & { label: string } = { ...row }
+    for (const { key } of SERIES) {
+      const base = bases[key]
+      const v = row[key as keyof PricesDailyPoint]
+      if (base != null && v != null) {
+        ;(out as unknown as Record<string, unknown>)[key] = ((v as number) / base) * 100
+      }
+    }
+    return out
+  })
+}
+
+function PricesTooltip({
+  active,
+  payload,
+  label,
+  indexed,
+}: {
+  active?: boolean
+  payload?: { dataKey: string; value: number }[]
+  label?: string
+  indexed: boolean
+}) {
   if (!active || !payload?.length) return null
   return (
     <div className="bg-card border border-border rounded px-3 py-2 text-xs shadow-lg">
       <p className="text-muted-foreground mb-1">{label}</p>
       {SERIES.map(({ key, label: name, color, unit }) => {
-        const entry = payload.find((p: any) => p.dataKey === key)
+        const entry = payload.find((p) => p.dataKey === key)
         if (!entry || entry.value == null) return null
+        const val = entry.value
         return (
           <p key={key} style={{ color }}>
-            {name}: {(entry.value as number).toFixed(2)} {unit}
+            {name}: {indexed ? `${val.toFixed(1)} (idx)` : `${val.toFixed(2)} ${unit}`}
           </p>
         )
       })}
@@ -61,15 +101,24 @@ function PricesTooltip({ active, payload, label }: any) {
   )
 }
 
-function PricesChart({ rows, window: w }: { rows: PricesDailyPoint[]; window: Window }) {
+function PricesChart({
+  rows,
+  window: w,
+  indexed,
+}: {
+  rows: PricesDailyPoint[]
+  window: Window
+  indexed: boolean
+}) {
   const cutoff = cutoffDate(w)
   const data = useMemo(() => {
     const filtered = cutoff ? rows.filter((r) => r.price_date >= cutoff) : rows
     const step = Math.max(1, Math.floor(filtered.length / 500))
-    return filtered
+    const sampled = filtered
       .filter((_, i) => i % step === 0 || i === filtered.length - 1)
       .map((r) => ({ ...r, label: r.price_date.slice(0, 10) }))
-  }, [rows, cutoff])
+    return indexed ? computeIndexed(sampled) : sampled
+  }, [rows, cutoff, indexed])
 
   return (
     <ResponsiveContainer width="100%" height={340}>
@@ -85,9 +134,17 @@ function PricesChart({ rows, window: w }: { rows: PricesDailyPoint[]; window: Wi
           tick={{ fontSize: 10, fill: '#64748b' }}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(v) => v.toFixed(0)}
+          tickFormatter={(v) => (indexed ? v.toFixed(0) : v.toFixed(0))}
+          unit={indexed ? '' : ''}
+          label={
+            indexed
+              ? { value: 'Indexed (base=100)', angle: -90, position: 'insideLeft', offset: 12, style: { fontSize: 9, fill: '#64748b' } }
+              : undefined
+          }
+          width={indexed ? 52 : 36}
         />
-        <Tooltip content={<PricesTooltip />} />
+        <Tooltip content={<PricesTooltip indexed={indexed} />} />
+        {indexed && <ReferenceLine y={100} stroke="#475569" strokeDasharray="4 2" />}
         <Legend wrapperStyle={{ fontSize: 11, paddingTop: 8 }} />
         {SERIES.map(({ key, label, color }) => (
           <Line
@@ -107,6 +164,7 @@ function PricesChart({ rows, window: w }: { rows: PricesDailyPoint[]; window: Wi
 
 function PricesDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
+  const [indexed, setIndexed] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['prices'],
@@ -131,20 +189,33 @@ function PricesDashboard() {
             </div>
           )
         })}
-        <div className="ml-auto flex items-center gap-1">
-          {WINDOWS.map((w) => (
-            <button
-              key={w}
-              onClick={() => setWindow(w)}
-              className={`px-2 py-0.5 rounded text-xs ${
-                w === window
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-              }`}
-            >
-              {w}
-            </button>
-          ))}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setIndexed((v) => !v)}
+            className={`px-2 py-0.5 rounded text-xs border transition-colors ${
+              indexed
+                ? 'bg-violet-900 border-violet-600 text-violet-200'
+                : 'border-border text-muted-foreground hover:text-foreground hover:bg-secondary'
+            }`}
+          >
+            Indexed
+          </button>
+          <span className="text-border text-muted-foreground">|</span>
+          <div className="flex items-center gap-1">
+            {WINDOWS.map((w) => (
+              <button
+                key={w}
+                onClick={() => setWindow(w)}
+                className={`px-2 py-0.5 rounded text-xs ${
+                  w === window
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -154,9 +225,9 @@ function PricesDashboard() {
       {rows.length > 0 && (
         <div className="bg-card border border-border rounded-lg p-4">
           <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            Commodity Prices
+            Commodity Prices{indexed ? ' - Indexed to 100 at window start' : ''}
           </h2>
-          <PricesChart rows={rows} window={window} />
+          <PricesChart rows={rows} window={window} indexed={indexed} />
         </div>
       )}
 
