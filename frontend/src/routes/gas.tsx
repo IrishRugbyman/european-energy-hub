@@ -53,6 +53,26 @@ function GasDashboard() {
         ) : null}
       </div>
 
+      {/* Fill % legend (hidden on mobile) */}
+      <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
+        <p className="text-muted-foreground mb-1 font-medium">Fill %</p>
+        {[
+          { label: '< 20',   color: '#7f1d1d' },
+          { label: '20-35',  color: '#b91c1c' },
+          { label: '35-50',  color: '#d97706' },
+          { label: '50-65',  color: '#ca8a04' },
+          { label: '65-75',  color: '#65a30d' },
+          { label: '75-85',  color: '#16a34a' },
+          { label: '> 85',   color: '#15803d' },
+          { label: 'no data',color: '#374151' },
+        ].map(({ label, color }) => (
+          <div key={label} className="flex items-center gap-1.5">
+            <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+            <span className="text-muted-foreground">{label}</span>
+          </div>
+        ))}
+      </div>
+
       {/* Map fills the whole space */}
       <div className="flex-1">
         <GasMap
