@@ -10,6 +10,7 @@ import {
   Tooltip,
   Legend,
   ReferenceLine,
+  ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
 import { api, type SpreadsDailyPoint } from '@/lib/api'
@@ -43,8 +44,33 @@ function latest(rows: SpreadsDailyPoint[], key: keyof SpreadsDailyPoint): number
   return null
 }
 
+interface RegimeSpan {
+  x1: string
+  x2: string
+  regime: string
+}
+
+function buildRegimeSpans(
+  data: (SpreadsDailyPoint & { label: string })[],
+): RegimeSpan[] {
+  if (!data.length) return []
+  const spans: RegimeSpan[] = []
+  let spanStart = data[0].label
+  let spanRegime = data[0].regime_threshold ?? 'coal'
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i].regime_threshold ?? 'coal'
+    if (r !== spanRegime) {
+      spans.push({ x1: spanStart, x2: data[i - 1].label, regime: spanRegime })
+      spanStart = data[i].label
+      spanRegime = r
+    }
+  }
+  spans.push({ x1: spanStart, x2: data[data.length - 1].label, regime: spanRegime })
+  return spans
+}
+
 // Custom tooltip
-function SpreadTooltip({ active, payload, label }: any) {
+function SpreadTooltip({ active, payload, label }: { active?: boolean; payload?: { payload: SpreadsDailyPoint }[]; label?: string }) {
   if (!active || !payload?.length) return null
   const d = payload[0]?.payload as SpreadsDailyPoint
   return (
@@ -54,12 +80,12 @@ function SpreadTooltip({ active, payload, label }: any) {
         { key: 'css', label: 'Clean Spark', color: '#60a5fa' },
         { key: 'cds', label: 'Clean Dark', color: '#f59e0b' },
         { key: 'fss', label: 'Fuel Switch', color: '#a78bfa' },
-      ].map(({ key, label, color }) => {
+      ].map(({ key, label: name, color }) => {
         const v = d[key as keyof SpreadsDailyPoint]
         if (v == null) return null
         return (
           <p key={key} style={{ color }}>
-            {label}: {(v as number).toFixed(1)} €/MWh
+            {name}: {(v as number).toFixed(1)} €/MWh
           </p>
         )
       })}
@@ -74,13 +100,15 @@ function SpreadTooltip({ active, payload, label }: any) {
 
 function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: Window }) {
   const cutoff = cutoffDate(w)
-  const data = useMemo(() => {
+
+  const { data, regimeSpans } = useMemo(() => {
     const filtered = cutoff ? rows.filter((r) => r.price_date >= cutoff) : rows
     // Sample for performance: max 500 points
     const step = Math.max(1, Math.floor(filtered.length / 500))
-    return filtered
+    const sampled = filtered
       .filter((_, i) => i % step === 0 || i === filtered.length - 1)
       .map((r) => ({ ...r, label: r.price_date.slice(0, 10) }))
+    return { data: sampled, regimeSpans: buildRegimeSpans(sampled) }
   }, [rows, cutoff])
 
   return (
@@ -107,6 +135,17 @@ function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: W
             value === 'css' ? 'Clean Spark (CSS)' : value === 'cds' ? 'Clean Dark (CDS)' : 'Fuel Switch (FSS)'
           }
         />
+        {/* Regime background shading */}
+        {regimeSpans.map((span, i) => (
+          <ReferenceArea
+            key={i}
+            x1={span.x1}
+            x2={span.x2}
+            fill={span.regime === 'gas' ? '#1e3a5f' : '#3b1c0a'}
+            fillOpacity={0.35}
+            strokeOpacity={0}
+          />
+        ))}
         <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
         <Line dataKey="css" stroke="#60a5fa" dot={false} strokeWidth={1.5} name="css" />
         <Line dataKey="cds" stroke="#f59e0b" dot={false} strokeWidth={1.5} name="cds" />
@@ -170,9 +209,21 @@ function SpreadsDashboard() {
       {rows.length > 0 && (
         <>
           <div className="bg-card border border-border rounded-lg p-4 mb-4">
-            <h2 className="text-sm font-medium text-muted-foreground mb-3">
-              Spark / Dark / Fuel-Switch Spreads - DE-LU (€/MWh)
-            </h2>
+            <div className="flex items-center gap-3 mb-3">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                Spark / Dark / Fuel-Switch Spreads - DE-LU (€/MWh)
+              </h2>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-2 rounded-sm" style={{ background: '#1e3a5f', opacity: 0.8 }} />
+                  gas marginal
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="inline-block w-3 h-2 rounded-sm" style={{ background: '#3b1c0a', opacity: 0.8 }} />
+                  coal marginal
+                </span>
+              </div>
+            </div>
             <SpreadChart rows={rows} window={window} />
           </div>
 
@@ -211,6 +262,10 @@ function SpreadExplainer() {
       <p>
         <span className="text-violet-400">Fuel Switch Spread (FSS)</span> = CSS - CDS. Positive
         means gas is the marginal fuel; negative means coal is marginal.
+      </p>
+      <p>
+        Background shading indicates the marginal fuel regime (gas = blue, coal = amber) derived
+        from the sign of the FSS.
       </p>
       <p className="text-muted-foreground/70">
         Constants: gas eff 49%, gas EF 0.364 tCO2/MWh; coal eff 36%, coal EF 0.96 tCO2/MWh.
