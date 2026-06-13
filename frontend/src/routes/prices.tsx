@@ -13,6 +13,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { api, type PricesDailyPoint } from '@/lib/api'
+import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/prices')({
   component: PricesDashboard,
@@ -218,6 +219,8 @@ function PricesDashboard() {
           </div>
         </div>
       </div>
+
+      <StaleBanner datasetKey="spreads" variant="inline" />
 
       {isLoading && <p className="text-muted-foreground text-sm">Loading...</p>}
       {error && <p className="text-destructive text-sm">API unavailable</p>}

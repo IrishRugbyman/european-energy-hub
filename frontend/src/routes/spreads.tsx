@@ -14,6 +14,7 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import { api, type SpreadsDailyPoint } from '@/lib/api'
+import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/spreads')({
   component: SpreadsDashboard,
@@ -202,6 +203,8 @@ function SpreadsDashboard() {
           ))}
         </div>
       </div>
+
+      <StaleBanner datasetKey="spreads" variant="inline" />
 
       {isLoading && <p className="text-muted-foreground text-sm">Loading...</p>}
       {error && <p className="text-destructive text-sm">API unavailable</p>}
