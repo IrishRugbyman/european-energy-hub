@@ -1,5 +1,18 @@
 # Energy Hub Changelog
 
+## 2026-06-13 - Post-v1 UX improvements
+
+- prices: indexed-to-100 toggle for cross-commodity trend comparison (TTF/EUA/coal/HH on different units)
+- spreads: regime background shading on FSS chart (gas marginal = blue, coal marginal = amber)
+- gas: fill % color legend added to map (mirrors power map legend)
+- gas: dynamic flow bar scale per country (was hardcoded 500 GWh, clipped NL/EU)
+- power zone panel: 1Y/2Y toggle for daily history chart
+- backend: httpx -> httpx2 to silence starlette deprecation warning
+- refresh: add rebase-generation to daily fetcher list (generation mix was not being updated)
+- rebase-generation backfill running from 2019-01-01 for all 34 zones
+- frontend: vitest config + 14 unit tests for lib/scales.ts color thresholds
+- About modal: add Rebase Grid API attribution
+
 ## 2026-06-12 - v1.0: mobile pass + final polish
 
 - Side panels converted to bottom sheets on mobile (< 640px), right-side panel on sm+
