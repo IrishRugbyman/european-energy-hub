@@ -22,16 +22,17 @@ const FUEL_COLORS: Record<string, string> = {
   wind:       '#60a5fa',
   solar:      '#fbbf24',
   hydro:      '#34d399',
+  nuclear:    '#a3e635',
   biomass:    '#86efac',
   gas:        '#f97316',
   oil:        '#ef4444',
   coal:       '#78716c',
   geothermal: '#a78bfa',
-  unknown:    '#4b5563',
+  other:      '#4b5563',
 }
 
 // Bottom-to-top stacking: fossil fuels at bottom, renewables on top
-const STACK_ORDER = ['unknown', 'oil', 'coal', 'geothermal', 'gas', 'biomass', 'hydro', 'solar', 'wind'] as const
+const STACK_ORDER = ['other', 'oil', 'coal', 'geothermal', 'gas', 'nuclear', 'biomass', 'hydro', 'solar', 'wind'] as const
 
 interface Props {
   zone: string
@@ -263,7 +264,7 @@ function FuelLegend() {
 }
 
 function buildHourlyChart(
-  hourly: { ts: string; wind?: number | null; solar?: number | null; hydro?: number | null; gas?: number | null; coal?: number | null; biomass?: number | null; oil?: number | null; geothermal?: number | null; unknown?: number | null }[] | undefined,
+  hourly: { ts: string; wind?: number | null; solar?: number | null; hydro?: number | null; nuclear?: number | null; gas?: number | null; coal?: number | null; biomass?: number | null; oil?: number | null; geothermal?: number | null; other?: number | null }[] | undefined,
 ) {
   if (!hourly || hourly.length === 0) return []
   // Show last 24h only
@@ -278,12 +279,13 @@ function buildHourlyChart(
         wind: p.wind ?? 0,
         solar: p.solar ?? 0,
         hydro: p.hydro ?? 0,
+        nuclear: p.nuclear ?? 0,
         biomass: p.biomass ?? 0,
         gas: p.gas ?? 0,
         oil: p.oil ?? 0,
         coal: p.coal ?? 0,
         geothermal: p.geothermal ?? 0,
-        unknown: p.unknown ?? 0,
+        other: p.other ?? 0,
       }
     })
 }
