@@ -1,5 +1,28 @@
 # Energy Hub Changelog
 
+## 2026-06-14 - Phase 12: Full generation mix with nuclear via ENTSO-E A75
+
+**Tried:** Replace Rebase Grid API (omits nuclear) with ENTSO-E A75 actual generation
+(`fetch_generation_full`, one API call per zone per month returning all 20 PSR fuel types).
+Backfilled 6 zones (DE-LU, FR, BE, NL, AT, CH) from 2021-01 with a 429 retry/backoff loop.
+
+**Found:** Root cause of 0-rows-inserted was a column label mismatch: `_parse_gen_full()` extracted
+`[:3]` from MultiIndex level-0 labels expecting PSR codes ("B04") but entsoe-py maps through
+`PSRTYPE_MAPPINGS` so actual labels are display names ("Fossil Gas"). Every lookup missed.
+Fixed by adding `_PSR_NAME_TO_TECH`. FR nuclear now 34,036 MW (was 0 due to Rebase gap; total
+jumped from 11.8 GW to 50.5 GW). 5.5M rows inserted across 6 zones in ~1h with backoff.
+conftest had a 15-vs-14 placeholder mismatch that broke all 36 tests; fixed alongside.
+`ZoneGenPanel` on /generation still had hardcoded "unknown" key - fixed to nuclear/other.
+
+**Decision:** ENTSO-E A75 is the canonical source for all generation mix data. Rebase Grid API
+dropped entirely. Both /power zone panel and /generation zone panel now show nuclear correctly.
+Phase 13 planned: expose the full 10-fuel breakdown in the /generation choropleth (dominant-fuel
+mode) and replace the renewable-% line trend with a stacked fuel area chart.
+
+**Artifacts:** `fetchers/entso_e.py` - `_PSR_NAME_TO_TECH`, `_is_rate_limit()`, retry logic in
+`fetch_generation_full()`; `analytics/generation.py` rewritten; 10-fuel DDL in `refresh.py`,
+`schemas.py`, `main.py`; `ZoneGenPanel.tsx` fuel legend fixed; 36 tests green.
+
 ## 2026-06-14 - Phase 9: German reBAP imbalance dashboard (/imbalance)
 
 - New /imbalance route: chart-first dashboard for German reBAP balancing prices

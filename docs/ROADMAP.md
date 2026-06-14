@@ -542,6 +542,100 @@ past days' generation mix and renewable-% choropleth, not just today.*
 
 ---
 
+### Phase 10 - Power map enrichment: intraday range, neg-price hours, 2yr rank [COMPLETE - 2026-06-14] ✅
+
+*Commit: 3e51137*
+
+- [x] `day_range_eur` (max-min hourly), `neg_hours` (count of hours < 0), `pct_rank_2yr`
+  (base price percentile in 2-year window) computed in `analytics/power.py`; added to
+  `power_daily` and `power_latest` DuckDB tables
+- [x] 4-button metric selector on /power map (Price / Range / Neg hrs / 2yr rank);
+  `PowerMetric` type; `metricColor()` dispatch in PowerMap.tsx; METRIC_LEGENDS constant
+- [x] `dayRangeColor()`, `negHoursColor()`, `pctRankColor()` scales in scales.ts
+- [x] ZonePanel: second stats row (Range / Neg hrs / 2yr rank); daily ComposedChart with
+  shaded min/max band (Area stackId="band") + Line for base/peak
+- [x] 36 tests green after conftest DDL updated to 9-column power tables
+
+---
+
+### Phase 11 - Clickable interconnections layer on /power [COMPLETE - 2026-06-14] ✅
+
+*Commit: a2f3f11*
+
+- [x] Replaced separate "Flows" + "Congestion" toggles with single "Interconnections" toggle
+- [x] `InterconnectionLayer.tsx`: border lines colored by max(utilization_pct) across both
+  directed pairs; flow-direction arrows at 60% point sized to |net_flow_mw|; utilization %
+  labels; click selects an undirected border pair (`BorderKey`)
+- [x] `BorderPanel.tsx`: directed DirBox per side (A->B, B->A); net flow direction; historical
+  utilization LineChart with 80%/100% reference lines; 3M/1Y/all window toggle
+- [x] `selectedBorder` and `selectedZone` are mutually exclusive; side panel slot serves both
+- [x] `ZONE_CENTROIDS` for 7 core zones; `BorderKey` interface exported from InterconnectionLayer
+
+---
+
+### Phase 12 - Full generation mix with nuclear (ENTSO-E A75) [COMPLETE - 2026-06-14] ✅
+
+*Commits: e761a47, 2a4054e*
+
+*Goal: Fix the missing nuclear gap. Rebase Grid API omits nuclear entirely, making France
+show 11.8 GW instead of ~50 GW. Switch to ENTSO-E A75 (Actual Generation per Production Type)
+which covers all 20 PSR fuel types.*
+
+- [x] `fetch_generation_full()` in `shared/market-data/fetchers/entso_e.py`: calls
+  `query_generation()` without `psr_type` (one API call per zone per month, all fuels)
+- [x] `_PSR_NAME_TO_TECH` dict: maps entsoe-py display names ("Fossil Gas", "Nuclear") to
+  tech names - fixes the root-cause 0-rows bug where `[:3]` extraction looked for PSR codes
+  but entsoe-py returns human-readable labels via `PSRTYPE_MAPPINGS`
+- [x] 429 retry/backoff: `_is_rate_limit()` helper; 4 retries with 60/120/240/480s backoff
+- [x] `ingest.py entso-e-gen-full --from-date 2021-01-01 --zone DE-LU FR BE NL AT CH`: 5.5M rows
+  ingested across 6 zones; FR nuclear=34,036 MW confirmed live at /power/zone/FR
+- [x] `analytics/generation.py` rewritten: reads `power_generation_actual` (ENTSO-E) instead
+  of `rebase_generation`; 10-fuel schema (biomass coal gas geothermal hydro nuclear oil other solar wind)
+- [x] `refresh.py`, `schemas.py`, `main.py`: DDL and column lists updated to 10-fuel schema
+- [x] `ZoneGenPanel.tsx` (/generation page): `unknown` removed, `nuclear` (lime-400) + `other`
+  added to FUEL_COLORS, STACK_ORDER, and buildHourlyChart
+- [x] conftest INSERT bug fixed (15->14 placeholders); all 36 tests green
+
+---
+
+### Phase 13 - Generation map: full fuel breakdown + dominant-fuel choropleth [PLANNED]
+
+*Depends on: Phase 12. No new data needed - power_generation_actual has 10-fuel history.*
+*Estimated: 1 session.*
+
+*Goal: the /generation page currently shows only renewable % on the choropleth and only
+wind/solar/hydro in the summary stats. Now that we have nuclear, gas, coal, etc., expose
+the full picture.*
+
+#### Map layer
+- [ ] Add a second choropleth metric for /generation: "Dominant fuel" mode colors each zone
+  by its largest generation source (nuclear=lime, gas=orange, coal=grey, wind=blue, solar=amber, hydro=green)
+  with a matching legend; toggle between "Renewable %" and "Dominant fuel" via a 2-button selector
+- [ ] Tooltip enrichment: show top-3 fuels + MW in the hover tooltip alongside renewable %
+
+#### Generation map API + backend
+- [ ] `GenMapItem` interface: add full 10-fuel columns (biomass, coal, gas, geothermal, hydro,
+  nuclear, oil, other, solar, wind) so the frontend can compute dominant fuel client-side
+- [ ] `analytics/generation.py` / `generation_latest` table already has all columns; extend
+  `_write_generation()` to include them in the `generation_latest` DuckDB table and in the
+  `/api/generation/map` response
+- [ ] `GenDailyPoint` and `GenZoneResponse.daily`: add nuclear + other to the daily history
+  so the ZoneGenPanel trend chart can show a stacked fuel-mix area chart (replace renewable %
+  line chart with stacked fuel area + renewable % line overlay)
+
+#### ZoneGenPanel enrichment
+- [ ] Replace the 4-stat box (Renewable / Total / Wind+Solar+Hydro / Dominant fuel) with a
+  3-column fuel legend showing each fuel's MW for today, colored by FUEL_COLORS
+- [ ] Daily trend section: stacked area chart by fuel (10 fuels, same STACK_ORDER_POWER)
+  with a renewable % line overlay on a secondary Y axis
+
+#### Definition of done
+- /generation choropleth shows dominant-fuel coloring as an alternative to renewable %
+- ZoneGenPanel shows full 10-fuel daily stacked chart
+- All tests green
+
+---
+
 ## 9. Build order summary
 
 | Phase | Goal | New duckdb tables | New routes | Sessions |
@@ -555,6 +649,10 @@ past days' generation mix and renewable-% choropleth, not just today.*
 | 7 | Power congestion (NTC vs scheduled) | +2 (congestion_latest, congestion_daily) | +0 (layer on /power) | 1-2 |
 | 8 | Historical date scrubber for /generation | +0 (reuses generation_daily) | +0 (enhances /generation) | 1 |
 | 9 | German imbalance / reBAP dashboard | +3 (imbalance_recent, imbalance_daily, imbalance_latest) | +1 (/imbalance) | 1-2 |
+| 10 | Power map: range/neg-hours/2yr-rank layers | +0 (new columns in power_daily/latest) | +0 | 1 |
+| 11 | Clickable interconnections layer on /power | +0 (reuses congestion_latest + borders_daily) | +0 | 1 |
+| 12 | Full generation mix with nuclear (ENTSO-E A75) | +0 (new tech rows in power_generation_actual) | +0 | 1 |
+| 13 | Generation map: dominant-fuel choropleth + full fuel daily chart | +0 (extend existing tables) | +0 | 1 |
 
 ## 10. Deliberately NOT building (v1)
 
