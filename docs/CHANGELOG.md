@@ -1,5 +1,21 @@
 # Energy Hub Changelog
 
+## 2026-06-14 - Phase 9: German reBAP imbalance dashboard (/imbalance)
+
+- New /imbalance route: chart-first dashboard for German reBAP balancing prices
+  (SMARD/Bundesnetzagentur, 15-min resolution from 2021-12 to present)
+- Current-price cards: current reBAP, today's mean/min/max
+- 10-day 15-min area chart and 2Y daily mean/min/max area chart (3M/1Y/2Y toggle)
+- Methodology note explaining reBAP and linking to the p2-imbalance research project
+- "Imbalance" added to 6-tab nav (Activity icon from lucide-react)
+- SMARD.de attribution added to About modal
+- analytics/imbalance.py: reads imbalance_prices_de from PostgreSQL; emits imbalance_recent
+  (10 days), imbalance_daily (2Y daily aggs), imbalance_latest (current snapshot)
+- GET /api/imbalance; imbalance_refreshed_at in meta response; StaleBanner supports 'imbalance'
+- refresh.py: smard-imbalance-de added to daily fetcher list; 3 new DuckDB tables
+- 2 new backend tests; 36 total green
+- Note: NRV column is null in SMARD dataset (single reBAP price, no long/short system-state)
+
 ## 2026-06-14 - Phase 8: Historical date scrubber for /generation
 
 - Date picker added to /generation (top-right, same dark-glass style as /power): scrubs the

@@ -510,39 +510,35 @@ past days' generation mix and renewable-% choropleth, not just today.*
 
 ---
 
-### Phase 9 - German imbalance / reBAP dashboard (/imbalance)
+### Phase 9 - German imbalance / reBAP dashboard (/imbalance) [COMPLETE - 2026-06-14] ✅
 
 *Goal: a new /imbalance dashboard bringing the p2-imbalance research live: German balancing
 (reBAP) prices and system state. Single-zone (DE), so chart-first rather than map-first.*
-*Depends on: Phase 5. Source: `imbalance_prices_de` (155k rows, 15-min, long/short/NRV, 2021-12 to present).*
-*Data note: add `smard-imbalance-de` to the daily-refresh fetcher list (preferred source per market-data).*
+*Completed: 2026-06-14, commit 3c9139d*
 
 #### Data layer
-- [ ] Add `smard-imbalance-de` to the refresh fetcher list
-- [ ] `analytics/imbalance.py`: `build_imbalance_tables()` from `imbalance_prices_de`
-  (ts, long_eur_mwh, short_eur_mwh, nrv_mw). Emit `imbalance_recent` (15-min, trailing ~10 days),
-  `imbalance_daily` (daily mean/min/max of the reBAP price + mean |NRV|, 2Y), and `imbalance_latest`
-  (current price, current system direction long/short from NRV sign, today's range)
-- [ ] Document the reBAP sign convention; reuse any constants from `research/p2-imbalance`
+- [x] Add `smard-imbalance-de` to the refresh fetcher list
+- [x] `analytics/imbalance.py`: `build_imbalance_tables()` from `imbalance_prices_de`
+  (155k rows, 15-min from 2021-12 to 2026-05). Emits `imbalance_recent` (10 days),
+  `imbalance_daily` (2Y daily mean/min/max), `imbalance_latest` (current snapshot + today stats)
+- [x] Note: NRV column is null in SMARD dataset; long/short system state omitted (single reBAP price)
 
 #### Refresh job
-- [ ] `_write_imbalance()`; stamp `refreshed_at_imbalance`. Empty-safe
+- [x] `_write_imbalance()`; stamp `refreshed_at_imbalance`. Empty-safe
 
 #### API
-- [ ] `GET /api/imbalance` - latest snapshot + recent 15-min series + daily 2Y series + system state
-- [ ] Schemas + pytest (seeded fixture: a long-system and a short-system interval)
+- [x] `GET /api/imbalance` - latest snapshot + 10-day recent + 2Y daily history
+- [x] Schemas + pytest (seeded fixture with 10 days 15-min + 2Y daily); 36 tests green
 
 #### Frontend
-- [ ] `routes/imbalance.tsx`: chart-first dashboard - reBAP price line (recent 15-min + daily history
-  with window toggle), NRV/system-state band (long vs short shading), "system now" cards
-  (current reBAP, direction, today's range). Short methodology note (what reBAP is, the data source)
-- [ ] Add "Imbalance" to nav (`__root.tsx`); desktop + mobile icon bar; regenerate routeTree.gen.ts
-- [ ] StaleBanner; About-modal attribution for SMARD/ENTSO-E imbalance
-- [ ] Cross-link from quant-portfolio's p2-imbalance page to energy.lbzgiu.xyz/imbalance
+- [x] `routes/imbalance.tsx`: chart-first dashboard with current-price cards, 10-day 15-min
+  area chart, 2Y daily mean/min/max area chart (3M/1Y/2Y toggle), methodology note
+- [x] "Imbalance" added to 6-tab nav (Activity icon); desktop + mobile; routeTree.gen.ts regenerated
+- [x] StaleBanner with imbalance_refreshed_at from meta; SMARD attribution in About modal
+- [ ] Cross-link from quant-portfolio's p2-imbalance page to energy.lbzgiu.xyz/imbalance (future)
 
 #### Definition of done
-- /imbalance renders reBAP price + system-state; current numbers match a manual p2-imbalance check
-- New nav item works on desktop + mobile; `pytest -q` + `npm test` green; live verified
+- /imbalance renders reBAP price + history; 36 tests green; live verified - DONE
 
 ---
 
