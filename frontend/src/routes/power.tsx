@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { api, type PowerLatestRow } from '@/lib/api'
 import { PowerMap, type PowerMetric } from '@/components/power/PowerMap'
 import { ZonePanel } from '@/components/power/ZonePanel'
-import { FlowArrowsLayer } from '@/components/power/FlowArrowsLayer'
-import { CongestionLayer } from '@/components/power/CongestionLayer'
+import { BorderPanel } from '@/components/power/BorderPanel'
+import { InterconnectionLayer, type BorderKey } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/power')({
@@ -54,89 +54,94 @@ const METRIC_LEGENDS: Record<PowerMetric, { title: string; items: { label: strin
   neg_hours: {
     title: 'Negative-price hours',
     items: [
-      { label: '0',      color: '#374151' },
-      { label: '1',      color: '#ca8a04' },
-      { label: '2-3',    color: '#d97706' },
-      { label: '4-7',    color: '#ea580c' },
-      { label: '8-11',   color: '#b91c1c' },
-      { label: '12+',    color: '#7f1d1d' },
+      { label: '0',    color: '#374151' },
+      { label: '1',    color: '#ca8a04' },
+      { label: '2-3',  color: '#d97706' },
+      { label: '4-7',  color: '#ea580c' },
+      { label: '8-11', color: '#b91c1c' },
+      { label: '12+',  color: '#7f1d1d' },
     ],
   },
   pct_rank: {
     title: '2yr price rank',
     items: [
-      { label: '< 10th (cheap)',  color: '#1d4ed8' },
-      { label: '10-25th',         color: '#0369a1' },
-      { label: '25-40th',         color: '#0e7490' },
-      { label: '40-60th (mid)',   color: '#15803d' },
-      { label: '60-75th',         color: '#65a30d' },
-      { label: '75-90th',         color: '#d97706' },
-      { label: '> 90th (dear)',   color: '#b91c1c' },
-      { label: 'no data',         color: '#374151' },
+      { label: '< 10th (cheap)', color: '#1d4ed8' },
+      { label: '10-25th',        color: '#0369a1' },
+      { label: '25-40th',        color: '#0e7490' },
+      { label: '40-60th (mid)',  color: '#15803d' },
+      { label: '60-75th',        color: '#65a30d' },
+      { label: '75-90th',        color: '#d97706' },
+      { label: '> 90th (dear)',  color: '#b91c1c' },
+      { label: 'no data',        color: '#374151' },
     ],
   },
 }
 
 function PowerDashboard() {
-  const [selected, setSelected] = useState<string | null>(null)
-  const [showFlows, setShowFlows] = useState(false)
-  const [showCongestion, setShowCongestion] = useState(false)
-  const [mapMetric, setMapMetric] = useState<PowerMetric>('price')
+  const [selectedZone, setSelectedZone]       = useState<string | null>(null)
+  const [selectedBorder, setSelectedBorder]   = useState<BorderKey | null>(null)
+  const [showInterconnections, setShowInterconnections] = useState(false)
+  const [mapMetric, setMapMetric]             = useState<PowerMetric>('price')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['power-map'],
     queryFn: api.powerMap,
   })
 
-  const { data: flowsData } = useQuery({
-    queryKey: ['flows'],
-    queryFn: api.flows,
-    staleTime: 15 * 60 * 1000,
-    enabled: showFlows,
-  })
-
   const { data: congestionData } = useQuery({
     queryKey: ['power-congestion'],
     queryFn: api.powerCongestion,
     staleTime: 15 * 60 * 1000,
-    enabled: showCongestion,
+    enabled: showInterconnections,
+  })
+
+  const { data: flowsData } = useQuery({
+    queryKey: ['flows'],
+    queryFn: api.flows,
+    staleTime: 15 * 60 * 1000,
+    enabled: showInterconnections,
   })
 
   const latestByZone: Record<string, PowerLatestRow> = {}
   for (const row of data?.rows ?? []) latestByZone[row.zone] = row
 
-  // Representative stats: median base price across all zones
-  const prices = (data?.rows ?? []).map((r) => r.base_eur).filter((v): v is number => v != null).sort((a, b) => a - b)
+  const prices = (data?.rows ?? [])
+    .map((r) => r.base_eur)
+    .filter((v): v is number => v != null)
+    .sort((a, b) => a - b)
   const medianPrice = prices.length ? prices[Math.floor(prices.length / 2)] : null
   const priceDate = data?.price_date ?? null
 
+  function handleSelectZone(zone: string | null) {
+    setSelectedZone(zone)
+    if (zone) setSelectedBorder(null)
+  }
+
+  function handleSelectBorder(border: BorderKey | null) {
+    setSelectedBorder(border)
+    if (border) setSelectedZone(null)
+  }
+
+  const panelOpen = selectedZone !== null || selectedBorder !== null
+
   return (
     <div className="relative h-full flex">
-      {/* Layer toggles + metric selector (top-right) */}
+      {/* Top-right controls */}
       <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
+        {/* Interconnections toggle */}
         <button
-          onClick={() => setShowFlows((v) => !v)}
+          onClick={() => setShowInterconnections((v) => !v)}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
-            showFlows
-              ? 'bg-sky-900 border-sky-600 text-sky-200'
-              : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
-          } backdrop-blur shadow`}
-        >
-          <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0" />
-          Cross-border flows
-        </button>
-        <button
-          onClick={() => setShowCongestion((v) => !v)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
-            showCongestion
+            showInterconnections
               ? 'bg-amber-900 border-amber-600 text-amber-200'
               : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
           } backdrop-blur shadow`}
         >
           <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-          Congestion
+          Interconnections
         </button>
-        {/* Metric selector */}
+
+        {/* Map metric selector */}
         <div className="bg-card/90 backdrop-blur border border-border rounded shadow flex flex-col gap-0.5 p-1">
           <p className="text-muted-foreground text-[10px] px-1 pb-0.5">Map layer</p>
           {([
@@ -160,7 +165,7 @@ function PowerDashboard() {
         </div>
       </div>
 
-      {/* Stat strip */}
+      {/* Top-center stat strip */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-4 px-4 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm pointer-events-none">
         {medianPrice != null ? (
           <>
@@ -175,9 +180,9 @@ function PowerDashboard() {
         ) : null}
       </div>
 
-      {/* Legend (hidden on mobile) */}
+      {/* Bottom-left legend */}
       <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
-        {showCongestion ? (
+        {showInterconnections ? (
           <>
             <p className="text-muted-foreground mb-1 font-medium">NTC utilization</p>
             {UTILIZATION_LEGEND.map(({ label, color }) => (
@@ -202,29 +207,47 @@ function PowerDashboard() {
 
       {/* Map */}
       <div className="flex-1">
-        <PowerMap rows={data?.rows ?? []} selected={selected} onSelect={setSelected} metric={mapMetric}>
-          {showFlows && flowsData && flowsData.rows.length > 0 && (
-            <FlowArrowsLayer flows={flowsData.rows} />
-          )}
-          {showCongestion && congestionData && congestionData.rows.length > 0 && (
-            <CongestionLayer rows={congestionData.rows} />
+        <PowerMap
+          rows={data?.rows ?? []}
+          selected={selectedZone}
+          onSelect={handleSelectZone}
+          metric={mapMetric}
+        >
+          {showInterconnections && (
+            <InterconnectionLayer
+              congestion={congestionData?.rows ?? []}
+              flows={flowsData?.rows ?? []}
+              selected={selectedBorder}
+              onSelect={handleSelectBorder}
+            />
           )}
         </PowerMap>
       </div>
 
       <StaleBanner datasetKey="power" />
 
-      {/* Side panel: bottom sheet on mobile, right-side on sm+ */}
-      {selected && (
+      {/* Side panel (shared slot for zone and border) */}
+      {panelOpen && (
         <div className="fixed bottom-0 left-0 right-0 max-h-[75vh] bg-card border-t border-border z-[1000] overflow-y-auto rounded-t-xl sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:border-t-0 sm:border-l sm:rounded-none">
           <div className="flex justify-center pt-2 pb-1 sm:hidden">
             <div className="w-8 h-1 rounded-full bg-border" />
           </div>
-          <ZonePanel
-            zone={selected}
-            latest={latestByZone[selected] ?? null}
-            onClose={() => setSelected(null)}
-          />
+          {selectedZone && (
+            <ZonePanel
+              zone={selectedZone}
+              latest={latestByZone[selectedZone] ?? null}
+              onClose={() => setSelectedZone(null)}
+            />
+          )}
+          {selectedBorder && (
+            <BorderPanel
+              from={selectedBorder.from}
+              to={selectedBorder.to}
+              congestion={congestionData?.rows ?? []}
+              flows={flowsData?.rows ?? []}
+              onClose={() => setSelectedBorder(null)}
+            />
+          )}
         </div>
       )}
     </div>

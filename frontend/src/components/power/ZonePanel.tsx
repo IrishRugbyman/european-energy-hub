@@ -236,6 +236,7 @@ function GenerationMixSection({ mix, hourly }: { mix: GenerationMixRow; hourly: 
         {mix.renewable_pct != null && (
           <span className="ml-2 text-green-400 font-medium">{mix.renewable_pct.toFixed(0)}% renewable</span>
         )}
+        <span className="ml-1 text-muted-foreground/60" title="Source: Rebase Grid API. Nuclear generation is not included in this dataset.">(excl. nuclear)</span>
       </p>
 
       {hasHourly ? (
