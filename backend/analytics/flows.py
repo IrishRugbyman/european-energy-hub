@@ -1,30 +1,30 @@
 """Cross-border net flows analytics.
 
-Aggregates hourly cross_border_flows from commo.duckdb into daily net flows
-per canonical border pair (alphabetical from_zone). Positive net_flow_mw means
-net electricity transfer in the direction from_zone -> to_zone.
+Aggregates hourly cross_border_flows from the PostgreSQL market_data database
+into daily net flows per canonical border pair (alphabetical from_zone).
+Positive net_flow_mw means net electricity transfer from_zone -> to_zone.
 """
 
 from __future__ import annotations
 
-from datetime import date
-from pathlib import Path
-
 import pandas as pd
 
+from loaders._base import _query, get_read_conn
 
-def build_flows_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
+
+def build_flows_tables() -> dict[str, pd.DataFrame]:
     """Return borders_daily DataFrame ready for energy_hub.duckdb."""
-    borders_daily = _build_borders_daily(str(commo_db))
+    borders_daily = _build_borders_daily()
     return {"borders_daily": borders_daily}
 
 
-def _build_borders_daily(db: str) -> pd.DataFrame:
+def _build_borders_daily() -> pd.DataFrame:
     empty = pd.DataFrame(columns=["price_date", "from_zone", "to_zone", "net_flow_mw"])
     try:
-        import duckdb
-        con = duckdb.connect(db, read_only=True)
-        df = con.execute("""
+        conn = get_read_conn()
+        df = _query(
+            conn,
+            """
             SELECT
                 CAST(ts AS DATE) AS price_date,
                 from_zone,
@@ -33,8 +33,9 @@ def _build_borders_daily(db: str) -> pd.DataFrame:
             FROM cross_border_flows
             WHERE ts >= CURRENT_DATE - INTERVAL '400 days'
             GROUP BY price_date, from_zone, to_zone
-        """).df()
-        con.close()
+            """,
+        )
+        conn.close()
     except Exception:
         return empty
 

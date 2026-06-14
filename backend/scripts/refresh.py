@@ -1,9 +1,9 @@
 #!/usr/bin/env python
-"""energy-refresh: rebuild energy_hub.duckdb from commo.duckdb.
+"""energy-refresh: rebuild energy_hub.duckdb from the market_data PostgreSQL DB.
 
 Usage:
     python scripts/refresh.py              # run ingest then rebuild
-    python scripts/refresh.py --skip-ingest  # rebuild only (for tests / commo locked)
+    python scripts/refresh.py --skip-ingest  # rebuild only (for tests / no fresh ingest)
 
 Exit codes: 0 = ok, 1 = rebuild failed (ingest failures are warnings only).
 """
@@ -23,7 +23,6 @@ BACKEND_DIR = Path(__file__).resolve().parents[1]
 ENERGY_DB = BACKEND_DIR / "data" / "energy_hub.duckdb"
 MARKET_DATA_DIR = Path(__file__).resolve().parents[3] / "shared" / "market-data"
 MARKET_DATA_VENV = MARKET_DATA_DIR / ".venv" / "bin" / "python"
-COMMO_DB = MARKET_DATA_DIR / "data" / "commo.duckdb"
 
 # Import analytics modules (script lives in scripts/, analytics one level up in backend/)
 sys.path.insert(0, str(BACKEND_DIR))
@@ -64,23 +63,20 @@ def rebuild(skip_ingest: bool = False) -> None:
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
 
-    if not COMMO_DB.exists():
-        raise RuntimeError(f"commo.duckdb not found at {COMMO_DB}")
+    logger.info("Building storage tables from market_data (PostgreSQL)...")
+    storage_tables = build_storage_tables()
 
-    logger.info("Building storage tables from commo.duckdb...")
-    storage_tables = build_storage_tables(COMMO_DB)
+    logger.info("Building power tables from market_data (PostgreSQL)...")
+    power_tables = build_power_tables()
 
-    logger.info("Building power tables from commo.duckdb...")
-    power_tables = build_power_tables(COMMO_DB)
+    logger.info("Building spreads/prices tables from market_data (PostgreSQL)...")
+    spreads_tables = build_spreads_tables()
 
-    logger.info("Building spreads/prices tables from commo.duckdb...")
-    spreads_tables = build_spreads_tables(COMMO_DB)
+    logger.info("Building cross-border flows from market_data (PostgreSQL)...")
+    flows_tables = build_flows_tables()
 
-    logger.info("Building cross-border flows from commo.duckdb...")
-    flows_tables = build_flows_tables(COMMO_DB)
-
-    logger.info("Building generation mix from commo.duckdb...")
-    generation_tables = build_generation_tables(COMMO_DB)
+    logger.info("Building generation mix from market_data (PostgreSQL)...")
+    generation_tables = build_generation_tables()
 
     ENERGY_DB.parent.mkdir(exist_ok=True)
     conn = duckdb.connect(str(ENERGY_DB))

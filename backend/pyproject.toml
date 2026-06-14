@@ -13,6 +13,7 @@ dependencies = [
     "uvicorn[standard]>=0.34",
     "slowapi>=0.1.9",
     "pandas>=2.2",
+    "psycopg2-binary>=2.9",
     "market-data",
     "quant-lib",
 ]

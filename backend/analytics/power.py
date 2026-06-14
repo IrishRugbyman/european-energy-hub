@@ -1,18 +1,18 @@
 """Power price analytics: daily base/peak/offpeak, recent hourly, latest snapshot.
 
-All pure-function transforms on DataFrames from commo.duckdb. No IO here.
+Reads power_prices from the PostgreSQL market_data database; the rest is
+pure-function transforms on DataFrames.
 Peak hours: 08-19 local time (standard European market convention, hour-beginning).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
-import duckdb
 import pandas as pd
 
+from loaders._base import _query, get_read_conn
 
-def build_power_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
+
+def build_power_tables() -> dict[str, pd.DataFrame]:
     """Return three DataFrames ready to write into energy_hub.duckdb.
 
     Returns:
@@ -20,9 +20,11 @@ def build_power_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
         power_hourly_recent: hourly prices per zone, trailing 8 days
         power_latest:        one row per zone with current base + vs-30d stats
     """
-    con = duckdb.connect(str(commo_db), read_only=True)
+    conn = get_read_conn()
     try:
-        raw = con.execute("""
+        raw = _query(
+            conn,
+            """
             SELECT
                 ts,
                 bidding_zone AS zone,
@@ -30,9 +32,10 @@ def build_power_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
             FROM power_prices
             WHERE ts >= current_date - INTERVAL '2 years' - INTERVAL '35 days'
             ORDER BY zone, ts
-        """).df()
+            """,
+        )
     finally:
-        con.close()
+        conn.close()
 
     if raw.empty:
         empty_daily = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "offpeak_eur"])

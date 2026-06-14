@@ -1,5 +1,23 @@
 # Energy Hub Changelog
 
+## 2026-06-14 - Fix: migrate refresh pipeline to PostgreSQL (was broken since DB migration)
+
+- The 2026-06-13 commo.duckdb -> PostgreSQL migration broke the energy refresh: refresh.py
+  and 4 of 5 analytics modules still opened the deleted commo.duckdb file, so energy-refresh
+  had been failing since the migration (live site serving stale data from Jun 13 13:47, and
+  /generation returning 503 because generation tables were never populated)
+- analytics/{gas,power,flows,generation}.py + spreads.py Henry Hub query: now read from
+  market_data (PostgreSQL) via the market-data loaders' get_read_conn() / _query() helpers,
+  matching the repo-wide postgresql:///market_data convention the loaders already use
+- Dropped the now-unused commo_db path argument from all build_*_tables() signatures
+- refresh.py: removed the commo.duckdb existence guard; output still written to energy_hub.duckdb
+- Added psycopg2-binary to backend deps (the loaders import it; it was missing from the venv,
+  so even spreads' loader path was failing post-migration)
+- Verified: refresh.py --skip-ingest rebuilds all tables from PostgreSQL (storage 63129 rows,
+  power 25964 daily, spreads 1699, flows 4620, generation 33 latest / 79364 daily / 6993 hourly);
+  23 backend tests green; /api/generation/map now returns 33 zones (was 503)
+- Completes Phase 5: /generation is now live with real data
+
 ## 2026-06-13 - Phase 5: Generation Mix Dashboard
 
 - New `/generation` route: bidding-zone choropleth colored by renewable % (green gradient,

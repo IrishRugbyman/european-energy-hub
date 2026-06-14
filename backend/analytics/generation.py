@@ -8,30 +8,24 @@ Tables produced for energy_hub.duckdb:
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
+
+from loaders._base import _query, get_read_conn
 
 RENEWABLE_COLS = ("solar", "wind", "hydro")
 FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "oil", "solar", "unknown", "wind")
 
 
-def build_generation_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
+def build_generation_tables() -> dict[str, pd.DataFrame]:
     """Return all three generation DataFrames ready for energy_hub.duckdb."""
-    db = str(commo_db)
-    daily = _build_generation_daily(db)
-    hourly_recent = _build_generation_hourly_recent(db)
+    daily = _build_generation_daily()
+    hourly_recent = _build_generation_hourly_recent()
     latest = _build_generation_latest_from_daily(daily)
     return {
         "generation_daily": daily,
         "generation_hourly_recent": hourly_recent,
         "generation_latest": latest,
     }
-
-
-def _open(db: str):
-    import duckdb
-    return duckdb.connect(db, read_only=True)
 
 
 def _empty_fuel_df(extra_cols: list[str]) -> pd.DataFrame:
@@ -50,12 +44,14 @@ def _add_renewable_stats(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def _build_generation_daily(db: str) -> pd.DataFrame:
+def _build_generation_daily() -> pd.DataFrame:
     """Daily average MW per fuel per zone for the full available history."""
     empty = _empty_fuel_df(["gen_date"])
     try:
-        con = _open(db)
-        df = con.execute("""
+        conn = get_read_conn()
+        df = _query(
+            conn,
+            """
             SELECT
                 zone,
                 ts::DATE AS gen_date,
@@ -69,10 +65,11 @@ def _build_generation_daily(db: str) -> pd.DataFrame:
                 AVG(unknown)    AS unknown,
                 AVG(wind)       AS wind
             FROM rebase_generation
-            GROUP BY zone, gen_date
+            GROUP BY zone, ts::DATE
             ORDER BY zone, gen_date
-        """).df()
-        con.close()
+            """,
+        )
+        conn.close()
     except Exception:
         return empty
 
@@ -84,12 +81,14 @@ def _build_generation_daily(db: str) -> pd.DataFrame:
     return df[["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"]].copy()
 
 
-def _build_generation_hourly_recent(db: str) -> pd.DataFrame:
+def _build_generation_hourly_recent() -> pd.DataFrame:
     """Last 10 days of hourly generation mix per zone."""
     empty = pd.DataFrame(columns=["zone", "ts"] + list(FUEL_COLS))
     try:
-        con = _open(db)
-        df = con.execute("""
+        conn = get_read_conn()
+        df = _query(
+            conn,
+            """
             SELECT
                 zone,
                 ts,
@@ -97,8 +96,9 @@ def _build_generation_hourly_recent(db: str) -> pd.DataFrame:
             FROM rebase_generation
             WHERE ts >= now() - interval '10 days'
             ORDER BY zone, ts
-        """).df()
-        con.close()
+            """,
+        )
+        conn.close()
     except Exception:
         return empty
 

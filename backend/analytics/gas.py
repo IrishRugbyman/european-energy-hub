@@ -1,16 +1,17 @@
 """Gas storage analytics: seasonal band, latest snapshot, EU aggregate.
 
-All pure-function transforms on DataFrames from commo.duckdb. No IO here.
+Reads gas_storage from the PostgreSQL market_data database; the rest is
+pure-function transforms on DataFrames.
 """
 
 from __future__ import annotations
 
-import duckdb
 import pandas as pd
-from pathlib import Path
+
+from loaders._base import _query, get_read_conn
 
 
-def build_storage_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
+def build_storage_tables() -> dict[str, pd.DataFrame]:
     """Return three DataFrames ready to write into energy_hub.duckdb.
 
     Returns: {
@@ -19,15 +20,16 @@ def build_storage_tables(commo_db: Path) -> dict[str, pd.DataFrame]:
         'storage_latest': one row per country + EU with derived stats,
     }
     """
-    conn = duckdb.connect(str(commo_db), read_only=True)
-    raw = conn.execute(
+    conn = get_read_conn()
+    raw = _query(
+        conn,
         """
         SELECT country, gas_day, "full" AS full_pct, injection, withdrawal, working_gas_volume
         FROM gas_storage
         WHERE "full" IS NOT NULL
         ORDER BY country, gas_day
-        """
-    ).df()
+        """,
+    )
     conn.close()
 
     if raw.empty:
