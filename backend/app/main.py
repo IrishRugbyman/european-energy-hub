@@ -22,6 +22,9 @@ from .schemas import (
     BorderFlowRow,
     FlowsResponse,
     GasCountryResponse,
+    GasFlowCountryResponse,
+    GasFlowItem,
+    GasFlowResponse,
     GasMapResponse,
     GenDailyPoint,
     GenHourlyPoint,
@@ -205,6 +208,64 @@ def gas_country(cc: str):
         prior_year=prior,
         seasonal_band=band,
     )
+
+
+@app.get("/api/gas/flows", response_model=GasFlowResponse)
+def gas_flows():
+    """Latest ENTSOG physical gas flow (entry/exit/net GWh/d) per country."""
+    df = db.query(
+        """
+        SELECT country, period_date::VARCHAR AS period_date,
+               entry_gwh_d, exit_gwh_d, net_gwh_d
+        FROM gas_flows_latest
+        ORDER BY country
+        """
+    )
+    as_of = _meta_val("refreshed_at_gas_flows")
+    if df is None or df.empty:
+        return GasFlowResponse(as_of=as_of, rows=[])
+
+    rows = [
+        GasFlowItem(
+            country=str(r.country),
+            period_date=str(r.period_date),
+            net_gwh_d=_float(r.net_gwh_d),
+            entry_gwh_d=_float(r.entry_gwh_d),
+            exit_gwh_d=_float(r.exit_gwh_d),
+        )
+        for r in df.itertuples()
+    ]
+    return GasFlowResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/gas/flows/{cc}", response_model=GasFlowCountryResponse)
+def gas_flows_country(cc: str):
+    """ENTSOG physical gas flow history (trailing 400 days) for one country."""
+    cc = cc.upper()
+    df = db.query(
+        """
+        SELECT country, period_date::VARCHAR AS period_date,
+               entry_gwh_d, exit_gwh_d, net_gwh_d
+        FROM gas_flows_daily
+        WHERE country = ?
+        ORDER BY period_date
+        """,
+        [cc],
+    )
+    if df is None or df.empty:
+        raise HTTPException(status_code=404, detail=f"No gas flow data for country: {cc}")
+
+    rows = [
+        GasFlowItem(
+            country=str(r.country),
+            period_date=str(r.period_date),
+            net_gwh_d=_float(r.net_gwh_d),
+            entry_gwh_d=_float(r.entry_gwh_d),
+            exit_gwh_d=_float(r.exit_gwh_d),
+        )
+        for r in df.itertuples()
+    ]
+    return GasFlowCountryResponse(country=cc, rows=rows)
 
 
 @app.get("/api/power/map", response_model=PowerMapResponse)

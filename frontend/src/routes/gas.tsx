@@ -10,12 +10,41 @@ export const Route = createFileRoute('/gas')({
   component: GasDashboard,
 })
 
+const FILL_LEGEND = [
+  { label: '< 20',    color: '#7f1d1d' },
+  { label: '20-35',   color: '#b91c1c' },
+  { label: '35-50',   color: '#d97706' },
+  { label: '50-65',   color: '#ca8a04' },
+  { label: '65-75',   color: '#65a30d' },
+  { label: '75-85',   color: '#16a34a' },
+  { label: '> 85',    color: '#15803d' },
+  { label: 'no data', color: '#374151' },
+]
+
+const FLOW_LEGEND = [
+  { label: '> 80 import',   color: '#1d4ed8' },
+  { label: '30-80 import',  color: '#3b82f6' },
+  { label: '5-30 import',   color: '#7dd3fc' },
+  { label: 'balanced',      color: '#4b5563' },
+  { label: '5-30 export',   color: '#f59e0b' },
+  { label: '30-80 export',  color: '#d97706' },
+  { label: '> 80 export',   color: '#b45309' },
+  { label: 'no data',       color: '#374151' },
+]
+
 function GasDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
+  const [showFlows, setShowFlows] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['gas-map'],
     queryFn: api.gasMap,
+  })
+
+  const { data: flowsData } = useQuery({
+    queryKey: ['gas-flows'],
+    queryFn: api.gasFlows,
+    enabled: showFlows,
   })
 
   const latestByCountry: Record<string, StorageLatestRow> = {}
@@ -24,6 +53,8 @@ function GasDashboard() {
   }
 
   const euRow = latestByCountry['EU']
+  const legend = showFlows ? FLOW_LEGEND : FILL_LEGEND
+  const legendTitle = showFlows ? 'Net flow GWh/d' : 'Fill %'
 
   return (
     <div className="relative h-full flex">
@@ -53,19 +84,24 @@ function GasDashboard() {
         ) : null}
       </div>
 
-      {/* Fill % legend (hidden on mobile) */}
+      {/* Physical flows toggle (top-right) */}
+      <div className="absolute top-3 right-3 z-[1000]">
+        <button
+          onClick={() => setShowFlows((v) => !v)}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
+            showFlows
+              ? 'bg-blue-600 border-blue-500 text-white'
+              : 'bg-card/90 backdrop-blur border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Physical flows
+        </button>
+      </div>
+
+      {/* Legend (hidden on mobile, swaps between fill and flow) */}
       <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
-        <p className="text-muted-foreground mb-1 font-medium">Fill %</p>
-        {[
-          { label: '< 20',   color: '#7f1d1d' },
-          { label: '20-35',  color: '#b91c1c' },
-          { label: '35-50',  color: '#d97706' },
-          { label: '50-65',  color: '#ca8a04' },
-          { label: '65-75',  color: '#65a30d' },
-          { label: '75-85',  color: '#16a34a' },
-          { label: '> 85',   color: '#15803d' },
-          { label: 'no data',color: '#374151' },
-        ].map(({ label, color }) => (
+        <p className="text-muted-foreground mb-1 font-medium">{legendTitle}</p>
+        {legend.map(({ label, color }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
             <span className="text-muted-foreground">{label}</span>
@@ -79,6 +115,8 @@ function GasDashboard() {
           rows={data?.rows ?? []}
           selected={selected}
           onSelect={setSelected}
+          showFlows={showFlows}
+          flowRows={flowsData?.rows ?? []}
         />
       </div>
 

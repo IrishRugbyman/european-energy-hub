@@ -112,6 +112,21 @@ export function zoneName(zone: string): string {
   return ZONE_NAMES[zone] ?? zone
 }
 
+// Physical gas net flow GWh/d -> color. Diverging scale:
+// large import (blue) -> balanced (grey) -> large export (amber/red).
+// Positive = net importer, negative = net exporter.
+// Thresholds based on ENTSOG data range: AT/BE see ~100+ GWh/d in winter.
+export function gasFlowColor(net: number | null | undefined): string {
+  if (net == null) return '#374151'   // grey-700 - no data
+  if (net > 80)   return '#1d4ed8'   // blue-700  - large importer
+  if (net > 30)   return '#3b82f6'   // blue-500
+  if (net > 5)    return '#7dd3fc'   // sky-300   - modest importer
+  if (net > -5)   return '#4b5563'   // grey-600  - roughly balanced
+  if (net > -30)  return '#f59e0b'   // amber-500 - modest exporter
+  if (net > -80)  return '#d97706'   // amber-600
+  return '#b45309'                    // amber-700 - large exporter
+}
+
 // Renewable % -> color. Fixed thresholds: 0-20 brown, 20-40 amber, 40-60 olive,
 // 60-80 mid-green, 80-100 deep green. Null = grey (no data).
 export function renewablePctColor(pct: number | null | undefined): string {

@@ -133,3 +133,40 @@ def test_flows_date_filter(client):
     assert r.status_code == 200
     data = r.json()
     assert len(data["rows"]) == 3
+
+
+def test_gas_flows_map(client):
+    r = client.get("/api/gas/flows")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) == 2
+    by_cc = {row["country"]: row for row in data["rows"]}
+    assert "AT" in by_cc and "DE" in by_cc
+    # AT is net importer
+    assert by_cc["AT"]["net_gwh_d"] > 0
+    assert by_cc["AT"]["entry_gwh_d"] == 120.0
+    # DE is slight net exporter
+    assert by_cc["DE"]["net_gwh_d"] < 0
+
+
+def test_gas_flows_country(client):
+    r = client.get("/api/gas/flows/AT")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["country"] == "AT"
+    assert len(data["rows"]) == 60
+    # Most recent row should have largest entry (seeded as 100 + 59*0.5 = 129.5)
+    latest = max(data["rows"], key=lambda x: x["period_date"])
+    assert latest["entry_gwh_d"] > 100
+
+
+def test_gas_flows_country_not_found(client):
+    r = client.get("/api/gas/flows/XX")
+    assert r.status_code == 404
+
+
+def test_gas_flows_country_case_insensitive(client):
+    r = client.get("/api/gas/flows/at")
+    assert r.status_code == 200
+    assert r.json()["country"] == "AT"

@@ -172,6 +172,36 @@ def _seed_db(path: str) -> None:
             [today.isoformat(), fz, tz, net],
         )
 
+    # Gas physical flows tables (ENTSOG)
+    conn.execute("""
+        CREATE TABLE gas_flows_latest (
+            country VARCHAR, period_date DATE,
+            entry_gwh_d REAL, exit_gwh_d REAL, net_gwh_d REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE gas_flows_daily (
+            country VARCHAR, period_date DATE,
+            entry_gwh_d REAL, exit_gwh_d REAL, net_gwh_d REAL
+        )
+    """)
+    # AT: large net importer; DE: slight net exporter
+    for cc, entry, exit_, net in [("AT", 120.0, 5.0, 115.0), ("DE", 0.0, 2.5, -2.5)]:
+        conn.execute(
+            "INSERT INTO gas_flows_latest VALUES (?, ?, ?, ?, ?)",
+            [cc, today.isoformat(), entry, exit_, net],
+        )
+    # Seed 60 days of daily data for AT
+    for i in range(60):
+        day = (today - timedelta(days=59 - i)).isoformat()
+        entry = round(100.0 + i * 0.5, 1)
+        exit_ = round(5.0 + (i % 7) * 0.2, 1)
+        conn.execute(
+            "INSERT INTO gas_flows_daily VALUES (?, ?, ?, ?, ?)",
+            ["AT", day, entry, exit_, round(entry - exit_, 3)],
+        )
+    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", "2026-06-12T12:00:00+00:00"])
+
     fuel_cols = "biomass REAL, coal REAL, gas REAL, geothermal REAL, hydro REAL, oil REAL, solar REAL, unknown REAL, wind REAL"
 
     # generation_latest

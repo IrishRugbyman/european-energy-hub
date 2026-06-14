@@ -195,11 +195,31 @@ export interface FlowsResponse {
   rows: BorderFlowRow[]
 }
 
+export interface GasFlowItem {
+  country: string
+  period_date: string
+  net_gwh_d: number | null
+  entry_gwh_d: number | null
+  exit_gwh_d: number | null
+}
+
+export interface GasFlowResponse {
+  as_of: string | null
+  rows: GasFlowItem[]
+}
+
+export interface GasFlowCountryResponse {
+  country: string
+  rows: GasFlowItem[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
   gasMap: () => get<GasMapResponse>('/gas/map'),
   gasCountry: (cc: string) => get<GasCountryResponse>(`/gas/country/${cc}`),
+  gasFlows: () => get<GasFlowResponse>('/gas/flows'),
+  gasFlowsCountry: (cc: string) => get<GasFlowCountryResponse>(`/gas/flows/${cc}`),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   spreads: () => get<SpreadsResponse>('/spreads'),

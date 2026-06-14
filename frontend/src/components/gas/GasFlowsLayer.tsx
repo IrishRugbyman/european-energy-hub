@@ -1,97 +1,52 @@
 import L, { type Layer, type PathOptions, type LeafletMouseEvent } from 'leaflet'
-import { MapContainer, TileLayer, Pane, useMap } from 'react-leaflet'
+import { useMap } from 'react-leaflet'
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { GeoJsonObject, Feature } from 'geojson'
-import { gasFillColor, CHOROPLETH_FILL_OPACITY, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, countryName } from '@/lib/scales'
-import type { StorageLatestRow, GasFlowItem } from '@/lib/api'
-import { GasFlowsLayer } from './GasFlowsLayer'
-
-// Three-layer approach: no-labels base -> GeoJSON choropleth -> labels on top.
-// This avoids the double-border mismatch between tile country outlines and GeoJSON polygons.
-const CARTO_NOLABELS = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
-const CARTO_LABELS   = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
-const CARTO_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors'
+import { gasFlowColor, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, countryName } from '@/lib/scales'
+import type { GasFlowItem } from '@/lib/api'
 
 interface Props {
-  rows: StorageLatestRow[]
+  rows: GasFlowItem[]
   selected: string | null
   onSelect: (cc: string | null) => void
-  showFlows?: boolean
-  flowRows?: GasFlowItem[]
 }
 
-export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows = [] }: Props) {
-  const latestByCC: Record<string, StorageLatestRow> = {}
-  for (const r of rows) {
-    if (r.country !== 'EU') latestByCC[r.country] = r
-  }
-
-  return (
-    <MapContainer
-      center={[52, 13]}
-      zoom={4}
-      style={{ height: '100%', width: '100%' }}
-      zoomControl={true}
-      attributionControl={true}
-    >
-      {/* Base: terrain + ocean, no country outlines */}
-      <TileLayer url={CARTO_NOLABELS} attribution={CARTO_ATTR} />
-      {/* Choropleth fills - GeoJSON is sole source of country borders */}
-      {Object.keys(latestByCC).length > 0 && (
-        <GasChoroLayer latestByCC={latestByCC} selected={selected} onSelect={onSelect} />
-      )}
-      {/* Physical gas flows overlay - colors countries by net GWh/d */}
-      {showFlows && flowRows.length > 0 && (
-        <GasFlowsLayer rows={flowRows} selected={selected} onSelect={onSelect} />
-      )}
-      {/* Labels on top of choropleth fills */}
-      <Pane name="labels" style={{ zIndex: 650 }}>
-        <TileLayer url={CARTO_LABELS} />
-      </Pane>
-    </MapContainer>
-  )
-}
-
-function GasChoroLayer({
-  latestByCC,
-  selected,
-  onSelect,
-}: {
-  latestByCC: Record<string, StorageLatestRow>
-  selected: string | null
-  onSelect: (cc: string | null) => void
-}) {
+export function GasFlowsLayer({ rows, selected, onSelect }: Props) {
   const map = useMap()
   const geoRef = useRef<L.GeoJSON | null>(null)
   const selectedRef = useRef<string | null>(selected)
 
-  // Keep ref in sync so click handlers always see current selection
+  const flowByCC: Record<string, GasFlowItem> = {}
+  for (const r of rows) flowByCC[r.country] = r
+
   useEffect(() => {
     selectedRef.current = selected
   }, [selected])
 
-  // Load GeoJSON once
+  // Load GeoJSON once and store the layer
   useEffect(() => {
     let cancelled = false
     fetch('/geo/countries.geojson')
       .then((r) => r.json())
       .then((geo: GeoJsonObject) => {
         if (cancelled) return
-        if (geoRef.current) {
-          map.removeLayer(geoRef.current)
-        }
-        const layer = createLayer(geo, latestByCC, selectedRef, onSelect)
+        if (geoRef.current) map.removeLayer(geoRef.current)
+        const layer = createLayer(geo, flowByCC, selectedRef, onSelect)
         layer.addTo(map)
         geoRef.current = layer
       })
       .catch(console.error)
     return () => {
       cancelled = true
+      if (geoRef.current) {
+        map.removeLayer(geoRef.current)
+        geoRef.current = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update styles when data or selection changes
+  // Re-style when data or selection changes
   useEffect(() => {
     if (!geoRef.current) return
     geoRef.current.eachLayer((layer: Layer) => {
@@ -99,42 +54,43 @@ function GasChoroLayer({
       const f = (layer as any).feature as Feature
       if (!f?.properties) return
       const cc: string = f.properties['ISO_A2'] ?? f.properties['iso_a2'] ?? ''
-      const row = latestByCC[cc]
+      const row = flowByCC[cc]
       const isSelected = cc === selected
       const style: PathOptions = {
-        fillColor: gasFillColor(row?.full_pct),
-        fillOpacity: isSelected ? 0.9 : CHOROPLETH_FILL_OPACITY,
+        fillColor: gasFlowColor(row?.net_gwh_d),
+        fillOpacity: row ? (isSelected ? 0.9 : 0.8) : 0,
         color: isSelected ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: isSelected ? 2 : CHOROPLETH_STROKE_WIDTH,
       }
       ;(layer as L.Path).setStyle(style)
     })
-  }, [latestByCC, selected])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, selected])
 
   return null
 }
 
 function createLayer(
   geo: GeoJsonObject,
-  latestByCC: Record<string, StorageLatestRow>,
+  flowByCC: Record<string, GasFlowItem>,
   selectedRef: MutableRefObject<string | null>,
   onSelect: (cc: string | null) => void,
 ): L.GeoJSON {
   return L.geoJSON(geo, {
     style: (feature: Feature | undefined): PathOptions => {
       const cc = feature?.properties?.['ISO_A2'] ?? feature?.properties?.['iso_a2'] ?? ''
-      const row = latestByCC[cc]
+      const row = flowByCC[cc]
       const sel = selectedRef.current
       return {
-        fillColor: gasFillColor(row?.full_pct),
-        fillOpacity: cc === sel ? 0.9 : CHOROPLETH_FILL_OPACITY,
+        fillColor: gasFlowColor(row?.net_gwh_d),
+        fillOpacity: row ? (cc === sel ? 0.9 : 0.8) : 0,
         color: cc === sel ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: cc === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
       }
     },
     onEachFeature: (feature: Feature, layer: Layer) => {
       const cc = feature?.properties?.['ISO_A2'] ?? feature?.properties?.['iso_a2'] ?? ''
-      const row = latestByCC[cc]
+      const row = flowByCC[cc]
       if (!row) return
 
       layer.on({
@@ -167,12 +123,15 @@ function createLayer(
   })
 }
 
-function tooltipContent(cc: string, row: StorageLatestRow): string {
-  const fill = row.full_pct != null ? `${row.full_pct.toFixed(1)}%` : '--'
-  const d7 = row.d7_pct != null ? `${row.d7_pct >= 0 ? '+' : ''}${row.d7_pct.toFixed(1)}pp` : '--'
-  return `<div style="font-size:12px;line-height:1.5">
+function tooltipContent(cc: string, row: GasFlowItem): string {
+  const net = row.net_gwh_d != null ? `${row.net_gwh_d >= 0 ? '+' : ''}${row.net_gwh_d.toFixed(0)} GWh/d` : '--'
+  const entry = row.entry_gwh_d != null ? `${row.entry_gwh_d.toFixed(0)} GWh/d` : '--'
+  const exit_ = row.exit_gwh_d != null ? `${row.exit_gwh_d.toFixed(0)} GWh/d` : '--'
+  const dir = row.net_gwh_d == null ? '' : row.net_gwh_d >= 0 ? 'Net importer' : 'Net exporter'
+  return `<div style="font-size:12px;line-height:1.6">
     <strong>${countryName(cc)}</strong><br/>
-    Fill: ${fill}<br/>
-    7d: ${d7}
+    Net: <strong>${net}</strong>${dir ? ` (${dir})` : ''}<br/>
+    Entry: ${entry} &nbsp; Exit: ${exit_}<br/>
+    <span style="color:#64748b;font-size:10px">${row.period_date}</span>
   </div>`
 }

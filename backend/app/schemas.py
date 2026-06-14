@@ -36,6 +36,26 @@ class GasMapResponse(BaseModel):
     rows: list[StorageLatestRow]
 
 
+# Gas physical flows (ENTSOG)
+
+class GasFlowItem(BaseModel):
+    country: str
+    period_date: str
+    net_gwh_d: float | None
+    entry_gwh_d: float | None = None
+    exit_gwh_d: float | None = None
+
+
+class GasFlowResponse(BaseModel):
+    as_of: str | None
+    rows: list[GasFlowItem]
+
+
+class GasFlowCountryResponse(BaseModel):
+    country: str
+    rows: list[GasFlowItem]
+
+
 # Gas country detail
 
 class SeasonalPoint(BaseModel):

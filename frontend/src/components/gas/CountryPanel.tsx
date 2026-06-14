@@ -5,6 +5,7 @@ import {
   AreaChart,
   CartesianGrid,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -24,6 +25,13 @@ export function CountryPanel({ country, latest, onClose }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ['gas-country', country],
     queryFn: () => api.gasCountry(country),
+  })
+
+  const { data: flowData } = useQuery({
+    queryKey: ['gas-flows-country', country],
+    queryFn: () => api.gasFlowsCountry(country),
+    retry: false,
+    // 404 = country not in ENTSOG dataset; treat as no data (don't throw)
   })
 
   const fillColor = gasFillColor(latest?.full_pct)
@@ -57,6 +65,71 @@ export function CountryPanel({ country, latest, onClose }: Props) {
           <StatBox label="As of" value={latest.gas_day} />
         </div>
       )}
+
+      {/* Physical gas flows (ENTSOG - AT, BE, DE, FR, IT, NL only) */}
+      {flowData && flowData.rows.length > 0 && (() => {
+        const latest_flow = flowData.rows.reduce((a, b) => a.period_date > b.period_date ? a : b)
+        const net = latest_flow.net_gwh_d
+        const isImporter = net != null && net >= 0
+        const chartData = [...flowData.rows]
+          .sort((a, b) => a.period_date.localeCompare(b.period_date))
+          .map((r) => ({ date: r.period_date.slice(5), net: r.net_gwh_d }))
+        return (
+          <div className="border-b border-border p-4">
+            <p className="text-xs text-muted-foreground mb-2 font-medium">Physical gas net flow (ENTSOG)</p>
+            <div className="grid grid-cols-3 gap-2 mb-3">
+              <div className="bg-secondary rounded p-2">
+                <p className="text-xs text-muted-foreground">Net</p>
+                <p className={`text-sm font-medium ${isImporter ? 'text-blue-400' : 'text-amber-400'}`}>
+                  {net != null ? `${net >= 0 ? '+' : ''}${net.toFixed(0)}` : '--'}
+                  <span className="text-xs font-normal ml-1">GWh/d</span>
+                </p>
+              </div>
+              <div className="bg-secondary rounded p-2">
+                <p className="text-xs text-muted-foreground">Entry</p>
+                <p className="text-sm font-medium text-foreground">
+                  {latest_flow.entry_gwh_d != null ? latest_flow.entry_gwh_d.toFixed(0) : '--'}
+                  <span className="text-xs font-normal ml-1">GWh/d</span>
+                </p>
+              </div>
+              <div className="bg-secondary rounded p-2">
+                <p className="text-xs text-muted-foreground">Exit</p>
+                <p className="text-sm font-medium text-foreground">
+                  {latest_flow.exit_gwh_d != null ? latest_flow.exit_gwh_d.toFixed(0) : '--'}
+                  <span className="text-xs font-normal ml-1">GWh/d</span>
+                </p>
+              </div>
+            </div>
+            {chartData.length > 7 && (
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={Math.floor(chartData.length / 4)} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={28} />
+                  <Tooltip
+                    contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+                    formatter={(v) => {
+                      const n = typeof v === 'number' ? v : null
+                      return n != null ? [`${n >= 0 ? '+' : ''}${n.toFixed(0)} GWh/d`, 'Net flow'] : ['--', 'Net flow']
+                    }}
+                  />
+                  <ReferenceLine y={0} stroke="#475569" strokeDasharray="2 2" />
+                  <Area
+                    type="monotone"
+                    dataKey="net"
+                    stroke="#3b82f6"
+                    strokeWidth={1.5}
+                    fill="#3b82f6"
+                    fillOpacity={0.15}
+                    dot={false}
+                    name="Net GWh/d"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Seasonal chart */}
       <div className="flex-1 p-4 overflow-y-auto">

@@ -27,6 +27,7 @@ MARKET_DATA_VENV = MARKET_DATA_DIR / ".venv" / "bin" / "python"
 # Import analytics modules (script lives in scripts/, analytics one level up in backend/)
 sys.path.insert(0, str(BACKEND_DIR))
 from analytics.gas import build_storage_tables
+from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables
 from analytics.power import build_power_tables
 from analytics.spreads import build_spreads_tables
@@ -58,7 +59,7 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "rebase-generation"]:
+        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "rebase-generation", "entsog"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
@@ -78,6 +79,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building generation mix from market_data (PostgreSQL)...")
     generation_tables = build_generation_tables()
 
+    logger.info("Building ENTSOG physical gas flows from market_data (PostgreSQL)...")
+    gas_flows_tables = build_gas_flows_tables()
+
     ENERGY_DB.parent.mkdir(exist_ok=True)
     conn = duckdb.connect(str(ENERGY_DB))
     try:
@@ -88,12 +92,14 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_spreads(conn, spreads_tables)
         _write_flows(conn, flows_tables)
         _write_generation(conn, generation_tables)
+        _write_gas_flows(conn, gas_flows_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
             "CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR)"
         )
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_power", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
         conn.execute("COMMIT")
@@ -242,6 +248,41 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
     logger.info(
         f"spreads: {len(spreads)} daily rows, prices: {len(prices)} daily rows"
+    )
+
+
+def _write_gas_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    latest = tables["gas_flows_latest"]
+    daily = tables["gas_flows_daily"]
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE gas_flows_latest (
+            country VARCHAR,
+            period_date DATE,
+            entry_gwh_d REAL,
+            exit_gwh_d REAL,
+            net_gwh_d REAL
+        )
+    """)
+    if not latest.empty:
+        conn.register("_gfl", latest)
+        conn.execute("INSERT INTO gas_flows_latest SELECT * FROM _gfl")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE gas_flows_daily (
+            country VARCHAR,
+            period_date DATE,
+            entry_gwh_d REAL,
+            exit_gwh_d REAL,
+            net_gwh_d REAL
+        )
+    """)
+    if not daily.empty:
+        conn.register("_gfd", daily)
+        conn.execute("INSERT INTO gas_flows_daily SELECT * FROM _gfd")
+
+    logger.info(
+        f"gas flows: {len(latest)} latest rows, {len(daily)} daily rows"
     )
 
 
