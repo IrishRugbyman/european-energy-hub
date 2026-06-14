@@ -1,5 +1,45 @@
 # Energy Hub Changelog
 
+## 2026-06-14 - Phase 11: Clickable interconnections layer on /power
+
+**Tried:** Replace the separate "Flows" and "Congestion" map toggles with a single unified
+"Interconnections" layer; make border lines clickable to open a history panel.
+
+**Found:** Merging the two overlays eliminated the awkward dual-toggle UX and reduced state
+complexity. `InterconnectionLayer.tsx` draws undirected border lines colored by
+max(utilization_pct) across both directed pairs, with flow-direction arrows sized to
+|net_flow_mw| at the 60% point. `BorderPanel` shows directed DirBox stats for A->B and B->A,
+a net-flow direction indicator, and a historical utilization LineChart with 80%/100% reference
+lines. `selectedBorder` and `selectedZone` are mutually exclusive - the side panel serves both.
+
+**Decision:** Single "Interconnections" toggle is the right abstraction. Flow direction and
+congestion level belong on the same line object, not separate layers. Carry `BorderKey`
+(undirected pair) as the selection primitive.
+
+**Artifacts:** `InterconnectionLayer.tsx` (new), `BorderPanel.tsx` (new); `power.tsx` refactored.
+
+---
+
+## 2026-06-14 - Phase 10: Power map enrichment - intraday range, neg-price hours, 2yr rank
+
+**Tried:** Add three derived price metrics to the power choropleth as toggleable map layers:
+intraday range (max-min hourly), negative-price hours count, and 2-year percentile rank.
+
+**Found:** All three computed cleanly from existing `power_prices` hourly data in
+`analytics/power.py`. The 4-button metric selector (Price / Range / Neg hrs / 2yr rank) with
+dedicated color scales (`dayRangeColor`, `negHoursColor`, `pctRankColor`) gives a materially
+richer picture than price alone - negative hours in particular is a useful battery dispatch
+signal. ZonePanel daily chart upgraded to a ComposedChart with shaded min/max band.
+conftest DDL needed updating to 9-column power tables after the schema expansion.
+
+**Decision:** All three metrics kept; they answer different questions and have distinct scales.
+The toggleable-layer pattern (single state variable, color-dispatch function) is the right
+pattern for future map enrichment.
+
+**Artifacts:** `scales.ts` - 3 new color functions; `power.tsx` - metric selector + METRIC_LEGENDS.
+
+---
+
 ## 2026-06-14 - Phase 12: Full generation mix with nuclear via ENTSO-E A75
 
 **Tried:** Replace Rebase Grid API (omits nuclear) with ENTSO-E A75 actual generation
