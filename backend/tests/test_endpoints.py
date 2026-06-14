@@ -209,3 +209,32 @@ def test_power_congestion_border_hyphen_normalization(client):
     data = r.json()
     assert data["from_zone"] == "FR"
     assert data["to_zone"] == "DE-LU"
+
+
+def test_gen_map_latest(client):
+    r = client.get("/api/generation/map")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["zones"]) == 2
+    assert data["min_date"] is not None
+    assert data["max_date"] is not None
+
+
+def test_gen_map_historical_date(client):
+    import datetime
+    # Use a date 30 days ago (within the seeded 2-year history)
+    target = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
+    r = client.get(f"/api/generation/map?date={target}")
+    assert r.status_code == 200
+    data = r.json()
+    # Should have DE-LU data for that date
+    zones = {z["zone"] for z in data["zones"]}
+    assert "DE-LU" in zones
+    # gen_date on each row should match the requested date
+    for z in data["zones"]:
+        assert z["gen_date"] == target
+
+
+def test_gen_map_out_of_range_date(client):
+    r = client.get("/api/generation/map?date=2000-01-01")
+    assert r.status_code == 404

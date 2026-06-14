@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type GenMapItem } from '@/lib/api'
@@ -7,15 +7,20 @@ import { ZoneGenPanel } from '@/components/generation/ZoneGenPanel'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/generation')({
+  validateSearch: (search: Record<string, unknown>) => ({
+    date: typeof search.date === 'string' && search.date ? search.date : undefined,
+  }),
   component: GenerationDashboard,
 })
 
 function GenerationDashboard() {
+  const { date: urlDate } = Route.useSearch()
+  const navigate = useNavigate({ from: Route.fullPath })
   const [selected, setSelected] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['gen-map'],
-    queryFn: api.genMap,
+    queryKey: ['gen-map', urlDate ?? 'latest'],
+    queryFn: () => api.genMap(urlDate),
     staleTime: 15 * 60 * 1000,
   })
 
@@ -31,6 +36,14 @@ function GenerationDashboard() {
   const topZone = withData.length > 0 ? withData.reduce((a, b) => (a.renewable_pct ?? 0) > (b.renewable_pct ?? 0) ? a : b) : null
   const genDate = data?.zones[0]?.gen_date ?? null
 
+  const minDate = data?.min_date ?? undefined
+  const maxDate = data?.max_date ?? undefined
+  const isHistorical = !!urlDate && urlDate !== maxDate
+
+  function setDate(d: string) {
+    void navigate({ search: { date: !d || d === maxDate ? undefined : d } })
+  }
+
   return (
     <div className="relative h-full flex">
       {/* Stat strip */}
@@ -39,7 +52,11 @@ function GenerationDashboard() {
           <>
             <StatChip label="EU avg renewable" value={`${weightedRE.toFixed(0)}%`} />
             {topZone && <StatChip label="highest" value={`${topZone.zone} ${topZone.renewable_pct?.toFixed(0)}%`} />}
-            {genDate && <span className="text-muted-foreground text-xs">{genDate}</span>}
+            {genDate && (
+              <span className={`text-xs ${isHistorical ? 'text-amber-400' : 'text-muted-foreground'}`}>
+                {genDate}{isHistorical ? ' (historical)' : ''}
+              </span>
+            )}
           </>
         ) : isLoading ? (
           <span className="text-muted-foreground text-xs">Loading...</span>
@@ -47,6 +64,28 @@ function GenerationDashboard() {
           <span className="text-destructive text-xs">API unavailable</span>
         ) : null}
       </div>
+
+      {/* Date picker (top-right) */}
+      {(minDate || maxDate) && (
+        <div className="absolute top-3 right-3 z-[1000] flex items-center gap-1.5">
+          <input
+            type="date"
+            value={urlDate ?? maxDate ?? ''}
+            min={minDate}
+            max={maxDate}
+            onChange={(e) => setDate(e.target.value)}
+            className="text-xs px-2 py-1.5 rounded border border-border bg-card/90 text-foreground backdrop-blur shadow focus:outline-none focus:border-sky-500"
+          />
+          {isHistorical && (
+            <button
+              onClick={() => setDate(maxDate ?? '')}
+              className="px-2 py-1.5 rounded border border-border bg-card/90 text-muted-foreground hover:text-foreground text-xs backdrop-blur shadow transition-colors"
+            >
+              Latest
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Legend (hidden on mobile) */}
       <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
@@ -83,6 +122,7 @@ function GenerationDashboard() {
             zone={selected}
             item={byZone[selected] ?? null}
             onClose={() => setSelected(null)}
+            selectedDate={urlDate}
           />
         </div>
       )}

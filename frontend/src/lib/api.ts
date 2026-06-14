@@ -131,6 +131,8 @@ export interface GenMapItem {
 export interface GenMapResponse {
   as_of: string | null
   zones: GenMapItem[]
+  min_date: string | null
+  max_date: string | null
 }
 
 export interface GenDailyPoint {
@@ -247,6 +249,6 @@ export const api = {
   spreads: () => get<SpreadsResponse>('/spreads'),
   prices: () => get<PricesResponse>('/prices'),
   flows: () => get<FlowsResponse>('/flows'),
-  genMap: () => get<GenMapResponse>('/generation/map'),
+  genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
 }

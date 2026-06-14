@@ -1,5 +1,33 @@
 # Energy Hub Changelog
 
+## 2026-06-14 - Phase 8: Historical date scrubber for /generation
+
+- Date picker added to /generation (top-right, same dark-glass style as /power): scrubs the
+  choropleth across all dates in generation_daily; defaults to latest, "Latest" reset button
+  appears when a historical date is selected
+- URL-synced via ?date=YYYY-MM-DD query param (TanStack Router validateSearch) so historical
+  views are shareable
+- EU avg renewable strip and top-zone chip recompute for the selected date; date label turns
+  amber with "(historical)" suffix when not on latest
+- ZoneGenPanel trend chart highlights the selected date with an amber dashed reference line
+- Backend: GET /api/generation/map now accepts optional ?date= param; queries generation_daily
+  for that date (404 if no data); GenMapResponse gains min_date/max_date so the picker knows
+  the valid range without a separate /dates endpoint
+- 3 new pytest cases: latest map, historical date, out-of-range 404 (37 tests total green)
+
+## 2026-06-14 - Phase 7: NTC congestion layer on /power
+
+- New "Congestion" toggle on /power (top-right, alongside "Flows"): colors each border line
+  by utilization_pct (NTC-used / NTC-available), red = saturated, grey = uncongested
+- Border click opens a utilization history chart (trailing 400 days): NTC, scheduled, and
+  utilization % as dual-axis recharts ComposedChart
+- analytics/congestion.py: joins ntc_dayahead + scheduled_exchanges per directed border-day,
+  clips utilization 0-100, guards ntc=0; emits congestion_latest + congestion_daily
+- New endpoints: GET /api/power/congestion?date= and GET /api/power/congestion/border/{from}/{to}
+- scales.ts: utilizationColor() warm sequential scale (green-to-red); vitest coverage
+- refresh.py: adds entso-e-ntc and entso-e-scheduled to the fetcher list; writes congestion tables
+- 5 new backend tests; 34 total green; 2 new vitest tests
+
 ## 2026-06-14 - Phase 6: ENTSOG Physical Gas Flows on /gas
 
 - New "Physical flows" toggle button on /gas (top-right): overlays ENTSOG physical gas flow

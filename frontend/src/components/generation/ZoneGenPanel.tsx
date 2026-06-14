@@ -37,9 +37,10 @@ interface Props {
   zone: string
   item: GenMapItem | null
   onClose: () => void
+  selectedDate?: string
 }
 
-export function ZoneGenPanel({ zone, item, onClose }: Props) {
+export function ZoneGenPanel({ zone, item, onClose, selectedDate }: Props) {
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('1Y')
 
   const { data, isLoading } = useQuery({
@@ -188,6 +189,15 @@ export function ZoneGenPanel({ zone, item, onClose }: Props) {
                   tickFormatter={(v) => `${v}%`}
                 />
                 <ReferenceLine y={50} stroke="#374151" strokeDasharray="2 2" />
+                {selectedDate && dailyChart.some((d) => d.gen_date === selectedDate) && (
+                  <ReferenceLine
+                    x={selectedDate}
+                    stroke="#f59e0b"
+                    strokeWidth={1.5}
+                    strokeDasharray="3 2"
+                    label={{ value: selectedDate.slice(5), position: 'top', fontSize: 8, fill: '#f59e0b' }}
+                  />
+                )}
                 <Tooltip
                   contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
                   formatter={(v, name) => {

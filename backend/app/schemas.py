@@ -222,6 +222,8 @@ class GenMapItem(BaseModel):
 class GenMapResponse(BaseModel):
     as_of: str | None
     zones: list[GenMapItem]
+    min_date: str | None = None
+    max_date: str | None = None
 
 
 class GenHourlyPoint(BaseModel):

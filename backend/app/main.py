@@ -568,17 +568,39 @@ def prices():
 
 
 @app.get("/api/generation/map", response_model=GenMapResponse)
-def generation_map():
-    """Current renewable % and fuel summary per bidding zone."""
-    df = db.query("""
-        SELECT zone, gen_date::VARCHAR AS gen_date,
-               renewable_pct, solar AS solar_mw, wind AS wind_mw,
-               hydro AS hydro_mw, gas AS gas_mw, coal AS coal_mw, total_mw
-        FROM generation_latest
-        ORDER BY zone
-    """)
-    if df.empty:
-        raise HTTPException(status_code=503, detail="generation data not yet available")
+def generation_map(date: str | None = None):
+    """Renewable % and fuel summary per bidding zone. ?date=YYYY-MM-DD for historical days."""
+    if date:
+        df = db.query(
+            """
+            SELECT zone, gen_date::VARCHAR AS gen_date,
+                   renewable_pct, solar AS solar_mw, wind AS wind_mw,
+                   hydro AS hydro_mw, gas AS gas_mw, coal AS coal_mw, total_mw
+            FROM generation_daily
+            WHERE gen_date = ?
+            ORDER BY zone
+            """,
+            [date],
+        )
+        if df.empty:
+            raise HTTPException(status_code=404, detail=f"No generation data for {date}")
+    else:
+        df = db.query("""
+            SELECT zone, gen_date::VARCHAR AS gen_date,
+                   renewable_pct, solar AS solar_mw, wind AS wind_mw,
+                   hydro AS hydro_mw, gas AS gas_mw, coal AS coal_mw, total_mw
+            FROM generation_latest
+            ORDER BY zone
+        """)
+        if df.empty:
+            raise HTTPException(status_code=503, detail="generation data not yet available")
+
+    date_range = db.query(
+        "SELECT MIN(gen_date)::VARCHAR AS min_date, MAX(gen_date)::VARCHAR AS max_date FROM generation_daily"
+    )
+    min_date = str(date_range.iloc[0]["min_date"]) if not date_range.empty and date_range.iloc[0]["min_date"] is not None else None
+    max_date = str(date_range.iloc[0]["max_date"]) if not date_range.empty and date_range.iloc[0]["max_date"] is not None else None
+
     as_of = _meta_val("refreshed_at_power")
     zones = [
         GenMapItem(
@@ -594,7 +616,7 @@ def generation_map():
         )
         for r in df.itertuples()
     ]
-    return GenMapResponse(as_of=as_of, zones=zones)
+    return GenMapResponse(as_of=as_of, zones=zones, min_date=min_date, max_date=max_date)
 
 
 _FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "oil", "solar", "unknown", "wind")

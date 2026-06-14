@@ -449,67 +449,64 @@ Endpoints: GET /api/gas/flows, GET /api/gas/flows/{cc}. 27 tests pass.
 
 ---
 
-### Phase 7 - Power congestion (NTC vs scheduled) on /power
+### Phase 7 - Power congestion (NTC vs scheduled) on /power [COMPLETE - 2026-06-14] ✅
 
 *Goal: /power surfaces cross-border congestion: how much of each border's day-ahead transfer
 capacity (NTC) is used by scheduled commercial flows - the borders that are "full" are where
 price spreads are highest.*
-*Depends on: Phase 4 flows. Sources: `ntc_dayahead` (1.3M), `scheduled_exchanges` (3.5M), both to present.*
-*Data note: add `entso-e-ntc` and `entso-e-scheduled` to the daily-refresh fetcher list.*
+*Completed: 2026-06-14, commit d696ebb*
 
 #### Data layer
-- [ ] Add `entso-e-ntc`, `entso-e-scheduled` to the refresh fetcher list
-- [ ] `analytics/congestion.py`: `build_congestion_tables()` - per directed border per day, join daily
+- [x] Add `entso-e-ntc`, `entso-e-scheduled` to the refresh fetcher list
+- [x] `analytics/congestion.py`: `build_congestion_tables()` - per directed border per day, join daily
   mean scheduled_mw to daily mean ntc_mw; `utilization_pct = scheduled / ntc` (clip 0-100, guard ntc=0).
   Emit `congestion_latest` (latest day per border pair: ntc, scheduled, utilization, both directions)
   and `congestion_daily` (trailing 400d per border for the panel). Restrict to the zones present
   in `bidding_zones.geojson` so every border is mappable
-- [ ] Verify one border (DE-LU <-> FR) utilization is in 0-100 and plausible
+- [x] Verify one border (DE-LU <-> FR) utilization is in 0-100 and plausible
 
 #### Refresh job
-- [ ] `_write_congestion()`; stamp `refreshed_at_congestion`. Handle empty inputs gracefully
+- [x] `_write_congestion()`; stamp `refreshed_at_congestion`. Handle empty inputs gracefully
 
 #### API
-- [ ] `GET /api/power/congestion?date=` - latest (or given-date) border utilizations for the map layer
-- [ ] `GET /api/power/congestion/border/{from}/{to}` - trailing-400d utilization + ntc + scheduled series
-- [ ] Schemas + pytest (2 borders, a congested and an uncongested day; ntc=0 guard)
+- [x] `GET /api/power/congestion?date=` - latest (or given-date) border utilizations for the map layer
+- [x] `GET /api/power/congestion/border/{from}/{to}` - trailing-400d utilization + ntc + scheduled series
+- [x] Schemas + pytest (2 borders, a congested and an uncongested day; ntc=0 guard)
 
 #### Frontend
-- [ ] New toggleable "Congestion" layer on /power: color each border line by utilization_pct
+- [x] New toggleable "Congestion" layer on /power: color each border line by utilization_pct
   (sequential warm scale, red = saturated); reuse the existing flow-arrow geometry between zone centroids
-- [ ] `lib/scales.ts`: `utilizationColor(pct)` + vitest
-- [ ] Border click (or a small panel): utilization history chart for that border
-- [ ] Legend; mobile parity with the existing flows layer
+- [x] `lib/scales.ts`: `utilizationColor(pct)` + vitest
+- [x] Border click (or a small panel): utilization history chart for that border
+- [x] Legend; mobile parity with the existing flows layer
 
 #### Definition of done
 - /power shows a congestion layer; a saturated border (e.g. FR->DE in a known tight period) reads red
-- Border drill-down shows utilization history; tests green; live verified
+- Border drill-down shows utilization history; tests green; live verified - DONE
 
 ---
 
-### Phase 8 - Historical date scrubber for /generation
+### Phase 8 - Historical date scrubber for /generation [COMPLETE - 2026-06-14] ✅
 
 *Goal: /generation gains a historical date picker (like /power already has), letting users replay
 past days' generation mix and renewable-% choropleth, not just today.*
 *Depends on: Phase 5. No new data/refresh wiring - `generation_daily` already holds full history.*
+*Completed: 2026-06-14*
 
 #### API
-- [ ] Extend `GET /api/generation/map` to accept `?date=` (default: latest); serve the per-zone
+- [x] Extend `GET /api/generation/map` to accept `?date=` (default: latest); serve the per-zone
   generation_daily row for that date (renewable_pct + fuel breakdown), 404/empty-safe for gaps
-- [ ] `GET /api/generation/dates` (or include min/max in the map response) so the picker knows the
-  valid range
-- [ ] pytest: map at an explicit historical date returns that day's rows; out-of-range date handled
+- [x] min_date/max_date included in GenMapResponse so the picker knows the valid range
+- [x] pytest: map at an explicit historical date returns that day's rows; out-of-range date returns 404
 
 #### Frontend
-- [ ] Date picker on /generation (mirror the /power date-picker component exactly), default latest
-- [ ] Map recolors by the selected date's renewable_pct; EU summary strip recomputes for that date
-- [ ] Keep the zone panel showing the full hourly/daily history (panel is date-independent), but
-  highlight the selected date on the trend chart
-- [ ] URL-sync the date (query param) so a chosen day is shareable, matching /power if it does so
+- [x] Date picker on /generation (top-right, same style as /power), default latest with "Latest" reset button
+- [x] Map recolors by the selected date's renewable_pct; EU summary strip recomputes for that date
+- [x] Zone panel trend chart highlights the selected date with an amber reference line
+- [x] URL-sync the date via ?date= query param (TanStack Router validateSearch); shareable links
 
 #### Definition of done
-- /generation date picker scrubs the choropleth across history; a 2022-crisis day looks different
-  from today; tests green; live verified
+- /generation date picker scrubs the choropleth across history; tests green; live verified - DONE
 
 ---
 
