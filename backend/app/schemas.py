@@ -15,6 +15,7 @@ class MetaResponse(BaseModel):
     power_zones: list[str] = []
     power_refreshed_at: str | None = None
     spreads_refreshed_at: str | None = None
+    imbalance_refreshed_at: str | None = None
 
 
 # Gas map
@@ -258,3 +259,30 @@ class GenZoneResponse(BaseModel):
     dominant_fuel: str | None = None
     hourly: list[GenHourlyPoint]
     daily: list[GenDailyPoint]
+
+
+class ImbalanceRecentPoint(BaseModel):
+    ts: str
+    rebap_eur_mwh: float | None
+
+
+class ImbalanceDailyPoint(BaseModel):
+    price_date: str
+    mean_eur: float | None
+    min_eur: float | None
+    max_eur: float | None
+
+
+class ImbalanceLatest(BaseModel):
+    current_ts: str
+    rebap_eur_mwh: float | None
+    today_mean: float | None
+    today_min: float | None
+    today_max: float | None
+
+
+class ImbalanceResponse(BaseModel):
+    as_of: str | None
+    latest: ImbalanceLatest | None
+    recent: list[ImbalanceRecentPoint]
+    daily: list[ImbalanceDailyPoint]

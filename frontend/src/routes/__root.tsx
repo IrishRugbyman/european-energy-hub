@@ -1,5 +1,5 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
-import { Flame, Zap, TrendingUp, DollarSign, Wind, Info, X } from 'lucide-react'
+import { Flame, Zap, TrendingUp, DollarSign, Wind, Activity, Info, X } from 'lucide-react'
 import { useState } from 'react'
 
 export const Route = createRootRoute({
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/generation', label: 'Generation', icon: Wind,       enabled: true },
   { to: '/spreads',    label: 'Spreads',    icon: TrendingUp, enabled: true },
   { to: '/prices',     label: 'Prices',     icon: DollarSign, enabled: true },
+  { to: '/imbalance',  label: 'Imbalance',  icon: Activity,   enabled: true },
 ]
 
 function Root() {
@@ -132,6 +133,10 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             <li>
               <span className="text-foreground">Generation mix</span> - Rebase Grid API,{' '}
               <a href="https://grid.rebase.energy" className="text-primary hover:underline" target="_blank" rel="noreferrer">grid.rebase.energy</a>
+            </li>
+            <li>
+              <span className="text-foreground">German reBAP imbalance prices</span> - SMARD.de (Bundesnetzagentur),{' '}
+              <a href="https://www.smard.de" className="text-primary hover:underline" target="_blank" rel="noreferrer">smard.de</a>
             </li>
           </ul>
         </div>

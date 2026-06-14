@@ -30,6 +30,7 @@ from analytics.congestion import build_congestion_tables
 from analytics.gas import build_storage_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables
+from analytics.imbalance import build_imbalance_tables
 from analytics.power import build_power_tables
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
@@ -60,7 +61,7 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "rebase-generation", "entsog"]:
+        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "rebase-generation", "entsog", "smard-imbalance-de"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
@@ -86,6 +87,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building power congestion (NTC vs scheduled) from market_data (PostgreSQL)...")
     congestion_tables = build_congestion_tables()
 
+    logger.info("Building German reBAP imbalance tables from market_data (PostgreSQL)...")
+    imbalance_tables = build_imbalance_tables()
+
     ENERGY_DB.parent.mkdir(exist_ok=True)
     conn = duckdb.connect(str(ENERGY_DB))
     try:
@@ -98,6 +102,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_generation(conn, generation_tables)
         _write_gas_flows(conn, gas_flows_tables)
         _write_congestion(conn, congestion_tables)
+        _write_imbalance(conn, imbalance_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -108,6 +113,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_power", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_congestion", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso])
         conn.execute("COMMIT")
         logger.info(f"energy_hub.duckdb rebuilt at {now_iso}")
     except Exception:
@@ -350,6 +356,52 @@ def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
     logger.info(
         f"generation: {len(gen)} latest rows, {len(daily)} daily rows, {len(hourly)} hourly rows"
+    )
+
+
+def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    recent = tables["imbalance_recent"]
+    daily = tables["imbalance_daily"]
+    latest = tables["imbalance_latest"]
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE imbalance_recent (
+            ts TIMESTAMP,
+            rebap_eur_mwh REAL
+        )
+    """)
+    if not recent.empty:
+        conn.register("_ir", recent)
+        conn.execute("INSERT INTO imbalance_recent SELECT * FROM _ir")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE imbalance_daily (
+            price_date DATE,
+            mean_eur REAL,
+            min_eur REAL,
+            max_eur REAL,
+            count INTEGER
+        )
+    """)
+    if not daily.empty:
+        conn.register("_id", daily)
+        conn.execute("INSERT INTO imbalance_daily SELECT * FROM _id")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE imbalance_latest (
+            current_ts TIMESTAMP,
+            rebap_eur_mwh REAL,
+            today_mean REAL,
+            today_min REAL,
+            today_max REAL
+        )
+    """)
+    if not latest.empty:
+        conn.register("_il", latest)
+        conn.execute("INSERT INTO imbalance_latest SELECT * FROM _il")
+
+    logger.info(
+        f"imbalance: {len(recent)} recent rows, {len(daily)} daily rows, {len(latest)} latest rows"
     )
 
 

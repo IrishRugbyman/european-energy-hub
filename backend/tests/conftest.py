@@ -279,6 +279,44 @@ def _seed_db(path: str) -> None:
         gen_hourly.append(["DE-LU", ts, 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 200.0, solar_h, 500.0, wind_h])
     conn.executemany("INSERT INTO generation_hourly_recent VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_hourly)
 
+    # imbalance tables (trailing 10 days 15-min + 2Y daily + latest)
+    from datetime import datetime as dt
+    conn.execute("""
+        CREATE TABLE imbalance_recent (ts TIMESTAMP, rebap_eur_mwh REAL)
+    """)
+    imb_start = dt(today.year, today.month, today.day) - timedelta(days=10)
+    imb_recent_rows = []
+    for i in range(10 * 24 * 4):
+        ts = (imb_start + timedelta(minutes=15 * i)).strftime("%Y-%m-%d %H:%M:%S")
+        price = round(80.0 + 50.0 * ((i % 96) / 96), 2)
+        imb_recent_rows.append([ts, price])
+    conn.executemany("INSERT INTO imbalance_recent VALUES (?, ?)", imb_recent_rows)
+
+    conn.execute("""
+        CREATE TABLE imbalance_daily (
+            price_date DATE, mean_eur REAL, min_eur REAL, max_eur REAL, count INTEGER
+        )
+    """)
+    imb_daily_start = date(today.year - 2, 1, 1)
+    imb_daily_rows = []
+    for i in range((today - imb_daily_start).days + 1):
+        day = (imb_daily_start + timedelta(days=i)).isoformat()
+        mean_e = round(85.0 + 30.0 * (i % 100) / 100, 2)
+        imb_daily_rows.append([day, mean_e, round(mean_e - 20.0, 2), round(mean_e + 40.0, 2), 96])
+    conn.executemany("INSERT INTO imbalance_daily VALUES (?, ?, ?, ?, ?)", imb_daily_rows)
+
+    latest_ts = (dt(today.year, today.month, today.day) - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+    conn.execute("""
+        CREATE TABLE imbalance_latest (
+            current_ts TIMESTAMP, rebap_eur_mwh REAL,
+            today_mean REAL, today_min REAL, today_max REAL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO imbalance_latest VALUES (?, ?, ?, ?, ?)",
+        [latest_ts, 95.0, 88.0, 60.0, 140.0],
+    )
+
     conn.close()
 
 

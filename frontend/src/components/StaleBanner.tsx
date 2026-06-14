@@ -11,7 +11,7 @@ function hoursOld(isoStr: string | null | undefined): number | null {
 }
 
 interface Props {
-  datasetKey: 'gas' | 'power' | 'spreads'
+  datasetKey: 'gas' | 'power' | 'spreads' | 'imbalance'
   /** 'overlay': absolute bottom bar (for map pages). 'inline': top-of-content row (for scrollable pages). */
   variant?: 'overlay' | 'inline'
 }
@@ -28,7 +28,9 @@ export function StaleBanner({ datasetKey, variant = 'overlay' }: Props) {
       ? data?.gas_refreshed_at
       : datasetKey === 'power'
         ? data?.power_refreshed_at
-        : data?.spreads_refreshed_at
+        : datasetKey === 'imbalance'
+          ? data?.imbalance_refreshed_at
+          : data?.spreads_refreshed_at
 
   const hours = hoursOld(refreshedAt)
   if (hours == null || hours < STALE_HOURS) return null

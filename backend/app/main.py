@@ -42,6 +42,10 @@ from .schemas import (
     PowerLatestRow,
     PowerMapResponse,
     PowerZoneResponse,
+    ImbalanceDailyPoint,
+    ImbalanceLatest,
+    ImbalanceRecentPoint,
+    ImbalanceResponse,
     PricesDailyPoint,
     PricesResponse,
     SeasonalBandPoint,
@@ -103,6 +107,7 @@ def meta():
         power_zones=zones,
         power_refreshed_at=_meta_val("refreshed_at_power"),
         spreads_refreshed_at=_meta_val("refreshed_at_spreads"),
+        imbalance_refreshed_at=_meta_val("refreshed_at_imbalance"),
     )
 
 
@@ -710,3 +715,42 @@ def _float(v) -> float | None:
         return None if pd.isna(f) else round(f, 4)
     except (TypeError, ValueError):
         return None
+
+
+@app.get("/api/imbalance", response_model=ImbalanceResponse)
+def imbalance():
+    """German reBAP imbalance settlement price: latest snapshot, 10-day 15-min series, 2Y daily aggs."""
+    as_of = _meta_val("refreshed_at_imbalance")
+
+    latest_df = db.query("SELECT * FROM imbalance_latest LIMIT 1")
+    latest = None
+    if not latest_df.empty:
+        r = latest_df.iloc[0]
+        latest = ImbalanceLatest(
+            current_ts=str(r["current_ts"]),
+            rebap_eur_mwh=_float(r["rebap_eur_mwh"]),
+            today_mean=_float(r["today_mean"]),
+            today_min=_float(r["today_min"]),
+            today_max=_float(r["today_max"]),
+        )
+
+    recent_df = db.query("SELECT ts::VARCHAR AS ts, rebap_eur_mwh FROM imbalance_recent ORDER BY ts")
+    recent = [
+        ImbalanceRecentPoint(ts=str(r.ts), rebap_eur_mwh=_float(r.rebap_eur_mwh))
+        for r in recent_df.itertuples()
+    ]
+
+    daily_df = db.query(
+        "SELECT price_date::VARCHAR AS price_date, mean_eur, min_eur, max_eur FROM imbalance_daily ORDER BY price_date"
+    )
+    daily = [
+        ImbalanceDailyPoint(
+            price_date=str(r.price_date),
+            mean_eur=_float(r.mean_eur),
+            min_eur=_float(r.min_eur),
+            max_eur=_float(r.max_eur),
+        )
+        for r in daily_df.itertuples()
+    ]
+
+    return ImbalanceResponse(as_of=as_of, latest=latest, recent=recent, daily=daily)

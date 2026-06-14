@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as SpreadsRouteImport } from './routes/spreads'
 import { Route as PricesRouteImport } from './routes/prices'
 import { Route as PowerRouteImport } from './routes/power'
+import { Route as ImbalanceRouteImport } from './routes/imbalance'
 import { Route as GenerationRouteImport } from './routes/generation'
 import { Route as GasRouteImport } from './routes/gas'
 import { Route as IndexRouteImport } from './routes/index'
@@ -29,6 +30,11 @@ const PricesRoute = PricesRouteImport.update({
 const PowerRoute = PowerRouteImport.update({
   id: '/power',
   path: '/power',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ImbalanceRoute = ImbalanceRouteImport.update({
+  id: '/imbalance',
+  path: '/imbalance',
   getParentRoute: () => rootRouteImport,
 } as any)
 const GenerationRoute = GenerationRouteImport.update({
@@ -51,6 +57,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/gas': typeof GasRoute
   '/generation': typeof GenerationRoute
+  '/imbalance': typeof ImbalanceRoute
   '/power': typeof PowerRoute
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
@@ -59,6 +66,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/gas': typeof GasRoute
   '/generation': typeof GenerationRoute
+  '/imbalance': typeof ImbalanceRoute
   '/power': typeof PowerRoute
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
@@ -68,20 +76,36 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/gas': typeof GasRoute
   '/generation': typeof GenerationRoute
+  '/imbalance': typeof ImbalanceRoute
   '/power': typeof PowerRoute
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/gas' | '/generation' | '/power' | '/prices' | '/spreads'
+  fullPaths:
+    | '/'
+    | '/gas'
+    | '/generation'
+    | '/imbalance'
+    | '/power'
+    | '/prices'
+    | '/spreads'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/gas' | '/generation' | '/power' | '/prices' | '/spreads'
+  to:
+    | '/'
+    | '/gas'
+    | '/generation'
+    | '/imbalance'
+    | '/power'
+    | '/prices'
+    | '/spreads'
   id:
     | '__root__'
     | '/'
     | '/gas'
     | '/generation'
+    | '/imbalance'
     | '/power'
     | '/prices'
     | '/spreads'
@@ -91,6 +115,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   GasRoute: typeof GasRoute
   GenerationRoute: typeof GenerationRoute
+  ImbalanceRoute: typeof ImbalanceRoute
   PowerRoute: typeof PowerRoute
   PricesRoute: typeof PricesRoute
   SpreadsRoute: typeof SpreadsRoute
@@ -117,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/power'
       fullPath: '/power'
       preLoaderRoute: typeof PowerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/imbalance': {
+      id: '/imbalance'
+      path: '/imbalance'
+      fullPath: '/imbalance'
+      preLoaderRoute: typeof ImbalanceRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/generation': {
@@ -147,6 +179,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   GasRoute: GasRoute,
   GenerationRoute: GenerationRoute,
+  ImbalanceRoute: ImbalanceRoute,
   PowerRoute: PowerRoute,
   PricesRoute: PricesRoute,
   SpreadsRoute: SpreadsRoute,

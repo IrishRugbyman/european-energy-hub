@@ -51,6 +51,7 @@ export interface MetaResponse {
   power_zones: string[]
   power_refreshed_at: string | null
   spreads_refreshed_at: string | null
+  imbalance_refreshed_at: string | null
 }
 
 export interface PowerLatestRow {
@@ -156,6 +157,33 @@ export interface GenZoneResponse {
   daily: GenDailyPoint[]
 }
 
+export interface ImbalanceRecentPoint {
+  ts: string
+  rebap_eur_mwh: number | null
+}
+
+export interface ImbalanceDailyPoint {
+  price_date: string
+  mean_eur: number | null
+  min_eur: number | null
+  max_eur: number | null
+}
+
+export interface ImbalanceLatest {
+  current_ts: string
+  rebap_eur_mwh: number | null
+  today_mean: number | null
+  today_min: number | null
+  today_max: number | null
+}
+
+export interface ImbalanceResponse {
+  as_of: string | null
+  latest: ImbalanceLatest | null
+  recent: ImbalanceRecentPoint[]
+  daily: ImbalanceDailyPoint[]
+}
+
 export interface SpreadsDailyPoint {
   price_date: string
   power_de: number | null
@@ -251,4 +279,5 @@ export const api = {
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
+  imbalance: () => get<ImbalanceResponse>('/imbalance'),
 }

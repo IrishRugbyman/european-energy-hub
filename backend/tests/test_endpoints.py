@@ -238,3 +238,33 @@ def test_gen_map_historical_date(client):
 def test_gen_map_out_of_range_date(client):
     r = client.get("/api/generation/map?date=2000-01-01")
     assert r.status_code == 404
+
+
+def test_imbalance_endpoint(client):
+    r = client.get("/api/imbalance")
+    assert r.status_code == 200
+    data = r.json()
+    # latest snapshot
+    assert data["latest"] is not None
+    assert data["latest"]["rebap_eur_mwh"] == 95.0
+    assert data["latest"]["today_mean"] == 88.0
+    # recent: 10 days of 15-min data
+    assert len(data["recent"]) > 0
+    assert "ts" in data["recent"][0]
+    assert "rebap_eur_mwh" in data["recent"][0]
+    # daily: 2 years of daily aggregates
+    assert len(data["daily"]) > 0
+    day0 = data["daily"][0]
+    assert "price_date" in day0
+    assert "mean_eur" in day0
+    assert "min_eur" in day0
+    assert "max_eur" in day0
+
+
+def test_imbalance_structure(client):
+    r = client.get("/api/imbalance")
+    data = r.json()
+    # daily min should be less than mean, mean less than max
+    for d in data["daily"][:10]:
+        if d["min_eur"] is not None and d["mean_eur"] is not None and d["max_eur"] is not None:
+            assert d["min_eur"] <= d["mean_eur"] <= d["max_eur"]
