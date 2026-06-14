@@ -81,6 +81,11 @@ hard rule it is OUT of v1. Log it in `~/quant/ideas.md` as a data gap during Pha
 
 ## 4. Architecture and data flow
 
+> **Note (2026-06-14):** the diagram below is the original v1 design. After the repo-wide
+> DuckDB -> PostgreSQL migration, the source DB is now `market_data` (PostgreSQL), read via
+> the market-data `loaders/` package. Mentally substitute "commo.duckdb (read-only)" with
+> "market_data PostgreSQL". `energy_hub.duckdb` (the precomputed serving DB) is unchanged.
+
 ```
                        (writer: commo.duckdb)
 ingest.py agsi|entso_e|ttf|eua_carbon|coal_api2     [market-data venv, subprocess]
