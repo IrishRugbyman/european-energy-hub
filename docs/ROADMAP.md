@@ -440,6 +440,149 @@ blocker (DuckDB -> PostgreSQL migration broke refresh.py) is fixed; see CHANGELO
 
 ---
 
+### Phase 6 - ENTSOG physical gas flows on /gas
+
+*Goal: the gas map gains a cross-border physical gas-flow layer (pipeline net flows by
+country), so /gas mirrors /power's "levels + flows" structure: storage fill + physical flows.*
+*Depends on: Phase 5. Source: `entsog_flows` (34k rows, country-level GWh/d, 2019-10 to present).*
+*Data note: `entsog` is NOT yet in the energy daily-refresh fetcher list - add it.*
+
+#### Data layer
+- [ ] Add `entsog` to the refresh fetcher list in `scripts/refresh.py` so `entsog_flows` stays current
+- [ ] `analytics/gas_flows.py`: `build_gas_flows_tables()` reading `entsog_flows` via loaders
+  (`from loaders.gas import ...` or a direct `_query`). `entsog_flows` columns:
+  (period_date, country, bz_key, bz_label, direction, value_gwh_d, source). Aggregate to a
+  daily net physical flow per country: net = sum(entry value_gwh_d) - sum(exit value_gwh_d)
+  using the `direction` field; emit `gas_flows_latest` (most recent day per country, net GWh/d
+  + entry/exit split) and `gas_flows_daily` (per-country daily net, trailing 400 days for the panel)
+- [ ] Verify direction semantics against one country (DE) vs a public ENTSOG figure; document the
+  sign convention (positive = net import into the country)
+
+#### Refresh job
+- [ ] `_write_gas_flows()` in `refresh.py`: `gas_flows_latest`, `gas_flows_daily`; stamp
+  `refreshed_at_gas_flows` in meta. Handle empty `entsog_flows` gracefully
+
+#### API
+- [ ] `GET /api/gas/flows` - `{as_of, rows: [{country, period_date, net_gwh_d, entry_gwh_d, exit_gwh_d}]}`
+  from gas_flows_latest (choropleth/arrow payload)
+- [ ] Extend `GET /api/gas/country/{cc}` (or add `/api/gas/flows/{cc}`) with the trailing-400d
+  net-flow series for the country panel
+- [ ] Pydantic schemas `GasFlowItem`, `GasFlowResponse`; pytest against seeded fixture (2 countries,
+  entry+exit rows incl. a net-import and a net-export day)
+
+#### Frontend
+- [ ] Toggleable gas-flow layer on /gas (reuse the freight/power LayerToggles pattern): color or
+  arrow each country by net import/export (diverging scale: blue import / red export), legend
+- [ ] `lib/scales.ts`: `gasFlowColor(net_gwh_d)` diverging scale + vitest boundary tests
+- [ ] CountryPanel: add a net-flow sparkline/bar (trailing window) under the seasonal chart
+- [ ] StaleBanner already covers gas; ensure it also reflects gas-flows freshness if older
+
+#### Definition of done
+- /gas has a flow layer toggle; DE shows net import on a normal winter-draw day, sign matches ENTSOG
+- Clicking a country shows its net-flow history; `pytest -q` + `npm test` green; live verified
+
+---
+
+### Phase 7 - Power congestion (NTC vs scheduled) on /power
+
+*Goal: /power surfaces cross-border congestion: how much of each border's day-ahead transfer
+capacity (NTC) is used by scheduled commercial flows - the borders that are "full" are where
+price spreads are highest.*
+*Depends on: Phase 4 flows. Sources: `ntc_dayahead` (1.3M), `scheduled_exchanges` (3.5M), both to present.*
+*Data note: add `entso-e-ntc` and `entso-e-scheduled` to the daily-refresh fetcher list.*
+
+#### Data layer
+- [ ] Add `entso-e-ntc`, `entso-e-scheduled` to the refresh fetcher list
+- [ ] `analytics/congestion.py`: `build_congestion_tables()` - per directed border per day, join daily
+  mean scheduled_mw to daily mean ntc_mw; `utilization_pct = scheduled / ntc` (clip 0-100, guard ntc=0).
+  Emit `congestion_latest` (latest day per border pair: ntc, scheduled, utilization, both directions)
+  and `congestion_daily` (trailing 400d per border for the panel). Restrict to the zones present
+  in `bidding_zones.geojson` so every border is mappable
+- [ ] Verify one border (DE-LU <-> FR) utilization is in 0-100 and plausible
+
+#### Refresh job
+- [ ] `_write_congestion()`; stamp `refreshed_at_congestion`. Handle empty inputs gracefully
+
+#### API
+- [ ] `GET /api/power/congestion?date=` - latest (or given-date) border utilizations for the map layer
+- [ ] `GET /api/power/congestion/border/{from}/{to}` - trailing-400d utilization + ntc + scheduled series
+- [ ] Schemas + pytest (2 borders, a congested and an uncongested day; ntc=0 guard)
+
+#### Frontend
+- [ ] New toggleable "Congestion" layer on /power: color each border line by utilization_pct
+  (sequential warm scale, red = saturated); reuse the existing flow-arrow geometry between zone centroids
+- [ ] `lib/scales.ts`: `utilizationColor(pct)` + vitest
+- [ ] Border click (or a small panel): utilization history chart for that border
+- [ ] Legend; mobile parity with the existing flows layer
+
+#### Definition of done
+- /power shows a congestion layer; a saturated border (e.g. FR->DE in a known tight period) reads red
+- Border drill-down shows utilization history; tests green; live verified
+
+---
+
+### Phase 8 - Historical date scrubber for /generation
+
+*Goal: /generation gains a historical date picker (like /power already has), letting users replay
+past days' generation mix and renewable-% choropleth, not just today.*
+*Depends on: Phase 5. No new data/refresh wiring - `generation_daily` already holds full history.*
+
+#### API
+- [ ] Extend `GET /api/generation/map` to accept `?date=` (default: latest); serve the per-zone
+  generation_daily row for that date (renewable_pct + fuel breakdown), 404/empty-safe for gaps
+- [ ] `GET /api/generation/dates` (or include min/max in the map response) so the picker knows the
+  valid range
+- [ ] pytest: map at an explicit historical date returns that day's rows; out-of-range date handled
+
+#### Frontend
+- [ ] Date picker on /generation (mirror the /power date-picker component exactly), default latest
+- [ ] Map recolors by the selected date's renewable_pct; EU summary strip recomputes for that date
+- [ ] Keep the zone panel showing the full hourly/daily history (panel is date-independent), but
+  highlight the selected date on the trend chart
+- [ ] URL-sync the date (query param) so a chosen day is shareable, matching /power if it does so
+
+#### Definition of done
+- /generation date picker scrubs the choropleth across history; a 2022-crisis day looks different
+  from today; tests green; live verified
+
+---
+
+### Phase 9 - German imbalance / reBAP dashboard (/imbalance)
+
+*Goal: a new /imbalance dashboard bringing the p2-imbalance research live: German balancing
+(reBAP) prices and system state. Single-zone (DE), so chart-first rather than map-first.*
+*Depends on: Phase 5. Source: `imbalance_prices_de` (155k rows, 15-min, long/short/NRV, 2021-12 to present).*
+*Data note: add `smard-imbalance-de` to the daily-refresh fetcher list (preferred source per market-data).*
+
+#### Data layer
+- [ ] Add `smard-imbalance-de` to the refresh fetcher list
+- [ ] `analytics/imbalance.py`: `build_imbalance_tables()` from `imbalance_prices_de`
+  (ts, long_eur_mwh, short_eur_mwh, nrv_mw). Emit `imbalance_recent` (15-min, trailing ~10 days),
+  `imbalance_daily` (daily mean/min/max of the reBAP price + mean |NRV|, 2Y), and `imbalance_latest`
+  (current price, current system direction long/short from NRV sign, today's range)
+- [ ] Document the reBAP sign convention; reuse any constants from `research/p2-imbalance`
+
+#### Refresh job
+- [ ] `_write_imbalance()`; stamp `refreshed_at_imbalance`. Empty-safe
+
+#### API
+- [ ] `GET /api/imbalance` - latest snapshot + recent 15-min series + daily 2Y series + system state
+- [ ] Schemas + pytest (seeded fixture: a long-system and a short-system interval)
+
+#### Frontend
+- [ ] `routes/imbalance.tsx`: chart-first dashboard - reBAP price line (recent 15-min + daily history
+  with window toggle), NRV/system-state band (long vs short shading), "system now" cards
+  (current reBAP, direction, today's range). Short methodology note (what reBAP is, the data source)
+- [ ] Add "Imbalance" to nav (`__root.tsx`); desktop + mobile icon bar; regenerate routeTree.gen.ts
+- [ ] StaleBanner; About-modal attribution for SMARD/ENTSO-E imbalance
+- [ ] Cross-link from quant-portfolio's p2-imbalance page to energy.lbzgiu.xyz/imbalance
+
+#### Definition of done
+- /imbalance renders reBAP price + system-state; current numbers match a manual p2-imbalance check
+- New nav item works on desktop + mobile; `pytest -q` + `npm test` green; live verified
+
+---
+
 ## 9. Build order summary
 
 | Phase | Goal | New duckdb tables | New routes | Sessions |
@@ -449,6 +592,10 @@ blocker (DuckDB -> PostgreSQL migration broke refresh.py) is fixed; see CHANGELO
 | 3 | Spreads + prices | +2 (spreads_daily, prices_daily) | +2 | 1-2 |
 | 4 | Flows + polish + integration | +1 (borders_daily) | +1 | 1-2 |
 | 5 | Generation mix dashboard | +2 (generation_daily, generation_hourly_recent) | +2 | 1-2 |
+| 6 | ENTSOG gas flows on /gas | +2 (gas_flows_latest, gas_flows_daily) | +0 (layer on /gas) | 1 |
+| 7 | Power congestion (NTC vs scheduled) | +2 (congestion_latest, congestion_daily) | +0 (layer on /power) | 1-2 |
+| 8 | Historical date scrubber for /generation | +0 (reuses generation_daily) | +0 (enhances /generation) | 1 |
+| 9 | German imbalance / reBAP dashboard | +3 (imbalance_recent, imbalance_daily, imbalance_latest) | +1 (/imbalance) | 1-2 |
 
 ## 10. Deliberately NOT building (v1)
 
