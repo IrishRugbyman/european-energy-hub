@@ -5,15 +5,28 @@ import { api, type PowerLatestRow } from '@/lib/api'
 import { PowerMap } from '@/components/power/PowerMap'
 import { ZonePanel } from '@/components/power/ZonePanel'
 import { FlowArrowsLayer } from '@/components/power/FlowArrowsLayer'
+import { CongestionLayer } from '@/components/power/CongestionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/power')({
   component: PowerDashboard,
 })
 
+const UTILIZATION_LEGEND = [
+  { label: '> 100%',  color: '#7f1d1d' },
+  { label: '90-100%', color: '#b91c1c' },
+  { label: '80-90%',  color: '#d97706' },
+  { label: '60-80%',  color: '#ca8a04' },
+  { label: '40-60%',  color: '#65a30d' },
+  { label: '20-40%',  color: '#16a34a' },
+  { label: '< 20%',   color: '#15803d' },
+  { label: 'no data', color: '#374151' },
+]
+
 function PowerDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
   const [showFlows, setShowFlows] = useState(false)
+  const [showCongestion, setShowCongestion] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['power-map'],
@@ -27,6 +40,13 @@ function PowerDashboard() {
     enabled: showFlows,
   })
 
+  const { data: congestionData } = useQuery({
+    queryKey: ['power-congestion'],
+    queryFn: api.powerCongestion,
+    staleTime: 15 * 60 * 1000,
+    enabled: showCongestion,
+  })
+
   const latestByZone: Record<string, PowerLatestRow> = {}
   for (const row of data?.rows ?? []) latestByZone[row.zone] = row
 
@@ -37,8 +57,8 @@ function PowerDashboard() {
 
   return (
     <div className="relative h-full flex">
-      {/* Flows toggle */}
-      <div className="absolute top-3 right-3 z-[1000]">
+      {/* Layer toggles (top-right) */}
+      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
         <button
           onClick={() => setShowFlows((v) => !v)}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
@@ -49,6 +69,17 @@ function PowerDashboard() {
         >
           <span className="w-2 h-2 rounded-full bg-sky-400 flex-shrink-0" />
           Cross-border flows
+        </button>
+        <button
+          onClick={() => setShowCongestion((v) => !v)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
+            showCongestion
+              ? 'bg-amber-900 border-amber-600 text-amber-200'
+              : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
+          } backdrop-blur shadow`}
+        >
+          <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+          Congestion
         </button>
       </div>
 
@@ -67,25 +98,39 @@ function PowerDashboard() {
         ) : null}
       </div>
 
-      {/* Price legend (hidden on mobile to save space) */}
+      {/* Legend (hidden on mobile): price or congestion depending on active overlay */}
       <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
-        <p className="text-muted-foreground mb-1 font-medium">€/MWh</p>
-        {[
-          { label: '< 20',  color: '#1d4ed8' },
-          { label: '20-50', color: '#0369a1' },
-          { label: '50-80', color: '#0e7490' },
-          { label: '80-120',color: '#15803d' },
-          { label: '120-160',color:'#65a30d' },
-          { label: '160-200',color:'#ca8a04' },
-          { label: '200-250',color:'#d97706' },
-          { label: '> 250', color: '#b91c1c' },
-          { label: 'no data',color:'#374151'},
-        ].map(({ label, color }) => (
-          <div key={label} className="flex items-center gap-1.5">
-            <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
-            <span className="text-muted-foreground">{label}</span>
-          </div>
-        ))}
+        {showCongestion ? (
+          <>
+            <p className="text-muted-foreground mb-1 font-medium">NTC utilization</p>
+            {UTILIZATION_LEGEND.map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className="text-muted-foreground">{label}</span>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground mb-1 font-medium">€/MWh</p>
+            {[
+              { label: '< 20',    color: '#1d4ed8' },
+              { label: '20-50',   color: '#0369a1' },
+              { label: '50-80',   color: '#0e7490' },
+              { label: '80-120',  color: '#15803d' },
+              { label: '120-160', color: '#65a30d' },
+              { label: '160-200', color: '#ca8a04' },
+              { label: '200-250', color: '#d97706' },
+              { label: '> 250',   color: '#b91c1c' },
+              { label: 'no data', color: '#374151' },
+            ].map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-1.5">
+                <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
+                <span className="text-muted-foreground">{label}</span>
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Map */}
@@ -93,6 +138,9 @@ function PowerDashboard() {
         <PowerMap rows={data?.rows ?? []} selected={selected} onSelect={setSelected}>
           {showFlows && flowsData && flowsData.rows.length > 0 && (
             <FlowArrowsLayer flows={flowsData.rows} />
+          )}
+          {showCongestion && congestionData && congestionData.rows.length > 0 && (
+            <CongestionLayer rows={congestionData.rows} />
           )}
         </PowerMap>
       </div>

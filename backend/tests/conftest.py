@@ -172,6 +172,28 @@ def _seed_db(path: str) -> None:
             [today.isoformat(), fz, tz, net],
         )
 
+    # Congestion tables
+    cong_cols = "from_zone VARCHAR, to_zone VARCHAR, price_date DATE, ntc_mw REAL, scheduled_mw REAL, utilization_pct REAL"
+    conn.execute(f"CREATE TABLE congestion_latest ({cong_cols})")
+    conn.execute(f"CREATE TABLE congestion_daily ({cong_cols})")
+    # FR->DE-LU: congested (~92%); DE-LU->NL: moderate (~55%)
+    for fz, tz, ntc, sched, util in [("FR", "DE-LU", 3000.0, 2760.0, 92.0), ("DE-LU", "NL", 1200.0, 660.0, 55.0)]:
+        conn.execute(
+            "INSERT INTO congestion_latest VALUES (?, ?, ?, ?, ?, ?)",
+            [fz, tz, today.isoformat(), ntc, sched, util],
+        )
+    # 90 days of daily history for FR->DE-LU
+    for i in range(90):
+        day = (today - timedelta(days=89 - i)).isoformat()
+        ntc = 3000.0
+        sched = round(2000.0 + i * 5.0, 1)
+        util = round(sched / ntc * 100, 1)
+        conn.execute(
+            "INSERT INTO congestion_daily VALUES (?, ?, ?, ?, ?, ?)",
+            ["FR", "DE-LU", day, ntc, sched, util],
+        )
+    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_congestion", "2026-06-12T12:00:00+00:00"])
+
     # Gas physical flows tables (ENTSOG)
     conn.execute("""
         CREATE TABLE gas_flows_latest (

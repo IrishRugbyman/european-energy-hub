@@ -170,3 +170,42 @@ def test_gas_flows_country_case_insensitive(client):
     r = client.get("/api/gas/flows/at")
     assert r.status_code == 200
     assert r.json()["country"] == "AT"
+
+
+def test_power_congestion(client):
+    r = client.get("/api/power/congestion")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) == 2
+    by_border = {(row["from_zone"], row["to_zone"]): row for row in data["rows"]}
+    assert ("FR", "DE-LU") in by_border
+    fr_de = by_border[("FR", "DE-LU")]
+    assert fr_de["ntc_mw"] == 3000.0
+    assert fr_de["utilization_pct"] == 92.0
+
+
+def test_power_congestion_border(client):
+    r = client.get("/api/power/congestion/border/FR/DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["from_zone"] == "FR"
+    assert data["to_zone"] == "DE-LU"
+    assert len(data["rows"]) == 90
+    # Most recent row should have highest scheduled (2000 + 89*5 = 2445)
+    latest = max(data["rows"], key=lambda x: x["price_date"])
+    assert latest["scheduled_mw"] > 2400
+
+
+def test_power_congestion_border_not_found(client):
+    r = client.get("/api/power/congestion/border/XX/YY")
+    assert r.status_code == 404
+
+
+def test_power_congestion_border_hyphen_normalization(client):
+    # Underscores in zone names should be normalized to hyphens
+    r = client.get("/api/power/congestion/border/fr/DE_LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["from_zone"] == "FR"
+    assert data["to_zone"] == "DE-LU"

@@ -165,6 +165,28 @@ class FlowsResponse(BaseModel):
     rows: list[BorderFlowRow]
 
 
+# Power congestion (NTC vs scheduled)
+
+class CongestionRow(BaseModel):
+    from_zone: str
+    to_zone: str
+    price_date: str
+    ntc_mw: float | None
+    scheduled_mw: float | None
+    utilization_pct: float | None
+
+
+class CongestionResponse(BaseModel):
+    as_of: str | None
+    rows: list[CongestionRow]
+
+
+class CongestionBorderResponse(BaseModel):
+    from_zone: str
+    to_zone: str
+    rows: list[CongestionRow]
+
+
 # Generation mix (used in PowerZoneResponse)
 
 class GenerationMixRow(BaseModel):

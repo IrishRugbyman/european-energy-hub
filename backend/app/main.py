@@ -20,6 +20,9 @@ from slowapi.util import get_remote_address
 from . import db
 from .schemas import (
     BorderFlowRow,
+    CongestionBorderResponse,
+    CongestionResponse,
+    CongestionRow,
     FlowsResponse,
     GasCountryResponse,
     GasFlowCountryResponse,
@@ -266,6 +269,65 @@ def gas_flows_country(cc: str):
         for r in df.itertuples()
     ]
     return GasFlowCountryResponse(country=cc, rows=rows)
+
+
+@app.get("/api/power/congestion", response_model=CongestionResponse)
+def power_congestion():
+    """Latest NTC utilization per directed border pair (congestion_latest)."""
+    df = db.query(
+        """
+        SELECT from_zone, to_zone, price_date::VARCHAR AS price_date,
+               ntc_mw, scheduled_mw, utilization_pct
+        FROM congestion_latest
+        ORDER BY from_zone, to_zone
+        """
+    )
+    as_of = _meta_val("refreshed_at_congestion")
+    if df.empty:
+        return CongestionResponse(as_of=as_of, rows=[])
+    rows = [
+        CongestionRow(
+            from_zone=str(r.from_zone),
+            to_zone=str(r.to_zone),
+            price_date=str(r.price_date),
+            ntc_mw=_float(r.ntc_mw),
+            scheduled_mw=_float(r.scheduled_mw),
+            utilization_pct=_float(r.utilization_pct),
+        )
+        for r in df.itertuples()
+    ]
+    return CongestionResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/power/congestion/border/{from_zone}/{to_zone}", response_model=CongestionBorderResponse)
+def power_congestion_border(from_zone: str, to_zone: str):
+    """Trailing-400d NTC utilization for one directed border pair."""
+    fz = from_zone.upper().replace("_", "-")
+    tz = to_zone.upper().replace("_", "-")
+    df = db.query(
+        """
+        SELECT from_zone, to_zone, price_date::VARCHAR AS price_date,
+               ntc_mw, scheduled_mw, utilization_pct
+        FROM congestion_daily
+        WHERE from_zone = ? AND to_zone = ?
+        ORDER BY price_date
+        """,
+        [fz, tz],
+    )
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"Border not found: {fz}->{tz}")
+    rows = [
+        CongestionRow(
+            from_zone=str(r.from_zone),
+            to_zone=str(r.to_zone),
+            price_date=str(r.price_date),
+            ntc_mw=_float(r.ntc_mw),
+            scheduled_mw=_float(r.scheduled_mw),
+            utilization_pct=_float(r.utilization_pct),
+        )
+        for r in df.itertuples()
+    ]
+    return CongestionBorderResponse(from_zone=fz, to_zone=tz, rows=rows)
 
 
 @app.get("/api/power/map", response_model=PowerMapResponse)

@@ -195,6 +195,26 @@ export interface FlowsResponse {
   rows: BorderFlowRow[]
 }
 
+export interface CongestionRow {
+  from_zone: string
+  to_zone: string
+  price_date: string
+  ntc_mw: number | null
+  scheduled_mw: number | null
+  utilization_pct: number | null
+}
+
+export interface CongestionResponse {
+  as_of: string | null
+  rows: CongestionRow[]
+}
+
+export interface CongestionBorderResponse {
+  from_zone: string
+  to_zone: string
+  rows: CongestionRow[]
+}
+
 export interface GasFlowItem {
   country: string
   period_date: string
@@ -220,6 +240,8 @@ export const api = {
   gasCountry: (cc: string) => get<GasCountryResponse>(`/gas/country/${cc}`),
   gasFlows: () => get<GasFlowResponse>('/gas/flows'),
   gasFlowsCountry: (cc: string) => get<GasFlowCountryResponse>(`/gas/flows/${cc}`),
+  powerCongestion: () => get<CongestionResponse>('/power/congestion'),
+  powerCongestionBorder: (fz: string, tz: string) => get<CongestionBorderResponse>(`/power/congestion/border/${fz}/${tz}`),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   spreads: () => get<SpreadsResponse>('/spreads'),

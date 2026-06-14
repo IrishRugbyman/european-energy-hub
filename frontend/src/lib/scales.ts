@@ -112,6 +112,19 @@ export function zoneName(zone: string): string {
   return ZONE_NAMES[zone] ?? zone
 }
 
+// NTC utilization pct -> color. Sequential scale: green (free) -> yellow -> red (saturated).
+// Clipped at 150% (meshed flow models can exceed 100%). Null = grey.
+export function utilizationColor(pct: number | null | undefined): string {
+  if (pct == null) return '#374151'  // grey - no data
+  if (pct > 100) return '#7f1d1d'   // red-900  - flow exceeds NTC (meshed)
+  if (pct > 90)  return '#b91c1c'   // red-700  - very congested
+  if (pct > 80)  return '#d97706'   // amber-600
+  if (pct > 60)  return '#ca8a04'   // yellow-600
+  if (pct > 40)  return '#65a30d'   // lime-600
+  if (pct > 20)  return '#16a34a'   // green-600
+  return '#15803d'                   // green-700 - free flowing
+}
+
 // Physical gas net flow GWh/d -> color. Diverging scale:
 // large import (blue) -> balanced (grey) -> large export (amber/red).
 // Positive = net importer, negative = net exporter.
