@@ -255,7 +255,7 @@ function ImbalanceDashboard() {
         </div>
       </div>
 
-      <StaleBanner datasetKey="imbalance" />
+      <StaleBanner datasetKey="imbalance" variant="inline" />
     </div>
   )
 }
