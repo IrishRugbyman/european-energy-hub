@@ -440,46 +440,12 @@ blocker (DuckDB -> PostgreSQL migration broke refresh.py) is fixed; see CHANGELO
 
 ---
 
-### Phase 6 - ENTSOG physical gas flows on /gas
+### Phase 6 - ENTSOG physical gas flows on /gas [COMPLETE - 2026-06-14]
 
-*Goal: the gas map gains a cross-border physical gas-flow layer (pipeline net flows by
-country), so /gas mirrors /power's "levels + flows" structure: storage fill + physical flows.*
-*Depends on: Phase 5. Source: `entsog_flows` (34k rows, country-level GWh/d, 2019-10 to present).*
-*Data note: `entsog` is NOT yet in the energy daily-refresh fetcher list - add it.*
-
-#### Data layer
-- [ ] Add `entsog` to the refresh fetcher list in `scripts/refresh.py` so `entsog_flows` stays current
-- [ ] `analytics/gas_flows.py`: `build_gas_flows_tables()` reading `entsog_flows` via loaders
-  (`from loaders.gas import ...` or a direct `_query`). `entsog_flows` columns:
-  (period_date, country, bz_key, bz_label, direction, value_gwh_d, source). Aggregate to a
-  daily net physical flow per country: net = sum(entry value_gwh_d) - sum(exit value_gwh_d)
-  using the `direction` field; emit `gas_flows_latest` (most recent day per country, net GWh/d
-  + entry/exit split) and `gas_flows_daily` (per-country daily net, trailing 400 days for the panel)
-- [ ] Verify direction semantics against one country (DE) vs a public ENTSOG figure; document the
-  sign convention (positive = net import into the country)
-
-#### Refresh job
-- [ ] `_write_gas_flows()` in `refresh.py`: `gas_flows_latest`, `gas_flows_daily`; stamp
-  `refreshed_at_gas_flows` in meta. Handle empty `entsog_flows` gracefully
-
-#### API
-- [ ] `GET /api/gas/flows` - `{as_of, rows: [{country, period_date, net_gwh_d, entry_gwh_d, exit_gwh_d}]}`
-  from gas_flows_latest (choropleth/arrow payload)
-- [ ] Extend `GET /api/gas/country/{cc}` (or add `/api/gas/flows/{cc}`) with the trailing-400d
-  net-flow series for the country panel
-- [ ] Pydantic schemas `GasFlowItem`, `GasFlowResponse`; pytest against seeded fixture (2 countries,
-  entry+exit rows incl. a net-import and a net-export day)
-
-#### Frontend
-- [ ] Toggleable gas-flow layer on /gas (reuse the freight/power LayerToggles pattern): color or
-  arrow each country by net import/export (diverging scale: blue import / red export), legend
-- [ ] `lib/scales.ts`: `gasFlowColor(net_gwh_d)` diverging scale + vitest boundary tests
-- [ ] CountryPanel: add a net-flow sparkline/bar (trailing window) under the seasonal chart
-- [ ] StaleBanner already covers gas; ensure it also reflects gas-flows freshness if older
-
-#### Definition of done
-- /gas has a flow layer toggle; DE shows net import on a normal winter-draw day, sign matches ENTSOG
-- Clicking a country shows its net-flow history; `pytest -q` + `npm test` green; live verified
+Physical gas flow choropleth overlay on /gas. "Physical flows" toggle (top-right) colors
+AT/BE/DE/FR/IT/NL by net GWh/d (blue = net importer, amber = net exporter). CountryPanel
+shows net/entry/exit stat boxes + 400-day AreaChart for ENTSOG countries.
+Endpoints: GET /api/gas/flows, GET /api/gas/flows/{cc}. 27 tests pass.
 
 ---
 

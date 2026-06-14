@@ -1,5 +1,21 @@
 # Energy Hub Changelog
 
+## 2026-06-14 - Phase 6: ENTSOG Physical Gas Flows on /gas
+
+- New "Physical flows" toggle button on /gas (top-right): overlays ENTSOG physical gas flow
+  data (AT/BE/DE/FR/IT/NL) as a diverging choropleth (blue = net importer, amber = net exporter)
+  on top of the existing storage fill % layer
+- Legend swaps between "Fill %" and "Net flow GWh/d" depending on which overlay is active
+- CountryPanel: net/entry/exit GWh/d stat boxes + 400-day trailing AreaChart for ENTSOG
+  countries; countries without ENTSOG coverage (PL, RO, etc.) silently show no flow section
+- Backend: analytics/gas_flows.py reads entsog_flows from PostgreSQL, pivots entry/exit per
+  country-day, computes net_gwh_d (positive = net importer); gas_flows_latest +
+  gas_flows_daily tables in energy_hub.duckdb (6 countries, 2193 daily rows)
+- New endpoints: GET /api/gas/flows (latest per country), GET /api/gas/flows/{cc} (400-day history)
+- scales.ts: gasFlowColor() diverging scale (blue-700 through amber-700 with grey neutral)
+- refresh.py: adds entsog fetcher to ingest list; writes gas_flows_* tables and refreshed_at_gas_flows
+- 4 new tests; all 27 backend tests pass
+
 ## 2026-06-14 - Fix: migrate refresh pipeline to PostgreSQL (was broken since DB migration)
 
 - The 2026-06-13 commo.duckdb -> PostgreSQL migration broke the energy refresh: refresh.py
