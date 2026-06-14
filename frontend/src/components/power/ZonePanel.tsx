@@ -20,18 +20,19 @@ import { fmtDelta } from '@/lib/utils'
 type DailyWindow = '1Y' | '2Y'
 
 const FUEL_COLORS: Record<string, string> = {
-  wind:      '#60a5fa',
-  solar:     '#fbbf24',
-  hydro:     '#34d399',
-  gas:       '#f97316',
-  coal:      '#78716c',
-  biomass:   '#86efac',
-  oil:       '#ef4444',
-  geothermal:'#a78bfa',
-  unknown:   '#4b5563',
+  wind:       '#60a5fa',
+  solar:      '#fbbf24',
+  hydro:      '#34d399',
+  nuclear:    '#a3e635',  // lime-400
+  gas:        '#f97316',
+  coal:       '#78716c',
+  biomass:    '#86efac',
+  oil:        '#ef4444',
+  geothermal: '#a78bfa',
+  other:      '#4b5563',
 }
 
-const FUEL_ORDER = ['wind', 'solar', 'hydro', 'biomass', 'gas', 'oil', 'coal', 'geothermal', 'unknown'] as const
+const FUEL_ORDER = ['wind', 'solar', 'hydro', 'biomass', 'nuclear', 'gas', 'oil', 'coal', 'geothermal', 'other'] as const
 
 interface Props {
   zone: string
@@ -222,8 +223,8 @@ function buildDailyBandData(daily: { price_date: string; base_eur: number | null
   }))
 }
 
-// Bottom-to-top: fossil at bottom, renewables on top
-const STACK_ORDER_POWER = ['unknown', 'oil', 'coal', 'geothermal', 'gas', 'biomass', 'hydro', 'solar', 'wind'] as const
+// Bottom-to-top: fossil at bottom, nuclear middle, renewables on top
+const STACK_ORDER_POWER = ['other', 'oil', 'coal', 'geothermal', 'gas', 'nuclear', 'biomass', 'hydro', 'solar', 'wind'] as const
 
 function GenerationMixSection({ mix, hourly }: { mix: GenerationMixRow; hourly: GenHourlyPoint[] }) {
   const chart = buildGenHourlyChart(hourly)
@@ -236,7 +237,6 @@ function GenerationMixSection({ mix, hourly }: { mix: GenerationMixRow; hourly: 
         {mix.renewable_pct != null && (
           <span className="ml-2 text-green-400 font-medium">{mix.renewable_pct.toFixed(0)}% renewable</span>
         )}
-        <span className="ml-1 text-muted-foreground/60" title="Source: Rebase Grid API. Nuclear generation is not included in this dataset.">(excl. nuclear)</span>
       </p>
 
       {hasHourly ? (
@@ -338,11 +338,12 @@ function buildGenHourlyChart(hourly: GenHourlyPoint[]) {
       solar: p.solar ?? 0,
       hydro: p.hydro ?? 0,
       biomass: p.biomass ?? 0,
+      nuclear: p.nuclear ?? 0,
       gas: p.gas ?? 0,
       oil: p.oil ?? 0,
       coal: p.coal ?? 0,
       geothermal: p.geothermal ?? 0,
-      unknown: p.unknown ?? 0,
+      other: p.other ?? 0,
     }))
 }
 

@@ -94,9 +94,10 @@ export interface GenerationMixRow {
   gas: number | null
   geothermal: number | null
   hydro: number | null
+  nuclear: number | null
   oil: number | null
+  other: number | null
   solar: number | null
-  unknown: number | null
   wind: number | null
   renewable_pct: number | null
   total_mw: number | null
@@ -109,9 +110,10 @@ export interface GenHourlyPoint {
   gas: number | null
   geothermal: number | null
   hydro: number | null
+  nuclear: number | null
   oil: number | null
+  other: number | null
   solar: number | null
-  unknown: number | null
   wind: number | null
 }
 

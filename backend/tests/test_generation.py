@@ -74,6 +74,6 @@ def test_generation_zone_fr(client):
     assert r.status_code == 200
     data = r.json()
     assert data["zone"] == "FR"
-    assert data["renewable_pct"] == 81.0
-    # FR has more hydro (8000) so dominant should be hydro
-    assert data["dominant_fuel"] == "hydro"
+    assert data["renewable_pct"] == 22.3
+    # FR fixture has nuclear=38000 MW as the largest fuel type
+    assert data["dominant_fuel"] == "nuclear"

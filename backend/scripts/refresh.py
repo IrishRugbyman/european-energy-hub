@@ -326,7 +326,7 @@ def _write_congestion(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
 
 def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
-    fuel_cols = "biomass REAL, coal REAL, gas REAL, geothermal REAL, hydro REAL, oil REAL, solar REAL, unknown REAL, wind REAL"
+    fuel_cols = "biomass REAL, coal REAL, gas REAL, geothermal REAL, hydro REAL, nuclear REAL, oil REAL, other REAL, solar REAL, wind REAL"
 
     # generation_latest
     gen = tables["generation_latest"]

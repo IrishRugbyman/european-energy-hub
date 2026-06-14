@@ -205,9 +205,10 @@ class GenerationMixRow(BaseModel):
     gas: float | None = None
     geothermal: float | None = None
     hydro: float | None = None
+    nuclear: float | None = None
     oil: float | None = None
+    other: float | None = None
     solar: float | None = None
-    unknown: float | None = None
     wind: float | None = None
     renewable_pct: float | None = None
     total_mw: float | None = None
@@ -241,9 +242,10 @@ class GenHourlyPoint(BaseModel):
     gas: float | None = None
     geothermal: float | None = None
     hydro: float | None = None
+    nuclear: float | None = None
     oil: float | None = None
+    other: float | None = None
     solar: float | None = None
-    unknown: float | None = None
     wind: float | None = None
 
 

@@ -429,7 +429,7 @@ def power_zone(zone_id: str):
     gen_df = db.query(
         """
         SELECT zone, gen_date::VARCHAR AS gen_date,
-               biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind,
+               biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind,
                renewable_pct, total_mw
         FROM generation_latest WHERE zone = ?
         """,
@@ -446,9 +446,10 @@ def power_zone(zone_id: str):
             gas=_float(gr["gas"]),
             geothermal=_float(gr["geothermal"]),
             hydro=_float(gr["hydro"]),
+            nuclear=_float(gr["nuclear"]),
             oil=_float(gr["oil"]),
+            other=_float(gr["other"]),
             solar=_float(gr["solar"]),
-            unknown=_float(gr["unknown"]),
             wind=_float(gr["wind"]),
             renewable_pct=_float(gr["renewable_pct"]),
             total_mw=_float(gr["total_mw"]),
@@ -457,7 +458,7 @@ def power_zone(zone_id: str):
     gen_hourly_df = db.query(
         """
         SELECT ts::VARCHAR AS ts,
-               biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+               biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind
         FROM generation_hourly_recent
         WHERE zone = ?
         ORDER BY ts
@@ -472,9 +473,10 @@ def power_zone(zone_id: str):
             gas=_float(r.gas),
             geothermal=_float(r.geothermal),
             hydro=_float(r.hydro),
+            nuclear=_float(r.nuclear),
             oil=_float(r.oil),
+            other=_float(r.other),
             solar=_float(r.solar),
-            unknown=_float(r.unknown),
             wind=_float(r.wind),
         )
         for r in (gen_hourly_df.itertuples() if not gen_hourly_df.empty else [])
@@ -634,7 +636,7 @@ def generation_map(date: str | None = None):
     return GenMapResponse(as_of=as_of, zones=zones, min_date=min_date, max_date=max_date)
 
 
-_FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "oil", "solar", "unknown", "wind")
+_FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "nuclear", "oil", "other", "solar", "wind")
 
 
 @app.get("/api/generation/zone/{zone_id}", response_model=GenZoneResponse)
@@ -645,7 +647,7 @@ def generation_zone(zone_id: str):
     latest_df = db.query(
         """
         SELECT gen_date::VARCHAR AS gen_date, renewable_pct, total_mw,
-               biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+               biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind
         FROM generation_latest WHERE zone = ?
         """,
         [zone_id],
@@ -659,7 +661,7 @@ def generation_zone(zone_id: str):
 
     hourly_df = db.query(
         """
-        SELECT ts::VARCHAR AS ts, biomass, coal, gas, geothermal, hydro, oil, solar, unknown, wind
+        SELECT ts::VARCHAR AS ts, biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind
         FROM generation_hourly_recent
         WHERE zone = ?
         ORDER BY ts
@@ -674,9 +676,10 @@ def generation_zone(zone_id: str):
             gas=_float(r.gas),
             geothermal=_float(r.geothermal),
             hydro=_float(r.hydro),
+            nuclear=_float(r.nuclear),
             oil=_float(r.oil),
+            other=_float(r.other),
             solar=_float(r.solar),
-            unknown=_float(r.unknown),
             wind=_float(r.wind),
         )
         for r in (hourly_df.itertuples() if not hourly_df.empty else [])
