@@ -69,7 +69,8 @@ def _seed_db(path: str) -> None:
     # Power tables
     conn.execute("""
         CREATE TABLE power_daily (
-            zone VARCHAR, price_date DATE, base_eur REAL, peak_eur REAL, offpeak_eur REAL
+            zone VARCHAR, price_date DATE, base_eur REAL, peak_eur REAL, offpeak_eur REAL,
+            day_range_eur REAL, neg_hours SMALLINT, min_eur REAL, max_eur REAL
         )
     """)
     conn.execute("""
@@ -79,7 +80,8 @@ def _seed_db(path: str) -> None:
     """)
     conn.execute("""
         CREATE TABLE power_latest (
-            zone VARCHAR, price_date DATE, base_eur REAL, peak_eur REAL, vs_30d_pct REAL
+            zone VARCHAR, price_date DATE, base_eur REAL, peak_eur REAL, vs_30d_pct REAL,
+            day_range_eur REAL, neg_hours SMALLINT, pct_rank_2yr REAL
         )
     """)
 
@@ -88,9 +90,13 @@ def _seed_db(path: str) -> None:
         day = start + timedelta(days=i)
         for zone, base in [("DE-LU", 80.0), ("FR", 65.0)]:
             price = base + (i % 365 - 182) * 0.2
+            range_eur = round(abs((i % 24) * 2.5 + 10), 2)
+            neg_h = 2 if price < 50 else 0
             conn.execute(
-                "INSERT INTO power_daily VALUES (?, ?, ?, ?, ?)",
-                [zone, day.isoformat(), round(price, 2), round(price * 1.15, 2), round(price * 0.85, 2)],
+                "INSERT INTO power_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [zone, day.isoformat(), round(price, 2), round(price * 1.15, 2),
+                 round(price * 0.85, 2), range_eur, neg_h,
+                 round(price - range_eur / 2, 2), round(price + range_eur / 2, 2)],
             )
 
     # Seed 8 days of hourly data
@@ -105,8 +111,8 @@ def _seed_db(path: str) -> None:
 
     for zone, base in [("DE-LU", 80.0), ("FR", 65.0)]:
         conn.execute(
-            "INSERT INTO power_latest VALUES (?, ?, ?, ?, ?)",
-            [zone, today.isoformat(), base, round(base * 1.15, 2), 5.0],
+            "INSERT INTO power_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            [zone, today.isoformat(), base, round(base * 1.15, 2), 5.0, 45.0, 1, 62.5],
         )
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_power", "2026-06-12T12:00:00+00:00"])
 

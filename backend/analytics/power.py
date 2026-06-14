@@ -16,9 +16,9 @@ def build_power_tables() -> dict[str, pd.DataFrame]:
     """Return three DataFrames ready to write into energy_hub.duckdb.
 
     Returns:
-        power_daily:         daily base/peak/offpeak per zone, trailing 2 years
+        power_daily:         daily base/peak/offpeak/range/neg_hours per zone, trailing 2 years
         power_hourly_recent: hourly prices per zone, trailing 8 days
-        power_latest:        one row per zone with current base + vs-30d stats
+        power_latest:        one row per zone with current base + stats + percentile rank
     """
     conn = get_read_conn()
     try:
@@ -38,9 +38,9 @@ def build_power_tables() -> dict[str, pd.DataFrame]:
         conn.close()
 
     if raw.empty:
-        empty_daily = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "offpeak_eur"])
+        empty_daily = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "offpeak_eur", "day_range_eur", "neg_hours", "min_eur", "max_eur"])
         empty_hourly = pd.DataFrame(columns=["zone", "ts", "price_eur_mwh"])
-        empty_latest = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "vs_30d_pct"])
+        empty_latest = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "vs_30d_pct", "day_range_eur", "neg_hours", "pct_rank_2yr"])
         return {"power_daily": empty_daily, "power_hourly_recent": empty_hourly, "power_latest": empty_latest}
 
     raw["ts"] = pd.to_datetime(raw["ts"])
@@ -84,10 +84,16 @@ def _build_daily(df: pd.DataFrame) -> pd.DataFrame:
 def _daily_agg(g: pd.DataFrame) -> pd.Series:
     peak = g.loc[g["is_peak"], "price_eur_mwh"]
     offpeak = g.loc[~g["is_peak"], "price_eur_mwh"]
+    prices = g["price_eur_mwh"]
+    n = len(g)
     return pd.Series({
-        "base_eur": g["price_eur_mwh"].mean() if len(g) >= 20 else None,
+        "base_eur": prices.mean() if n >= 20 else None,
         "peak_eur": peak.mean() if len(peak) >= 8 else None,
         "offpeak_eur": offpeak.mean() if len(offpeak) >= 8 else None,
+        "min_eur": round(float(prices.min()), 2) if n >= 20 else None,
+        "max_eur": round(float(prices.max()), 2) if n >= 20 else None,
+        "day_range_eur": round(float(prices.max() - prices.min()), 2) if n >= 20 else None,
+        "neg_hours": int((prices < 0).sum()),
     })
 
 
@@ -100,10 +106,8 @@ def _build_hourly_recent(df: pd.DataFrame) -> pd.DataFrame:
 
 def _build_latest(daily: pd.DataFrame) -> pd.DataFrame:
     if daily.empty:
-        return pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "vs_30d_pct"])
+        return pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "vs_30d_pct", "day_range_eur", "neg_hours", "pct_rank_2yr"])
 
-    today = pd.Timestamp.now().normalize().date()
-    # Latest date with a full day of data (allow up to 2 days lag)
     daily["price_date"] = pd.to_datetime(daily["price_date"]).dt.date
 
     rows = []
@@ -114,25 +118,32 @@ def _build_latest(daily: pd.DataFrame) -> pd.DataFrame:
 
         latest_row = zdf.iloc[-1]
         latest_date = latest_row["price_date"]
+        latest_base = float(latest_row["base_eur"])
 
-        # vs 30-day trailing mean (excluding latest day to avoid look-ahead)
-        cutoff_30 = pd.Timestamp(latest_date) - pd.Timedelta(days=30)
         hist = zdf[zdf["price_date"] < latest_date]
-        hist_30 = hist[pd.to_datetime(hist["price_date"]) >= cutoff_30]
 
+        cutoff_30 = pd.Timestamp(latest_date) - pd.Timedelta(days=30)
+        hist_30 = hist[pd.to_datetime(hist["price_date"]) >= cutoff_30]
         mean_30 = hist_30["base_eur"].mean() if len(hist_30) >= 10 else None
-        vs_30d = (
-            ((latest_row["base_eur"] - mean_30) / mean_30 * 100)
-            if mean_30 and mean_30 != 0
+        vs_30d = ((latest_base - mean_30) / mean_30 * 100) if mean_30 and mean_30 != 0 else None
+
+        # percentile rank: fraction of 2yr history below today's price
+        hist_2yr = hist["base_eur"].dropna()
+        pct_rank_2yr = (
+            round(float((hist_2yr < latest_base).sum() / len(hist_2yr) * 100), 1)
+            if len(hist_2yr) >= 30
             else None
         )
 
         rows.append({
             "zone": zone,
             "price_date": latest_date,
-            "base_eur": round(float(latest_row["base_eur"]), 2) if latest_row["base_eur"] is not None else None,
-            "peak_eur": round(float(latest_row["peak_eur"]), 2) if latest_row["peak_eur"] is not None else None,
+            "base_eur": round(latest_base, 2),
+            "peak_eur": round(float(latest_row["peak_eur"]), 2) if latest_row.get("peak_eur") is not None else None,
             "vs_30d_pct": round(float(vs_30d), 1) if vs_30d is not None else None,
+            "day_range_eur": round(float(latest_row["day_range_eur"]), 2) if latest_row.get("day_range_eur") is not None else None,
+            "neg_hours": int(latest_row["neg_hours"]) if latest_row.get("neg_hours") is not None else 0,
+            "pct_rank_2yr": pct_rank_2yr,
         })
 
     return pd.DataFrame(rows)

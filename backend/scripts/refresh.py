@@ -188,7 +188,11 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             price_date DATE,
             base_eur REAL,
             peak_eur REAL,
-            offpeak_eur REAL
+            offpeak_eur REAL,
+            day_range_eur REAL,
+            neg_hours SMALLINT,
+            min_eur REAL,
+            max_eur REAL
         )
     """)
     if not daily.empty:
@@ -212,7 +216,10 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             price_date DATE,
             base_eur REAL,
             peak_eur REAL,
-            vs_30d_pct REAL
+            vs_30d_pct REAL,
+            day_range_eur REAL,
+            neg_hours SMALLINT,
+            pct_rank_2yr REAL
         )
     """)
     if not latest.empty:

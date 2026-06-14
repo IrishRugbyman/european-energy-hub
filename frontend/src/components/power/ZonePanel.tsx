@@ -5,6 +5,7 @@ import {
   Area,
   AreaChart,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -67,11 +68,30 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
 
       {/* Stats */}
       {latest && (
-        <div className="grid grid-cols-2 gap-2 p-4 border-b border-border">
-          <StatBox label="Base" value={latest.base_eur != null ? `${latest.base_eur.toFixed(0)} €/MWh` : '--'} big />
-          <StatBox label="Peak" value={latest.peak_eur != null ? `${latest.peak_eur.toFixed(0)} €/MWh` : '--'} />
-          <StatBox label="vs 30d avg" value={fmtDelta(latest.vs_30d_pct, 1, '%')} signed />
-          <StatBox label="As of" value={latest.price_date} />
+        <div className="p-4 border-b border-border space-y-2">
+          <div className="grid grid-cols-2 gap-2">
+            <StatBox label="Base" value={latest.base_eur != null ? `${latest.base_eur.toFixed(0)} €/MWh` : '--'} big />
+            <StatBox label="Peak" value={latest.peak_eur != null ? `${latest.peak_eur.toFixed(0)} €/MWh` : '--'} />
+            <StatBox label="vs 30d avg" value={fmtDelta(latest.vs_30d_pct, 1, '%')} signed />
+            <StatBox label="As of" value={latest.price_date} />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <StatBox
+              label="Intraday range"
+              value={latest.day_range_eur != null ? `${latest.day_range_eur.toFixed(0)} €` : '--'}
+              title="Max - min hourly price. Battery arbitrage proxy."
+            />
+            <StatBox
+              label="Neg. hours"
+              value={latest.neg_hours != null ? `${latest.neg_hours}h` : '--'}
+              title="Hours with negative DA price today."
+            />
+            <StatBox
+              label="2yr rank"
+              value={latest.pct_rank_2yr != null ? `${latest.pct_rank_2yr.toFixed(0)}th` : '--'}
+              title="Percentile of today's base price in the 2yr history. Low = historically cheap."
+            />
+          </div>
         </div>
       )}
 
@@ -108,10 +128,10 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
           <GenerationMixSection mix={data.generation_mix} hourly={data.generation_hourly ?? []} />
         )}
 
-        {/* Daily base/peak chart */}
+        {/* Daily base/peak chart with min/max band */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <p className="text-xs text-muted-foreground">Daily base / peak (€/MWh)</p>
+            <p className="text-xs text-muted-foreground">Daily price range (€/MWh)</p>
             <div className="flex items-center gap-1">
               {(['1Y', '2Y'] as DailyWindow[]).map((w) => (
                 <button
@@ -132,24 +152,33 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
             <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">Loading...</div>
           ) : dailyData.length > 0 ? (
             <ResponsiveContainer width="100%" height={160}>
-              <LineChart data={dailyData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+              <ComposedChart data={buildDailyBandData(dailyData)} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
                 <XAxis dataKey="price_date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
                   interval={Math.floor(dailyData.length / 6)}
-                  tickFormatter={(v) => v?.slice(5) ?? ''} />
+                  tickFormatter={(v) => (v as string)?.slice(5) ?? ''} />
                 <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} width={36}
                   tickFormatter={(v) => `${v}`} />
                 <Tooltip
                   contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
                   formatter={(v, name) => {
+                    if (name === '_band_base') return false
                     const num = typeof v === 'number' ? v : null
                     return num != null ? [`${num.toFixed(0)} €/MWh`, String(name)] : ['--', String(name)]
                   }}
                 />
+                {/* Invisible floor to anchor the band */}
+                <Area type="monotone" dataKey="_band_base" stackId="band"
+                  stroke="none" fill="transparent" legendType="none" tooltipType="none" />
+                {/* Shaded range from min to max */}
+                <Area type="monotone" dataKey="_band_height" stackId="band"
+                  stroke="none" fill="rgba(56,189,248,0.12)" legendType="none" name="_band_base" />
+                {/* Base price line */}
                 <Line type="monotone" dataKey="base_eur" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="Base" />
+                {/* Peak price line */}
                 <Line type="monotone" dataKey="peak_eur" stroke="#f59e0b" strokeWidth={1} dot={false}
                   strokeDasharray="3 2" name="Peak" />
-              </LineChart>
+              </ComposedChart>
             </ResponsiveContainer>
           ) : (
             <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">No data</div>
@@ -160,17 +189,37 @@ export function ZonePanel({ zone, latest, onClose }: Props) {
   )
 }
 
-function StatBox({ label, value, big, signed }: { label: string; value: string; big?: boolean; signed?: boolean }) {
+function StatBox({
+  label, value, big, signed, title,
+}: { label: string; value: string; big?: boolean; signed?: boolean; title?: string }) {
   const isNeg = signed && value.startsWith('-')
   const isPos = signed && value.startsWith('+')
   return (
-    <div className="bg-secondary rounded p-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
+    <div className="bg-secondary rounded p-2" title={title}>
+      <p className="text-xs text-muted-foreground truncate">{label}</p>
       <p className={`${big ? 'text-xl' : 'text-sm'} font-medium ${isNeg ? 'text-red-400' : isPos ? 'text-green-400' : 'text-foreground'}`}>
         {value}
       </p>
     </div>
   )
+}
+
+type BandPoint = {
+  price_date: string
+  base_eur: number | null
+  peak_eur: number | null
+  _band_base: number | null
+  _band_height: number | null
+}
+
+function buildDailyBandData(daily: { price_date: string; base_eur: number | null; peak_eur: number | null; min_eur: number | null; max_eur: number | null }[]): BandPoint[] {
+  return daily.map((d) => ({
+    price_date: d.price_date,
+    base_eur: d.base_eur,
+    peak_eur: d.peak_eur,
+    _band_base: d.min_eur,
+    _band_height: d.min_eur != null && d.max_eur != null ? d.max_eur - d.min_eur : null,
+  }))
 }
 
 // Bottom-to-top: fossil at bottom, renewables on top

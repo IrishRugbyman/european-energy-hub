@@ -140,6 +140,43 @@ export function gasFlowColor(net: number | null | undefined): string {
   return '#b45309'                    // amber-700 - large exporter
 }
 
+// Intraday price range EUR/MWh -> color. Higher range = more battery opportunity.
+// Null = grey. Sequential purple scale: light (low range) to deep purple (high range).
+export function dayRangeColor(range: number | null | undefined): string {
+  if (range == null) return '#374151'
+  if (range < 20)  return '#1e293b'   // slate-900 (tiny spread)
+  if (range < 40)  return '#4c1d95'   // violet-900
+  if (range < 60)  return '#6d28d9'   // violet-700
+  if (range < 80)  return '#7c3aed'   // violet-600
+  if (range < 100) return '#8b5cf6'   // violet-500
+  if (range < 150) return '#a78bfa'   // violet-400
+  return '#c4b5fd'                    // violet-300 (very wide spread)
+}
+
+// Negative price hours count -> color. 0 = neutral grey, 1-3 = yellow caution,
+// 4-8 = amber warning, 9+ = red (severe oversupply event).
+export function negHoursColor(hours: number | null | undefined): string {
+  if (hours == null || hours === 0) return '#374151'  // grey - no negative hours
+  if (hours < 2)  return '#ca8a04'   // yellow-600 - occasional
+  if (hours < 4)  return '#d97706'   // amber-600
+  if (hours < 8)  return '#ea580c'   // orange-600
+  if (hours < 12) return '#b91c1c'   // red-700
+  return '#7f1d1d'                   // red-900 - extreme oversupply
+}
+
+// Percentile rank -> color. Shows where today sits in 2yr history.
+// Low pct (cheap) = blue, median = green, high pct (expensive) = red.
+export function pctRankColor(rank: number | null | undefined): string {
+  if (rank == null) return '#374151'
+  if (rank < 10) return '#1d4ed8'    // blue-700 - historically cheap
+  if (rank < 25) return '#0369a1'    // sky-700
+  if (rank < 40) return '#0e7490'    // cyan-700
+  if (rank < 60) return '#15803d'    // green-700 - around median
+  if (rank < 75) return '#65a30d'    // lime-600
+  if (rank < 90) return '#d97706'    // amber-600
+  return '#b91c1c'                   // red-700 - historically expensive
+}
+
 // Renewable % -> color. Fixed thresholds: 0-20 brown, 20-40 amber, 40-60 olive,
 // 60-80 mid-green, 80-100 deep green. Null = grey (no data).
 export function renewablePctColor(pct: number | null | undefined): string {

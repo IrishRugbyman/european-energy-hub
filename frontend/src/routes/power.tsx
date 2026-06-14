@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type PowerLatestRow } from '@/lib/api'
-import { PowerMap } from '@/components/power/PowerMap'
+import { PowerMap, type PowerMetric } from '@/components/power/PowerMap'
 import { ZonePanel } from '@/components/power/ZonePanel'
 import { FlowArrowsLayer } from '@/components/power/FlowArrowsLayer'
 import { CongestionLayer } from '@/components/power/CongestionLayer'
@@ -23,10 +23,65 @@ const UTILIZATION_LEGEND = [
   { label: 'no data', color: '#374151' },
 ]
 
+const METRIC_LEGENDS: Record<PowerMetric, { title: string; items: { label: string; color: string }[] }> = {
+  price: {
+    title: '€/MWh',
+    items: [
+      { label: '< 20',    color: '#1d4ed8' },
+      { label: '20-50',   color: '#0369a1' },
+      { label: '50-80',   color: '#0e7490' },
+      { label: '80-120',  color: '#15803d' },
+      { label: '120-160', color: '#65a30d' },
+      { label: '160-200', color: '#ca8a04' },
+      { label: '200-250', color: '#d97706' },
+      { label: '> 250',   color: '#b91c1c' },
+      { label: 'no data', color: '#374151' },
+    ],
+  },
+  range: {
+    title: 'Intraday range (€/MWh)',
+    items: [
+      { label: '< 20',    color: '#1e293b' },
+      { label: '20-40',   color: '#4c1d95' },
+      { label: '40-60',   color: '#6d28d9' },
+      { label: '60-80',   color: '#7c3aed' },
+      { label: '80-100',  color: '#8b5cf6' },
+      { label: '100-150', color: '#a78bfa' },
+      { label: '> 150',   color: '#c4b5fd' },
+      { label: 'no data', color: '#374151' },
+    ],
+  },
+  neg_hours: {
+    title: 'Negative-price hours',
+    items: [
+      { label: '0',      color: '#374151' },
+      { label: '1',      color: '#ca8a04' },
+      { label: '2-3',    color: '#d97706' },
+      { label: '4-7',    color: '#ea580c' },
+      { label: '8-11',   color: '#b91c1c' },
+      { label: '12+',    color: '#7f1d1d' },
+    ],
+  },
+  pct_rank: {
+    title: '2yr price rank',
+    items: [
+      { label: '< 10th (cheap)',  color: '#1d4ed8' },
+      { label: '10-25th',         color: '#0369a1' },
+      { label: '25-40th',         color: '#0e7490' },
+      { label: '40-60th (mid)',   color: '#15803d' },
+      { label: '60-75th',         color: '#65a30d' },
+      { label: '75-90th',         color: '#d97706' },
+      { label: '> 90th (dear)',   color: '#b91c1c' },
+      { label: 'no data',         color: '#374151' },
+    ],
+  },
+}
+
 function PowerDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
   const [showFlows, setShowFlows] = useState(false)
   const [showCongestion, setShowCongestion] = useState(false)
+  const [mapMetric, setMapMetric] = useState<PowerMetric>('price')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['power-map'],
@@ -57,7 +112,7 @@ function PowerDashboard() {
 
   return (
     <div className="relative h-full flex">
-      {/* Layer toggles (top-right) */}
+      {/* Layer toggles + metric selector (top-right) */}
       <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
         <button
           onClick={() => setShowFlows((v) => !v)}
@@ -81,6 +136,28 @@ function PowerDashboard() {
           <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
           Congestion
         </button>
+        {/* Metric selector */}
+        <div className="bg-card/90 backdrop-blur border border-border rounded shadow flex flex-col gap-0.5 p-1">
+          <p className="text-muted-foreground text-[10px] px-1 pb-0.5">Map layer</p>
+          {([
+            ['price',     'Price'],
+            ['range',     'Range'],
+            ['neg_hours', 'Neg hrs'],
+            ['pct_rank',  '2yr rank'],
+          ] as [PowerMetric, string][]).map(([m, label]) => (
+            <button
+              key={m}
+              onClick={() => setMapMetric(m)}
+              className={`px-2 py-1 rounded text-xs text-left transition-colors ${
+                m === mapMetric
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Stat strip */}
@@ -98,7 +175,7 @@ function PowerDashboard() {
         ) : null}
       </div>
 
-      {/* Legend (hidden on mobile): price or congestion depending on active overlay */}
+      {/* Legend (hidden on mobile) */}
       <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
         {showCongestion ? (
           <>
@@ -112,18 +189,8 @@ function PowerDashboard() {
           </>
         ) : (
           <>
-            <p className="text-muted-foreground mb-1 font-medium">€/MWh</p>
-            {[
-              { label: '< 20',    color: '#1d4ed8' },
-              { label: '20-50',   color: '#0369a1' },
-              { label: '50-80',   color: '#0e7490' },
-              { label: '80-120',  color: '#15803d' },
-              { label: '120-160', color: '#65a30d' },
-              { label: '160-200', color: '#ca8a04' },
-              { label: '200-250', color: '#d97706' },
-              { label: '> 250',   color: '#b91c1c' },
-              { label: 'no data', color: '#374151' },
-            ].map(({ label, color }) => (
+            <p className="text-muted-foreground mb-1 font-medium">{METRIC_LEGENDS[mapMetric].title}</p>
+            {METRIC_LEGENDS[mapMetric].items.map(({ label, color }) => (
               <div key={label} className="flex items-center gap-1.5">
                 <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
                 <span className="text-muted-foreground">{label}</span>
@@ -135,7 +202,7 @@ function PowerDashboard() {
 
       {/* Map */}
       <div className="flex-1">
-        <PowerMap rows={data?.rows ?? []} selected={selected} onSelect={setSelected}>
+        <PowerMap rows={data?.rows ?? []} selected={selected} onSelect={setSelected} metric={mapMetric}>
           {showFlows && flowsData && flowsData.rows.length > 0 && (
             <FlowArrowsLayer flows={flowsData.rows} />
           )}

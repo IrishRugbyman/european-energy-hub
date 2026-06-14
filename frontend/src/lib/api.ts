@@ -60,6 +60,9 @@ export interface PowerLatestRow {
   base_eur: number | null
   peak_eur: number | null
   vs_30d_pct: number | null
+  day_range_eur: number | null
+  neg_hours: number | null
+  pct_rank_2yr: number | null
 }
 
 export interface PowerMapResponse {
@@ -77,6 +80,10 @@ export interface PowerDailyPoint {
   price_date: string
   base_eur: number | null
   peak_eur: number | null
+  day_range_eur: number | null
+  neg_hours: number | null
+  min_eur: number | null
+  max_eur: number | null
 }
 
 export interface GenerationMixRow {

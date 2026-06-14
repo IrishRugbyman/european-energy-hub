@@ -89,6 +89,9 @@ class PowerLatestRow(BaseModel):
     base_eur: float | None
     peak_eur: float | None = None
     vs_30d_pct: float | None = None
+    day_range_eur: float | None = None
+    neg_hours: int | None = None
+    pct_rank_2yr: float | None = None
 
 
 class PowerMapResponse(BaseModel):
@@ -108,6 +111,10 @@ class PowerDailyPoint(BaseModel):
     price_date: str
     base_eur: float | None
     peak_eur: float | None = None
+    day_range_eur: float | None = None
+    neg_hours: int | None = None
+    min_eur: float | None = None
+    max_eur: float | None = None
 
 
 class PowerZoneResponse(BaseModel):

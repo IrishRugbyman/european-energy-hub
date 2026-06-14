@@ -338,8 +338,8 @@ def power_congestion_border(from_zone: str, to_zone: str):
 @app.get("/api/power/map", response_model=PowerMapResponse)
 def power_map():
     df = db.query(
-        "SELECT zone, price_date::VARCHAR AS price_date, base_eur, peak_eur, vs_30d_pct FROM power_latest ORDER BY zone",
-            )
+        "SELECT zone, price_date::VARCHAR AS price_date, base_eur, peak_eur, vs_30d_pct, day_range_eur, neg_hours, pct_rank_2yr FROM power_latest ORDER BY zone",
+    )
     if df.empty:
         return PowerMapResponse(
             as_of=datetime.now(timezone.utc).isoformat(),
@@ -353,6 +353,9 @@ def power_map():
             base_eur=_float(r.base_eur),
             peak_eur=_float(r.peak_eur),
             vs_30d_pct=_float(r.vs_30d_pct),
+            day_range_eur=_float(r.day_range_eur),
+            neg_hours=int(r.neg_hours) if r.neg_hours is not None else None,
+            pct_rank_2yr=_float(r.pct_rank_2yr),
         )
         for r in df.itertuples()
     ]
@@ -368,9 +371,9 @@ def power_zone(zone_id: str):
     # Normalise: replace underscore with hyphen for lookup (API uses DE-LU, not DE_LU)
     # The DB stores zone names as they appear in config (e.g. "DE-LU", "SE-1")
     latest_df = db.query(
-        "SELECT zone, price_date::VARCHAR AS price_date, base_eur, peak_eur, vs_30d_pct FROM power_latest WHERE zone = ?",
+        "SELECT zone, price_date::VARCHAR AS price_date, base_eur, peak_eur, vs_30d_pct, day_range_eur, neg_hours, pct_rank_2yr FROM power_latest WHERE zone = ?",
         [zone_id],
-            )
+    )
     if latest_df is None or latest_df.empty:
         raise HTTPException(status_code=404, detail=f"Zone not found: {zone_id}")
 
@@ -381,6 +384,9 @@ def power_zone(zone_id: str):
         base_eur=_float(r["base_eur"]),
         peak_eur=_float(r["peak_eur"]),
         vs_30d_pct=_float(r["vs_30d_pct"]),
+        day_range_eur=_float(r["day_range_eur"]),
+        neg_hours=int(r["neg_hours"]) if r["neg_hours"] is not None else None,
+        pct_rank_2yr=_float(r["pct_rank_2yr"]),
     )
 
     hourly_df = db.query(
@@ -399,7 +405,7 @@ def power_zone(zone_id: str):
 
     daily_df = db.query(
         """
-        SELECT price_date::VARCHAR AS price_date, base_eur, peak_eur
+        SELECT price_date::VARCHAR AS price_date, base_eur, peak_eur, day_range_eur, neg_hours, min_eur, max_eur
         FROM power_daily
         WHERE zone = ?
           AND price_date >= current_date - INTERVAL '2 years'
@@ -412,6 +418,10 @@ def power_zone(zone_id: str):
             price_date=str(row.price_date),
             base_eur=_float(row.base_eur),
             peak_eur=_float(row.peak_eur),
+            day_range_eur=_float(row.day_range_eur),
+            neg_hours=int(row.neg_hours) if row.neg_hours is not None else None,
+            min_eur=_float(row.min_eur),
+            max_eur=_float(row.max_eur),
         )
         for row in (daily_df.itertuples() if not daily_df.empty else [])
     ]
