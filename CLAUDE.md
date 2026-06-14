@@ -6,17 +6,21 @@ Standalone live web app at **energy.lbzgiu.xyz**. Five dashboards:
 **/spreads** (CSS/CDS/FSS spark/dark spread analytics), **/prices** (TTF/EUA/coal/HH commodity charts).
 Sister site to freight.lbzgiu.xyz, same stack and conventions.
 
-**Active build plan: [`docs/ROADMAP.md`](docs/ROADMAP.md).** Phase 1-5 built. Phase 5 is live in code
-but the /generation map needs one manual refresh once the rebase-generation backfill finishes.
-Check backfill status: `tail /tmp/rebase_backfill.log` or `ps aux | grep ingest`.
-Once done: `cd ~/quant/energy/backend && .venv/bin/python scripts/refresh.py --skip-ingest`
+**Active build plan: [`docs/ROADMAP.md`](docs/ROADMAP.md).** Phase 1-5 built and live, including /generation.
+
+**Data source: PostgreSQL `market_data`, NOT commo.duckdb.** Following the repo-wide
+DuckDB -> PostgreSQL migration (2026-06-13), `refresh.py` and the `analytics/` modules read
+from the `market_data` PostgreSQL database via the market-data `loaders/` package
+(`get_read_conn()` / `_query()`, DSN `postgresql:///market_data`). They do NOT open commo.duckdb
+(which is deleted; only a legacy backup ever existed). Only the *output* DB, `energy_hub.duckdb`,
+is still DuckDB - it is precomputed by `refresh.py` and served read-only by the API.
 
 ## Key paths
 
 | Path | Role |
 |---|---|
 | `backend/app/main.py` | FastAPI :8004, all endpoints |
-| `backend/scripts/refresh.py` | Rebuilds energy_hub.duckdb from commo.duckdb |
+| `backend/scripts/refresh.py` | Rebuilds energy_hub.duckdb from the `market_data` PostgreSQL DB |
 | `backend/analytics/` | gas.py, power.py, spreads.py, flows.py, generation.py |
 | `backend/data/energy_hub.duckdb` | Precomputed read-only DB served by API |
 | `frontend/src/routes/` | gas.tsx, power.tsx, generation.tsx, spreads.tsx, prices.tsx |
@@ -33,7 +37,7 @@ sudo systemctl restart energy-api.service
 sudo systemctl status energy-refresh.timer
 sudo journalctl -u energy-api -n 50 --no-pager
 
-# Manual refresh (populate generation tables once backfill finishes)
+# Manual refresh (rebuild energy_hub.duckdb from PostgreSQL; --skip-ingest skips the fetch step)
 cd ~/quant/energy/backend
 .venv/bin/python scripts/refresh.py --skip-ingest
 ```

@@ -1,4 +1,4 @@
-# energy-refresh -- rebuild energy_hub.duckdb from commo.duckdb.
+# energy-refresh -- rebuild energy_hub.duckdb from the market_data PostgreSQL DB.
 #
 # Install:
 #   sudo cp ~/quant/energy/backend/energy-refresh.service /etc/systemd/system/
@@ -9,8 +9,9 @@
 #   journalctl -u energy-refresh.service -n 50 --no-pager
 
 [Unit]
-Description=European Energy Hub data refresh (commo.duckdb -> energy_hub.duckdb)
-After=network-online.target
+Description=European Energy Hub data refresh (market_data PostgreSQL -> energy_hub.duckdb)
+After=network-online.target postgresql.service
+Wants=network-online.target
 
 [Service]
 Type=oneshot

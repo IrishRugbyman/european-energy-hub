@@ -352,16 +352,20 @@ cross-links, registry updated.*
 
 ---
 
-### Phase 5 - Generation Mix Dashboard
+### Phase 5 - Generation Mix Dashboard (COMPLETE 2026-06-14) ✅
 
 *Goal: /generation shows a renewable-% choropleth for 34 European bidding zones with
 per-zone fuel-mix deep-dive (24h hourly stacked profile + 1Y daily renewable trend),
 completing the energy trilemma picture: gas storage -> power prices -> generation mix.*
-*Depends on: Phase 4. Estimated: 1-2 sessions.*
-*Data prerequisite: rebase-generation backfill must be complete (check log / ps aux | grep ingest).*
+*Built 2026-06-13 (code); brought live 2026-06-14 once the rebase-generation backfill
+finished and the refresh pipeline was migrated from commo.duckdb to PostgreSQL.*
+
+All tasks below done: generation tables populated (33 zones live), /api/generation/map +
+/api/generation/zone serving real data, choropleth + ZoneGenPanel shipped. The post-build
+blocker (DuckDB -> PostgreSQL migration broke refresh.py) is fixed; see CHANGELOG 2026-06-14.
 
 #### Data layer
-- [ ] Extend `analytics/generation.py`:
+- [x] Extend `analytics/generation.py`:
   - `build_generation_daily(db)`: daily avg MW per fuel per zone for 2019-present
     (`SELECT zone, ts::DATE AS gen_date, AVG(solar) AS solar, ... GROUP BY zone, gen_date`)
   - `build_generation_hourly_recent(db)`: last 10 days hourly mix per zone
@@ -369,32 +373,32 @@ completing the energy trilemma picture: gas storage -> power prices -> generatio
   - Update `build_generation_latest` to pull from `generation_daily` (max gen_date per zone)
     rather than querying rebase_generation directly, so the three tables stay consistent
   - All three functions: handle empty rebase_generation gracefully (return empty DataFrame)
-- [ ] Add `generation_daily` and `generation_hourly_recent` to `build_generation_tables()`
-- [ ] Extend `scripts/refresh.py` to write `generation_daily` and `generation_hourly_recent`
+- [x] Add `generation_daily` and `generation_hourly_recent` to `build_generation_tables()`
+- [x] Extend `scripts/refresh.py` to write `generation_daily` and `generation_hourly_recent`
   to energy_hub.duckdb (mirror how `power_daily`/`power_hourly_recent` are handled)
-- [ ] Verify: after a manual `refresh.py --skip-ingest`, `generation_daily` has rows
+- [x] Verify: after a manual `refresh.py --skip-ingest`, `generation_daily` has rows
   for all populated zones and `generation_hourly_recent` covers the last 10 days
 
 #### API
-- [ ] `GET /api/generation/map` - returns `{zones: [{zone, gen_date, renewable_pct, solar_mw,
+- [x] `GET /api/generation/map` - returns `{zones: [{zone, gen_date, renewable_pct, solar_mw,
   wind_mw, hydro_mw, gas_mw, coal_mw, total_mw}]}` from generation_latest;
   404 if no data (backfill not finished)
-- [ ] `GET /api/generation/zone/{zone}` - returns:
+- [x] `GET /api/generation/zone/{zone}` - returns:
   - `hourly`: list of `{ts, solar, wind, hydro, gas, coal, biomass, oil, unknown}` (MW, last 10 days)
   - `daily`: list of `{gen_date, renewable_pct, solar, wind, hydro, gas, coal, total_mw}` (2Y history)
   - `latest`: `{gen_date, renewable_pct, dominant_fuel, fuel_breakdown}`
   - 404 for unknown zone
-- [ ] Add Pydantic schemas: `GenMapItem`, `GenMapResponse`, `GenHourly`, `GenDaily`, `GenZoneResponse`
-- [ ] pytest: generation map + zone endpoints against seeded fixture with 2 zones and 72h of hourly data
+- [x] Add Pydantic schemas: `GenMapItem`, `GenMapResponse`, `GenHourly`, `GenDaily`, `GenZoneResponse`
+- [x] pytest: generation map + zone endpoints against seeded fixture with 2 zones and 72h of hourly data
   (include DST boundary to test ts handling); 404 for unknown zone
 
 #### Frontend
-- [ ] `lib/scales.ts`: add `renewablePctColor(pct: number): string` - fixed thresholds
+- [x] `lib/scales.ts`: add `renewablePctColor(pct: number): string` - fixed thresholds
   (0-20 brown #8B4513, 20-40 amber #B8860B, 40-60 #8B8B00, 60-80 #4A8B4A, 80-100 #1B6B1B);
   add vitest tests (0, 19, 20, 50, 80, 100 boundary checks + null/undefined guard)
-- [ ] `lib/api.ts`: add `fetchGenMap()` and `fetchGenZone(zone)` typed fetchers;
+- [x] `lib/api.ts`: add `fetchGenMap()` and `fetchGenZone(zone)` typed fetchers;
   staleTime 15 min (daily-refresh data)
-- [ ] `routes/generation.tsx`: full-screen Leaflet choropleth on bidding_zones.geojson
+- [x] `routes/generation.tsx`: full-screen Leaflet choropleth on bidding_zones.geojson
   - Same structure as power.tsx: map fills viewport, side panel opens on zone click
   - GeoJSON colored by renewable_pct via `renewablePctColor`; grey if no data for zone
   - Hover tooltip: zone name + renewable_pct + dominant fuel
@@ -402,7 +406,7 @@ completing the energy trilemma picture: gas storage -> power prices -> generatio
   - EU summary strip (top): avg renewable_pct weighted by total_mw, highest/lowest zone
   - StaleBanner: show if gen_date > 48h old (reuse existing StaleBanner component)
   - No date picker (v5 shows today only; historical date picker is a v6+ idea)
-- [ ] `components/generation/ZoneGenPanel.tsx`:
+- [x] `components/generation/ZoneGenPanel.tsx`:
   - Header: zone name, gen_date, renewable_pct badge (green), dominant fuel label
   - Stacked area chart (recharts AreaChart): 24h hourly fuel mix, last full day;
     fuel stacking order bottom-to-top: nuclear/hydro (green), wind (light green),
@@ -412,13 +416,13 @@ completing the energy trilemma picture: gas storage -> power prices -> generatio
     30d rolling average line overlay; Y-axis 0-100%; X-axis: month labels
   - Window toggle: 3M / 1Y / ALL for the trend chart (mirrors gas/power panel toggles)
   - Mobile: bottom sheet (same pattern as CountryPanel/ZonePanel)
-- [ ] Upgrade `components/power/ZonePanel.tsx` GenerationMixSection:
+- [x] Upgrade `components/power/ZonePanel.tsx` GenerationMixSection:
   - Replace current flat-bar display with a proper 24h stacked area chart
   - Fetch `generation_hourly_recent` data from the zone endpoint (already in the response)
   - Keep compact: fits within the existing ZonePanel scroll area
-- [ ] Add "Generation" to nav in `routes/__root.tsx` (icon: Zap or Wind from lucide-react);
+- [x] Add "Generation" to nav in `routes/__root.tsx` (icon: Zap or Wind from lucide-react);
   enable on desktop and mobile icon bar
-- [ ] Run `npx vite build --emptyOutDir=false` once to regenerate routeTree.gen.ts, then
+- [x] Run `npx vite build --emptyOutDir=false` once to regenerate routeTree.gen.ts, then
   `npm run build`; verify no TS errors
 
 #### Definition of done
