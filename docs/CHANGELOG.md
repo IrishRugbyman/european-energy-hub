@@ -1,5 +1,24 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Carbon intensity metric, offpeak in chart, dead code removal
+
+**Carbon intensity choropleth** - new map metric under Generation. Colors each zone by
+gCO2eq/kWh computed from the ENTSO-E A75 fuel mix using IPCC AR6 lifecycle median emission
+factors (coal 820, oil 650, gas 490, biomass 230, solar 45, geothermal 38, hydro 24, nuclear 12,
+wind 11). Scale: deep green (< 50, nuclear/hydro/wind dominated) to red (> 500, coal-heavy).
+Tooltip shows gCO2/kWh. EU weighted average appears in the stat strip. Zone panel header shows
+per-zone carbon intensity alongside RE%. Pure frontend computation from existing GenMapItem data.
+
+**Offpeak in daily price chart** - offpeak_eur was already computed and stored in power_daily
+by refresh.py but was never returned by the API or displayed. Added to PowerDailyPoint schema,
+SQL query, and plotted as an indigo dashed line alongside base (sky) and peak (amber).
+
+**Dead code removal** - deleted 6 component files (GenMap, ZoneGenPanel, PowerMap, ZonePanel,
+CongestionLayer, FlowArrowsLayer) that were all superseded by the unified EuroMap +
+UnifiedZonePanel + InterconnectionLayer introduced in the /power merge. No remaining imports.
+
+---
+
 ## 2026-06-15 - Merge /power and /generation into unified /map page
 
 Merged the two separate European choropleth pages into a single /map page, matching
