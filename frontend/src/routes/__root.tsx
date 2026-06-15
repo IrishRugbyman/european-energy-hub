@@ -1,5 +1,5 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
-import { Flame, Zap, TrendingUp, DollarSign, Wind, Activity, Info, X } from 'lucide-react'
+import { Flame, Map, TrendingUp, DollarSign, Activity, Info, X } from 'lucide-react'
 import { useState } from 'react'
 
 export const Route = createRootRoute({
@@ -7,12 +7,11 @@ export const Route = createRootRoute({
 })
 
 const NAV = [
-  { to: '/gas',        label: 'Gas',        icon: Flame,      enabled: true },
-  { to: '/power',      label: 'Power',      icon: Zap,        enabled: true },
-  { to: '/generation', label: 'Generation', icon: Wind,       enabled: true },
-  { to: '/spreads',    label: 'Spreads',    icon: TrendingUp, enabled: true },
-  { to: '/prices',     label: 'Prices',     icon: DollarSign, enabled: true },
-  { to: '/imbalance',  label: 'Imbalance',  icon: Activity,   enabled: true },
+  { to: '/gas',       label: 'Gas',       icon: Flame,      enabled: true },
+  { to: '/map',       label: 'Map',       icon: Map,        enabled: true },
+  { to: '/spreads',   label: 'Spreads',   icon: TrendingUp, enabled: true },
+  { to: '/prices',    label: 'Prices',    icon: DollarSign, enabled: true },
+  { to: '/imbalance', label: 'Imbalance', icon: Activity,   enabled: true },
 ]
 
 function Root() {
