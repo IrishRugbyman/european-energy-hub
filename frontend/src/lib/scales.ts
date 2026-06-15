@@ -189,3 +189,22 @@ export function renewablePctColor(pct: number | null | undefined): string {
   if (p < 80) return '#15803d'   // green-600
   return '#166534'               // green-800
 }
+
+// Dominant fuel -> choropleth color. Matches FUEL_COLORS palette in ZoneGenPanel.
+export const FUEL_PALETTE: Record<string, string> = {
+  wind:       '#60a5fa',  // blue-400
+  solar:      '#fbbf24',  // amber-400
+  hydro:      '#34d399',  // emerald-400
+  nuclear:    '#a3e635',  // lime-400
+  biomass:    '#86efac',  // green-300
+  gas:        '#f97316',  // orange-500
+  oil:        '#ef4444',  // red-500
+  coal:       '#78716c',  // stone-500
+  geothermal: '#a78bfa',  // violet-400
+  other:      '#4b5563',  // grey-600
+}
+
+export function dominantFuelColor(fuel: string | null | undefined): string {
+  if (!fuel) return '#374151'
+  return FUEL_PALETTE[fuel] ?? '#374151'
+}

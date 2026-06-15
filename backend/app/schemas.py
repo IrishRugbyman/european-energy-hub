@@ -225,6 +225,11 @@ class GenMapItem(BaseModel):
     hydro_mw: float | None = None
     gas_mw: float | None = None
     coal_mw: float | None = None
+    nuclear_mw: float | None = None
+    biomass_mw: float | None = None
+    geothermal_mw: float | None = None
+    oil_mw: float | None = None
+    other_mw: float | None = None
     total_mw: float | None = None
 
 
@@ -257,6 +262,11 @@ class GenDailyPoint(BaseModel):
     hydro: float | None = None
     gas: float | None = None
     coal: float | None = None
+    nuclear: float | None = None
+    biomass: float | None = None
+    geothermal: float | None = None
+    oil: float | None = None
+    other: float | None = None
     total_mw: float | None = None
 
 

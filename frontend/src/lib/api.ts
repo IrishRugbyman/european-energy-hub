@@ -135,6 +135,11 @@ export interface GenMapItem {
   hydro_mw: number | null
   gas_mw: number | null
   coal_mw: number | null
+  nuclear_mw: number | null
+  biomass_mw: number | null
+  geothermal_mw: number | null
+  oil_mw: number | null
+  other_mw: number | null
   total_mw: number | null
 }
 
@@ -153,6 +158,11 @@ export interface GenDailyPoint {
   hydro: number | null
   gas: number | null
   coal: number | null
+  nuclear: number | null
+  biomass: number | null
+  geothermal: number | null
+  oil: number | null
+  other: number | null
   total_mw: number | null
 }
 

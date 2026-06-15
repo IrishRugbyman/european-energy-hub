@@ -587,12 +587,16 @@ def prices():
 @app.get("/api/generation/map", response_model=GenMapResponse)
 def generation_map(date: str | None = None):
     """Renewable % and fuel summary per bidding zone. ?date=YYYY-MM-DD for historical days."""
+    _fuel_select = (
+        "solar AS solar_mw, wind AS wind_mw, hydro AS hydro_mw, "
+        "gas AS gas_mw, coal AS coal_mw, nuclear AS nuclear_mw, "
+        "biomass AS biomass_mw, geothermal AS geothermal_mw, "
+        "oil AS oil_mw, other AS other_mw, total_mw"
+    )
     if date:
         df = db.query(
-            """
-            SELECT zone, gen_date::VARCHAR AS gen_date,
-                   renewable_pct, solar AS solar_mw, wind AS wind_mw,
-                   hydro AS hydro_mw, gas AS gas_mw, coal AS coal_mw, total_mw
+            f"""
+            SELECT zone, gen_date::VARCHAR AS gen_date, renewable_pct, {_fuel_select}
             FROM generation_daily
             WHERE gen_date = ?
             ORDER BY zone
@@ -602,10 +606,8 @@ def generation_map(date: str | None = None):
         if df.empty:
             raise HTTPException(status_code=404, detail=f"No generation data for {date}")
     else:
-        df = db.query("""
-            SELECT zone, gen_date::VARCHAR AS gen_date,
-                   renewable_pct, solar AS solar_mw, wind AS wind_mw,
-                   hydro AS hydro_mw, gas AS gas_mw, coal AS coal_mw, total_mw
+        df = db.query(f"""
+            SELECT zone, gen_date::VARCHAR AS gen_date, renewable_pct, {_fuel_select}
             FROM generation_latest
             ORDER BY zone
         """)
@@ -629,6 +631,11 @@ def generation_map(date: str | None = None):
             hydro_mw=_float(r.hydro_mw),
             gas_mw=_float(r.gas_mw),
             coal_mw=_float(r.coal_mw),
+            nuclear_mw=_float(r.nuclear_mw),
+            biomass_mw=_float(r.biomass_mw),
+            geothermal_mw=_float(r.geothermal_mw),
+            oil_mw=_float(r.oil_mw),
+            other_mw=_float(r.other_mw),
             total_mw=_float(r.total_mw),
         )
         for r in df.itertuples()
@@ -688,7 +695,7 @@ def generation_zone(zone_id: str):
     daily_df = db.query(
         """
         SELECT gen_date::VARCHAR AS gen_date, renewable_pct,
-               solar, wind, hydro, gas, coal, total_mw
+               solar, wind, hydro, gas, coal, nuclear, biomass, geothermal, oil, other, total_mw
         FROM generation_daily
         WHERE zone = ? AND gen_date >= current_date - interval '2 years'
         ORDER BY gen_date
@@ -704,6 +711,11 @@ def generation_zone(zone_id: str):
             hydro=_float(r.hydro),
             gas=_float(r.gas),
             coal=_float(r.coal),
+            nuclear=_float(r.nuclear),
+            biomass=_float(r.biomass),
+            geothermal=_float(r.geothermal),
+            oil=_float(r.oil),
+            other=_float(r.other),
             total_mw=_float(r.total_mw),
         )
         for r in (daily_df.itertuples() if not daily_df.empty else [])
