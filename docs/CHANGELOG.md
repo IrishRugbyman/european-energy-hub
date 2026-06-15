@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Fix power_daily column order bug and neg_hours counting
+
+Two bugs in `_daily_agg` introduced when `offpeak_eur` was added to the schema: (1) the
+Series key order did not match the DuckDB table column order, so `min_eur`, `max_eur`,
+`day_range_eur`, and `neg_hours` were stored in the wrong columns (neg_hours was storing
+max price ~110-187; day_range_eur was storing the raw minimum ~-53); (2) neg_hours counted
+raw rows, not distinct clock-hours, so 15-min data returned 4x too many negative hours.
+
+Fixed by reordering Series keys to match schema and switching to
+`dt.floor("h").nunique()` for neg_hours. INSERT is now explicit by column name.
+DE-LU 2026-06-13: neg_hours=11 (was 110), day_range_eur=163.48 (was -52.99).
+
+---
+
 ## 2026-06-15 - Carbon intensity metric, offpeak in chart, dead code removal
 
 **Carbon intensity choropleth** - new map metric under Generation. Colors each zone by
