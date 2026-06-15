@@ -223,6 +223,39 @@ export const EMISSION_FACTORS: Record<string, number> = {
   wind:         11,
 }
 
+type FuelMix = {
+  solar_mw?: number | null
+  wind_mw?: number | null
+  hydro_mw?: number | null
+  nuclear_mw?: number | null
+  gas_mw?: number | null
+  coal_mw?: number | null
+  biomass_mw?: number | null
+  geothermal_mw?: number | null
+  oil_mw?: number | null
+  other_mw?: number | null
+}
+
+// Weighted-average lifecycle carbon intensity in gCO2eq/kWh from a fuel mix.
+export function computeCarbonIntensity(item: FuelMix | null | undefined): number | null {
+  if (!item) return null
+  const fuels: [string, number | null | undefined][] = [
+    ['solar', item.solar_mw], ['wind', item.wind_mw], ['hydro', item.hydro_mw],
+    ['nuclear', item.nuclear_mw], ['gas', item.gas_mw], ['coal', item.coal_mw],
+    ['biomass', item.biomass_mw], ['geothermal', item.geothermal_mw],
+    ['oil', item.oil_mw], ['other', item.other_mw],
+  ]
+  let weighted = 0
+  let totalMW = 0
+  for (const [fuel, mw] of fuels) {
+    if (mw != null && mw > 0) {
+      weighted += mw * (EMISSION_FACTORS[fuel] ?? 400)
+      totalMW += mw
+    }
+  }
+  return totalMW > 0 ? Math.round(weighted / totalMW) : null
+}
+
 // Carbon intensity gCO2eq/kWh -> color. Low = clean green, high = red.
 export function carbonIntensityColor(gco2: number | null | undefined): string {
   if (gco2 == null) return '#374151'

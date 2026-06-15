@@ -10,7 +10,7 @@ import {
   renewablePctColor,
   dominantFuelColor,
   carbonIntensityColor,
-  EMISSION_FACTORS,
+  computeCarbonIntensity,
   FUEL_PALETTE,
   CHOROPLETH_FILL_OPACITY,
   CHOROPLETH_STROKE,
@@ -29,24 +29,6 @@ export function isPriceMetric(m: MapMetric): boolean {
   return m === 'price' || m === 'range' || m === 'neg_hours' || m === 'pct_rank'
 }
 
-export function computeCarbonIntensity(item: { solar_mw?: number | null; wind_mw?: number | null; hydro_mw?: number | null; nuclear_mw?: number | null; gas_mw?: number | null; coal_mw?: number | null; biomass_mw?: number | null; geothermal_mw?: number | null; oil_mw?: number | null; other_mw?: number | null } | null | undefined): number | null {
-  if (!item) return null
-  const fuels: [string, number | null | undefined][] = [
-    ['solar', item.solar_mw], ['wind', item.wind_mw], ['hydro', item.hydro_mw],
-    ['nuclear', item.nuclear_mw], ['gas', item.gas_mw], ['coal', item.coal_mw],
-    ['biomass', item.biomass_mw], ['geothermal', item.geothermal_mw],
-    ['oil', item.oil_mw], ['other', item.other_mw],
-  ]
-  let weighted = 0
-  let totalMW = 0
-  for (const [fuel, mw] of fuels) {
-    if (mw != null && mw > 0) {
-      weighted += mw * (EMISSION_FACTORS[fuel] ?? 400)
-      totalMW += mw
-    }
-  }
-  return totalMW > 0 ? Math.round(weighted / totalMW) : null
-}
 
 function computeDominantFuel(item: GenMapItem | undefined): string | null {
   if (!item) return null

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE } from './scales'
+import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE, carbonIntensityColor, computeCarbonIntensity, EMISSION_FACTORS } from './scales'
 
 describe('gasFillColor', () => {
   it('returns grey for null/undefined', () => {
@@ -164,5 +164,109 @@ describe('FUEL_PALETTE', () => {
     for (const fuel of expected) {
       expect(FUEL_PALETTE).toHaveProperty(fuel)
     }
+  })
+})
+
+describe('EMISSION_FACTORS', () => {
+  it('covers all 10 fuel types', () => {
+    const fuels = ['wind', 'solar', 'hydro', 'nuclear', 'biomass', 'gas', 'oil', 'coal', 'geothermal', 'other']
+    for (const fuel of fuels) {
+      expect(EMISSION_FACTORS).toHaveProperty(fuel)
+    }
+  })
+
+  it('coal is the dirtiest fuel', () => {
+    const max = Math.max(...Object.values(EMISSION_FACTORS))
+    expect(EMISSION_FACTORS.coal).toBe(max)
+  })
+
+  it('wind is the cleanest fuel', () => {
+    const min = Math.min(...Object.values(EMISSION_FACTORS))
+    expect(EMISSION_FACTORS.wind).toBe(min)
+  })
+
+  it('all factors are positive numbers', () => {
+    for (const v of Object.values(EMISSION_FACTORS)) {
+      expect(v).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('computeCarbonIntensity', () => {
+  it('returns null for null/undefined', () => {
+    expect(computeCarbonIntensity(null)).toBeNull()
+    expect(computeCarbonIntensity(undefined)).toBeNull()
+  })
+
+  it('returns null for empty object', () => {
+    expect(computeCarbonIntensity({})).toBeNull()
+  })
+
+  it('returns null when all MW are zero or null', () => {
+    expect(computeCarbonIntensity({ wind_mw: 0, solar_mw: null })).toBeNull()
+  })
+
+  it('pure wind gives wind emission factor', () => {
+    const ci = computeCarbonIntensity({ wind_mw: 1000 })
+    expect(ci).toBe(EMISSION_FACTORS.wind)
+  })
+
+  it('pure nuclear gives nuclear emission factor', () => {
+    const ci = computeCarbonIntensity({ nuclear_mw: 5000 })
+    expect(ci).toBe(EMISSION_FACTORS.nuclear)
+  })
+
+  it('pure coal gives coal emission factor', () => {
+    const ci = computeCarbonIntensity({ coal_mw: 2000 })
+    expect(ci).toBe(EMISSION_FACTORS.coal)
+  })
+
+  it('50/50 wind and coal is average of their factors', () => {
+    const ci = computeCarbonIntensity({ wind_mw: 1000, coal_mw: 1000 })
+    const expected = Math.round((EMISSION_FACTORS.wind + EMISSION_FACTORS.coal) / 2)
+    expect(ci).toBe(expected)
+  })
+
+  it('France-like mix (nuclear+hydro+some gas) gives low intensity', () => {
+    const ci = computeCarbonIntensity({ nuclear_mw: 40000, hydro_mw: 8000, gas_mw: 5000 })
+    expect(ci).toBeLessThan(100)
+  })
+
+  it('Poland-like mix (heavy coal) gives high intensity', () => {
+    const ci = computeCarbonIntensity({ coal_mw: 12000, gas_mw: 1000, wind_mw: 2000 })
+    expect(ci).toBeGreaterThan(600)
+  })
+
+  it('ignores negative MW values', () => {
+    const ci = computeCarbonIntensity({ wind_mw: 1000, solar_mw: -100 })
+    expect(ci).toBe(EMISSION_FACTORS.wind)
+  })
+})
+
+describe('carbonIntensityColor', () => {
+  it('returns grey for null/undefined', () => {
+    expect(carbonIntensityColor(null)).toBe('#374151')
+    expect(carbonIntensityColor(undefined)).toBe('#374151')
+  })
+
+  it('deep green for very clean (< 50 gCO2/kWh)', () => {
+    expect(carbonIntensityColor(0)).toBe('#166534')
+    expect(carbonIntensityColor(30)).toBe('#166534')
+    expect(carbonIntensityColor(49)).toBe('#166534')
+  })
+
+  it('green for clean (50-100)', () => {
+    expect(carbonIntensityColor(50)).toBe('#15803d')
+    expect(carbonIntensityColor(80)).toBe('#15803d')
+  })
+
+  it('yellow/amber for medium (200-400)', () => {
+    expect(carbonIntensityColor(250)).toBe('#ca8a04')
+    expect(carbonIntensityColor(350)).toBe('#d97706')
+  })
+
+  it('red for dirty (> 500)', () => {
+    expect(carbonIntensityColor(600)).toBe('#b91c1c')
+    expect(carbonIntensityColor(820)).toBe('#b91c1c')
   })
 })

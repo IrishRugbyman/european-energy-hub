@@ -15,8 +15,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
-import { powerPriceColor, renewablePctColor, FUEL_PALETTE, zoneName } from '@/lib/scales'
-import { computeCarbonIntensity } from '@/components/map/EuroMap'
+import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
 type TrendWindow = '3M' | '1Y' | 'ALL'

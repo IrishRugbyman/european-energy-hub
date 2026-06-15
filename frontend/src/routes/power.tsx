@@ -2,12 +2,12 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
-import { EuroMap, type MapMetric, isPriceMetric, zoneColor, computeCarbonIntensity } from '@/components/map/EuroMap'
+import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
 import { InterconnectionLayer, type BorderKey } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
-import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor } from '@/lib/scales'
+import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity } from '@/lib/scales'
 
 export const Route = createFileRoute('/power')({
   validateSearch: (search: Record<string, unknown>) => ({
