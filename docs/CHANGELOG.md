@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Price heatmap, computeCarbonIntensity refactor, data bug fixes
+
+**Price heatmap** (zone panel) - 8-day x 24-hour color grid showing DA prices.
+Rows = last 8 days newest-at-top, columns = hours 0-23, each cell uses `powerPriceColor`
+with a hover tooltip. Sub-hourly ENTSO-E 15-min data is averaged to hourly. Shows weekend
+dips, morning ramps, and midday solar troughs immediately.
+
+**computeCarbonIntensity refactor** - moved from EuroMap.tsx to scales.ts next to
+EMISSION_FACTORS. Added 19 new vitest tests; total 46 green.
+
+---
+
 ## 2026-06-15 - Fix power_daily column order bug and neg_hours counting
 
 Two bugs in `_daily_agg` introduced when `offpeak_eur` was added to the schema: (1) the
