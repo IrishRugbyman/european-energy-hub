@@ -268,3 +268,60 @@ def test_imbalance_structure(client):
     for d in data["daily"][:10]:
         if d["min_eur"] is not None and d["mean_eur"] is not None and d["max_eur"] is not None:
             assert d["min_eur"] <= d["mean_eur"] <= d["max_eur"]
+
+
+def test_power_divergence(client):
+    r = client.get("/api/power/divergence")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert "history" in data
+    assert len(data["rows"]) >= 1
+    row = data["rows"][0]
+    assert "from_zone" in row
+    assert "to_zone" in row
+    assert "diff_eur_mwh" in row
+    # rows should be sorted by abs(diff) descending
+    diffs = [abs(r["diff_eur_mwh"]) for r in data["rows"] if r["diff_eur_mwh"] is not None]
+    assert diffs == sorted(diffs, reverse=True)
+
+
+def test_power_divergence_history(client):
+    r = client.get("/api/power/divergence")
+    data = r.json()
+    # Should have history for FR->DE-LU (seeded 30 days)
+    hist_keys = {(h["from_zone"], h["to_zone"]) for h in data["history"]}
+    assert ("FR", "DE-LU") in hist_keys
+    fr_delu = next(h for h in data["history"] if h["from_zone"] == "FR" and h["to_zone"] == "DE-LU")
+    assert len(fr_delu["history"]) == 30
+    pt = fr_delu["history"][0]
+    assert "price_date" in pt
+    assert "diff_eur_mwh" in pt
+
+
+def test_imbalance_dispatch(client):
+    r = client.get("/api/imbalance/dispatch")
+    assert r.status_code == 200
+    data = r.json()
+    assert "hourly" in data
+    assert "summary" in data
+    assert len(data["hourly"]) == 30 * 24
+    h0 = data["hourly"][0]
+    assert "ts" in h0
+    assert "rebap_price" in h0
+    assert "charge_mw" in h0
+    assert "discharge_mw" in h0
+    assert "soc_mwh" in h0
+    assert "cumulative_pnl_eur" in h0
+
+
+def test_imbalance_dispatch_summary(client):
+    r = client.get("/api/imbalance/dispatch")
+    data = r.json()
+    s = data["summary"]
+    assert s is not None
+    assert "total_pnl_eur" in s
+    assert "n_charge_hours" in s
+    assert "n_discharge_hours" in s
+    assert "avg_spread_captured_eur" in s
+    assert s["trailing_days"] == 30

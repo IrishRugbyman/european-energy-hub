@@ -327,6 +327,66 @@ def _seed_db(path: str) -> None:
         [latest_ts, 95.0, 88.0, 60.0, 140.0],
     )
 
+    # divergence tables (Phase 14)
+    conn.execute("""
+        CREATE TABLE divergence_latest (
+            from_zone VARCHAR, to_zone VARCHAR, price_date DATE,
+            from_price REAL, to_price REAL, diff_eur_mwh REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE divergence_30d (
+            from_zone VARCHAR, to_zone VARCHAR, price_date DATE,
+            from_price REAL, to_price REAL, diff_eur_mwh REAL
+        )
+    """)
+    for fz, tz, fp, tp in [("FR", "DE-LU", 65.0, 80.0), ("DE-LU", "NL", 80.0, 72.0)]:
+        diff = round(fp - tp, 2)
+        conn.execute(
+            "INSERT INTO divergence_latest VALUES (?, ?, ?, ?, ?, ?)",
+            [fz, tz, today.isoformat(), fp, tp, diff],
+        )
+    for i in range(30):
+        day = (today - timedelta(days=29 - i)).isoformat()
+        conn.execute(
+            "INSERT INTO divergence_30d VALUES (?, ?, ?, ?, ?, ?)",
+            ["FR", "DE-LU", day, 65.0 + i * 0.1, 80.0, round(65.0 + i * 0.1 - 80.0, 2)],
+        )
+
+    # battery dispatch tables (Phase 16)
+    conn.execute("""
+        CREATE TABLE battery_dispatch_recent (
+            ts TIMESTAMP, rebap_price REAL, charge_mw REAL, discharge_mw REAL,
+            soc_mwh REAL, cumulative_pnl_eur REAL
+        )
+    """)
+    conn.execute("CREATE TABLE battery_summary (key VARCHAR PRIMARY KEY, value VARCHAR)")
+    from datetime import datetime as dt2
+    bat_start = dt2(today.year, today.month, today.day) - timedelta(days=30)
+    pnl = 0.0
+    for i in range(30 * 24):
+        ts = (bat_start + timedelta(hours=i)).strftime("%Y-%m-%d %H:%M:%S")
+        hour = i % 24
+        price = round(80.0 + 60.0 * (hour / 23), 2)
+        charge = 1.0 if hour in (2, 3) else 0.0
+        discharge = 1.0 if hour in (18, 19) else 0.0
+        pnl_delta = discharge * price * 0.92 - charge * price / 0.92
+        pnl = round(pnl + pnl_delta, 2)
+        conn.execute(
+            "INSERT INTO battery_dispatch_recent VALUES (?, ?, ?, ?, ?, ?)",
+            [ts, price, charge, discharge, 0.5, pnl],
+        )
+    for key, val in [
+        ("total_pnl_eur", str(round(pnl, 2))),
+        ("n_charge_hours", "60"),
+        ("n_discharge_hours", "60"),
+        ("avg_spread_captured_eur", "45.0"),
+        ("avg_buy_price_eur", "82.0"),
+        ("avg_sell_price_eur", "127.0"),
+        ("trailing_days", "30"),
+    ]:
+        conn.execute("INSERT INTO battery_summary VALUES (?, ?)", [key, val])
+
     conn.close()
 
 
