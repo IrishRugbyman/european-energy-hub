@@ -86,14 +86,19 @@ def _daily_agg(g: pd.DataFrame) -> pd.Series:
     offpeak = g.loc[~g["is_peak"], "price_eur_mwh"]
     prices = g["price_eur_mwh"]
     n = len(g)
+    has_data = n >= 20
+    # Count distinct clock-hours with a negative price; robust to sub-hourly resolution.
+    neg_mask = prices < 0
+    neg_hours_val = int(g.loc[neg_mask, "ts"].dt.floor("h").nunique()) if neg_mask.any() else 0
+    # Key order must match the power_daily DuckDB schema: base, peak, offpeak, day_range, neg_hours, min, max
     return pd.Series({
-        "base_eur": prices.mean() if n >= 20 else None,
-        "peak_eur": peak.mean() if len(peak) >= 8 else None,
-        "offpeak_eur": offpeak.mean() if len(offpeak) >= 8 else None,
-        "min_eur": round(float(prices.min()), 2) if n >= 20 else None,
-        "max_eur": round(float(prices.max()), 2) if n >= 20 else None,
-        "day_range_eur": round(float(prices.max() - prices.min()), 2) if n >= 20 else None,
-        "neg_hours": int((prices < 0).sum()),
+        "base_eur":     prices.mean() if has_data else None,
+        "peak_eur":     peak.mean() if len(peak) >= 8 else None,
+        "offpeak_eur":  offpeak.mean() if len(offpeak) >= 8 else None,
+        "day_range_eur": round(float(prices.max() - prices.min()), 2) if has_data else None,
+        "neg_hours":    neg_hours_val,
+        "min_eur":      round(float(prices.min()), 2) if has_data else None,
+        "max_eur":      round(float(prices.max()), 2) if has_data else None,
     })
 
 

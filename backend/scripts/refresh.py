@@ -199,7 +199,10 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     """)
     if not daily.empty:
         conn.register("_pd", daily)
-        conn.execute("INSERT INTO power_daily SELECT * FROM _pd")
+        conn.execute(
+            "INSERT INTO power_daily (zone, price_date, base_eur, peak_eur, offpeak_eur, day_range_eur, neg_hours, min_eur, max_eur) "
+            "SELECT zone, price_date, base_eur, peak_eur, offpeak_eur, day_range_eur, neg_hours, min_eur, max_eur FROM _pd"
+        )
 
     conn.execute("""
         CREATE OR REPLACE TABLE power_hourly_recent (
