@@ -52,6 +52,7 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
   const carbonIntensity = computeCarbonIntensity(genItem)
 
   const hourlyPriceData = buildHourlyPriceChart(powerData?.hourly_recent)
+  const priceHeatmapRows = buildPriceHeatmap(powerData?.hourly_recent)
   const allDaily = powerData?.daily_history ?? []
   const priceDaily = priceWindow === '1Y' ? allDaily.slice(-365) : allDaily
 
@@ -142,6 +143,14 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
             <NoData />
           )}
         </div>
+
+        {/* Price heatmap: 8d x 24h */}
+        {!powerLoading && priceHeatmapRows.length > 0 && (
+          <div className="p-3 border-b border-border">
+            <p className="text-xs text-muted-foreground mb-2">Price heatmap - last 8 days (hover for exact price)</p>
+            <PriceHeatmap rows={priceHeatmapRows} />
+          </div>
+        )}
 
         {/* Fuel mix today */}
         <div className="p-3 border-b border-border">
@@ -415,6 +424,46 @@ function FuelLegend({ fuels }: { fuels: string[] }) {
   )
 }
 
+function PriceHeatmap({ rows }: { rows: HeatmapRow[] }) {
+  if (rows.length === 0) return null
+  return (
+    <div>
+      {/* Hour labels: 0 6 12 18 24 */}
+      <div className="flex ml-[36px] mb-0.5">
+        {[0, 6, 12, 18].map((h) => (
+          <span
+            key={h}
+            className="text-[9px] text-muted-foreground"
+            style={{ width: `${(6 / 24) * 100}%` }}
+          >
+            {String(h).padStart(2, '0')}
+          </span>
+        ))}
+      </div>
+      {rows.map(({ dayLabel, cells }) => (
+        <div key={dayLabel} className="flex items-center gap-0.5 mb-0.5">
+          <span className="text-[9px] text-muted-foreground w-[36px] shrink-0 text-right pr-1 font-mono">
+            {dayLabel}
+          </span>
+          <div className="flex flex-1 gap-[1px]">
+            {cells.map((price, h) => (
+              <div
+                key={h}
+                className="flex-1 rounded-sm"
+                style={{
+                  height: 10,
+                  backgroundColor: price != null ? powerPriceColor(price) : '#1e293b',
+                }}
+                title={price != null ? `${String(h).padStart(2, '0')}:00  ${price.toFixed(1)} €/MWh` : `${String(h).padStart(2, '0')}:00  --`}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function Placeholder() {
   return <div className="flex items-center justify-center h-20 text-muted-foreground text-xs">Loading...</div>
 }
@@ -451,6 +500,38 @@ function buildHourlyPriceChart(hourly: { ts: string; price_eur_mwh: number | nul
       const d = new Date(p.ts)
       return { label: `${String(d.getUTCHours()).padStart(2, '0')}:00`, price: p.price_eur_mwh }
     })
+}
+
+type HeatmapRow = { dayLabel: string; cells: (number | null)[] }
+
+function buildPriceHeatmap(hourly: { ts: string; price_eur_mwh: number | null }[] | undefined): HeatmapRow[] {
+  if (!hourly || hourly.length === 0) return []
+  // Group by UTC date + hour; average sub-hourly readings (e.g. 15-min ENTSO-E data)
+  const byDateHour: Record<string, Record<number, number[]>> = {}
+  for (const pt of hourly) {
+    if (pt.price_eur_mwh == null) continue
+    const d = new Date(pt.ts)
+    const dateKey = d.toISOString().slice(0, 10)
+    const hour = d.getUTCHours()
+    if (!byDateHour[dateKey]) byDateHour[dateKey] = {}
+    if (!byDateHour[dateKey][hour]) byDateHour[dateKey][hour] = []
+    byDateHour[dateKey][hour].push(pt.price_eur_mwh)
+  }
+  const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  return Object.keys(byDateHour)
+    .sort()
+    .slice(-8)
+    .map((dateKey) => {
+      const d = new Date(dateKey + 'T12:00:00Z')
+      const dayLabel = `${DAYS[d.getUTCDay()]} ${String(d.getUTCDate()).padStart(2, ' ')}`
+      const cells: (number | null)[] = Array.from({ length: 24 }, (_, h) => {
+        const readings = byDateHour[dateKey][h]
+        if (!readings || readings.length === 0) return null
+        return readings.reduce((s, v) => s + v, 0) / readings.length
+      })
+      return { dayLabel, cells }
+    })
+    .reverse()
 }
 
 function buildGenHourlyChart(
