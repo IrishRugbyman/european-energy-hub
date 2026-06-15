@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName } from './scales'
+import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE } from './scales'
 
 describe('gasFillColor', () => {
   it('returns grey for null/undefined', () => {
@@ -120,5 +120,49 @@ describe('renewablePctColor', () => {
   it('clamps out-of-range values', () => {
     expect(renewablePctColor(-10)).toBe('#78350f')
     expect(renewablePctColor(110)).toBe('#166534')
+  })
+})
+
+describe('dominantFuelColor', () => {
+  it('returns grey for null/undefined/empty', () => {
+    expect(dominantFuelColor(null)).toBe('#374151')
+    expect(dominantFuelColor(undefined)).toBe('#374151')
+    expect(dominantFuelColor('')).toBe('#374151')
+  })
+
+  it('returns correct color for known fuels', () => {
+    expect(dominantFuelColor('nuclear')).toBe(FUEL_PALETTE.nuclear)
+    expect(dominantFuelColor('wind')).toBe(FUEL_PALETTE.wind)
+    expect(dominantFuelColor('solar')).toBe(FUEL_PALETTE.solar)
+    expect(dominantFuelColor('hydro')).toBe(FUEL_PALETTE.hydro)
+    expect(dominantFuelColor('gas')).toBe(FUEL_PALETTE.gas)
+    expect(dominantFuelColor('coal')).toBe(FUEL_PALETTE.coal)
+    expect(dominantFuelColor('biomass')).toBe(FUEL_PALETTE.biomass)
+    expect(dominantFuelColor('oil')).toBe(FUEL_PALETTE.oil)
+    expect(dominantFuelColor('geothermal')).toBe(FUEL_PALETTE.geothermal)
+    expect(dominantFuelColor('other')).toBe(FUEL_PALETTE.other)
+  })
+
+  it('returns grey for unknown fuel string', () => {
+    expect(dominantFuelColor('unknown-fuel')).toBe('#374151')
+  })
+})
+
+describe('FUEL_PALETTE', () => {
+  it('has exactly 10 fuel entries', () => {
+    expect(Object.keys(FUEL_PALETTE).length).toBe(10)
+  })
+
+  it('all colors are valid hex strings', () => {
+    for (const color of Object.values(FUEL_PALETTE)) {
+      expect(color).toMatch(/^#[0-9a-f]{6}$/i)
+    }
+  })
+
+  it('all fuel types present', () => {
+    const expected = ['wind', 'solar', 'hydro', 'nuclear', 'biomass', 'gas', 'oil', 'coal', 'geothermal', 'other']
+    for (const fuel of expected) {
+      expect(FUEL_PALETTE).toHaveProperty(fuel)
+    }
   })
 })

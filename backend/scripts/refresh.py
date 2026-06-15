@@ -39,12 +39,14 @@ from analytics.flows import build_flows_tables
 def run_ingest(fetcher: str) -> bool:
     """Run market-data ingest.py for one fetcher. Returns True if OK."""
     try:
+        # entso-e-gen-full fetches up to 34 zones incrementally; allow 30 min
+        fetch_timeout = 1800 if "gen-full" in fetcher else 600
         result = subprocess.run(
             [str(MARKET_DATA_VENV), "ingest.py", fetcher],
             cwd=str(MARKET_DATA_DIR),
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=fetch_timeout,
         )
         if result.returncode != 0:
             logger.warning(f"ingest {fetcher} exited {result.returncode}: {result.stderr[:500]}")
@@ -52,7 +54,7 @@ def run_ingest(fetcher: str) -> bool:
         logger.info(f"ingest {fetcher}: OK")
         return True
     except subprocess.TimeoutExpired:
-        logger.warning(f"ingest {fetcher}: timed out after 600s")
+        logger.warning(f"ingest {fetcher}: timed out after {fetch_timeout}s")
         return False
     except Exception as e:
         logger.warning(f"ingest {fetcher}: {e!r}")
@@ -61,7 +63,7 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "rebase-generation", "entsog", "smard-imbalance-de"]:
+        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
