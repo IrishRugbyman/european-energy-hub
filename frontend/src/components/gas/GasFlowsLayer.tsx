@@ -9,9 +9,10 @@ interface Props {
   rows: GasFlowItem[]
   selected: string | null
   onSelect: (cc: string | null) => void
+  onSelectFlow?: (cc: string | null) => void
 }
 
-export function GasFlowsLayer({ rows, selected, onSelect }: Props) {
+export function GasFlowsLayer({ rows, selected, onSelect, onSelectFlow }: Props) {
   const map = useMap()
   const geoRef = useRef<L.GeoJSON | null>(null)
   const selectedRef = useRef<string | null>(selected)
@@ -31,7 +32,7 @@ export function GasFlowsLayer({ rows, selected, onSelect }: Props) {
       .then((geo: GeoJsonObject) => {
         if (cancelled) return
         if (geoRef.current) map.removeLayer(geoRef.current)
-        const layer = createLayer(geo, flowByCC, selectedRef, onSelect)
+        const layer = createLayer(geo, flowByCC, selectedRef, onSelectFlow ?? onSelect)
         layer.addTo(map)
         geoRef.current = layer
       })

@@ -18,9 +18,11 @@ interface Props {
   onSelect: (cc: string | null) => void
   showFlows?: boolean
   flowRows?: GasFlowItem[]
+  selectedFlow?: string | null
+  onSelectFlow?: (cc: string | null) => void
 }
 
-export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows = [] }: Props) {
+export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows = [], selectedFlow, onSelectFlow }: Props) {
   const latestByCC: Record<string, StorageLatestRow> = {}
   for (const r of rows) {
     if (r.country !== 'EU') latestByCC[r.country] = r
@@ -42,7 +44,12 @@ export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows =
       )}
       {/* Physical gas flows overlay - colors countries by net GWh/d */}
       {showFlows && flowRows.length > 0 && (
-        <GasFlowsLayer rows={flowRows} selected={selected} onSelect={onSelect} />
+        <GasFlowsLayer
+          rows={flowRows}
+          selected={selectedFlow ?? selected}
+          onSelect={onSelect}
+          onSelectFlow={onSelectFlow}
+        />
       )}
       {/* Labels on top of choropleth fills */}
       <Pane name="labels" style={{ zIndex: 650 }}>

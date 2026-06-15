@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { api, type StorageLatestRow } from '@/lib/api'
 import { GasMap } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
+import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/gas')({
@@ -35,6 +36,7 @@ const FLOW_LEGEND = [
 function GasDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
   const [showFlows, setShowFlows] = useState(false)
+  const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['gas-map'],
@@ -87,7 +89,7 @@ function GasDashboard() {
       {/* Physical flows toggle (top-right) */}
       <div className="absolute top-3 right-3 z-[1000]">
         <button
-          onClick={() => setShowFlows((v) => !v)}
+          onClick={() => { setShowFlows((v) => !v); setSelectedFlow(null) }}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
             showFlows
               ? 'bg-blue-600 border-blue-500 text-white'
@@ -117,24 +119,43 @@ function GasDashboard() {
           onSelect={setSelected}
           showFlows={showFlows}
           flowRows={flowsData?.rows ?? []}
+          selectedFlow={selectedFlow}
+          onSelectFlow={setSelectedFlow}
         />
       </div>
 
       <StaleBanner datasetKey="gas" />
 
       {/* Side panel: bottom sheet on mobile, right-side on sm+ */}
-      {selected && (
-        <div className="fixed bottom-0 left-0 right-0 max-h-[75vh] bg-card border-t border-border z-[1000] overflow-y-auto rounded-t-xl sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:border-t-0 sm:border-l sm:rounded-none">
-          <div className="flex justify-center pt-2 pb-1 sm:hidden">
-            <div className="w-8 h-1 rounded-full bg-border" />
+      {(selected || (showFlows && selectedFlow)) && (() => {
+        const isFlowPanel = showFlows && selectedFlow != null
+        const flowRow = isFlowPanel
+          ? (flowsData?.rows ?? []).find((r) => r.country === selectedFlow) ?? null
+          : null
+        return (
+          <div className="fixed bottom-0 left-0 right-0 max-h-[75vh] bg-card border-t border-border z-[1000] overflow-y-auto rounded-t-xl sm:absolute sm:bottom-auto sm:left-auto sm:right-0 sm:top-0 sm:h-full sm:max-h-none sm:w-80 sm:border-t-0 sm:border-l sm:rounded-none">
+            <div className="flex justify-center pt-2 pb-1 sm:hidden">
+              <div className="w-8 h-1 rounded-full bg-border" />
+            </div>
+            {isFlowPanel ? (
+              <GasFlowPanel
+                country={selectedFlow!}
+                latestNet={flowRow?.net_gwh_d ?? null}
+                latestEntry={flowRow?.entry_gwh_d ?? null}
+                latestExit={flowRow?.exit_gwh_d ?? null}
+                latestDate={flowRow?.period_date ?? null}
+                onClose={() => setSelectedFlow(null)}
+              />
+            ) : selected ? (
+              <CountryPanel
+                country={selected}
+                latest={latestByCountry[selected] ?? null}
+                onClose={() => setSelected(null)}
+              />
+            ) : null}
           </div>
-          <CountryPanel
-            country={selected}
-            latest={latestByCountry[selected] ?? null}
-            onClose={() => setSelected(null)}
-          />
-        </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

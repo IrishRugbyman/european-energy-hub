@@ -1,5 +1,20 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Gas flow drill-down panel (Phase 17)
+
+Clicking a country on the ENTSOG physical flows overlay now opens a dedicated `GasFlowPanel`
+instead of the storage panel. The panel shows: net / entry / exit stat strip (latest day),
+30-day rolling average of net flow, a 3M/1Y/all time-window toggle, a stacked entry/exit
+bar chart, and a net-flow line chart with a 30-day average reference line. History comes
+from the existing `GET /api/gas/flows/{cc}` endpoint (365 days). The storage `CountryPanel`
+is still shown when flows mode is off.
+
+Implementation: new `GasFlowPanel.tsx` component; `GasFlowsLayer.tsx` and `GasMap.tsx` gained
+optional `onSelectFlow` prop so clicks route to a separate `selectedFlow` state; `gas.tsx`
+conditionally renders the flow panel vs storage panel based on `showFlows` + `selectedFlow`.
+
+---
+
 ## 2026-06-15 - Price heatmap, computeCarbonIntensity refactor, data bug fixes
 
 **Price heatmap** (zone panel) - 8-day x 24-hour color grid showing DA prices.
