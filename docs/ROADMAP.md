@@ -542,41 +542,17 @@ past days' generation mix and renewable-% choropleth, not just today.*
 
 ---
 
-### Phase 13 - Generation map: full fuel breakdown + dominant-fuel choropleth [PLANNED]
+### Phase 13 - Generation map: full fuel breakdown + dominant-fuel choropleth [COMPLETE 2026-06-15] ✅
 
-*Depends on: Phase 12. No new data needed - power_generation_actual has 10-fuel history.*
-*Estimated: 1 session.*
+*Completed: 2026-06-15, commit 5a7abc4*
 
-*Goal: the /generation page currently shows only renewable % on the choropleth and only
-wind/solar/hydro in the summary stats. Now that we have nuclear, gas, coal, etc., expose
-the full picture.*
-
-#### Map layer
-- [ ] Add a second choropleth metric for /generation: "Dominant fuel" mode colors each zone
-  by its largest generation source (nuclear=lime, gas=orange, coal=grey, wind=blue, solar=amber, hydro=green)
-  with a matching legend; toggle between "Renewable %" and "Dominant fuel" via a 2-button selector
-- [ ] Tooltip enrichment: show top-3 fuels + MW in the hover tooltip alongside renewable %
-
-#### Generation map API + backend
-- [ ] `GenMapItem` interface: add full 10-fuel columns (biomass, coal, gas, geothermal, hydro,
-  nuclear, oil, other, solar, wind) so the frontend can compute dominant fuel client-side
-- [ ] `analytics/generation.py` / `generation_latest` table already has all columns; extend
-  `_write_generation()` to include them in the `generation_latest` DuckDB table and in the
-  `/api/generation/map` response
-- [ ] `GenDailyPoint` and `GenZoneResponse.daily`: add nuclear + other to the daily history
-  so the ZoneGenPanel trend chart can show a stacked fuel-mix area chart (replace renewable %
-  line chart with stacked fuel area + renewable % line overlay)
-
-#### ZoneGenPanel enrichment
-- [ ] Replace the 4-stat box (Renewable / Total / Wind+Solar+Hydro / Dominant fuel) with a
-  3-column fuel legend showing each fuel's MW for today, colored by FUEL_COLORS
-- [ ] Daily trend section: stacked area chart by fuel (10 fuels, same STACK_ORDER_POWER)
-  with a renewable % line overlay on a secondary Y axis
-
-#### Definition of done
-- /generation choropleth shows dominant-fuel coloring as an alternative to renewable %
-- ZoneGenPanel shows full 10-fuel daily stacked chart
-- All tests green
+- [x] "Dominant fuel" choropleth mode: zones colored by largest generation source with legend
+- [x] Tooltip shows top-3 fuels + MW in both metric modes
+- [x] GenMapItem extended with all 10 fuel columns (nuclear_mw, biomass_mw, etc.)
+- [x] GenDailyPoint extended with all 10 fuels for daily stacked chart
+- [x] ZoneGenPanel: fuel breakdown grid (2-col, dominant fuel first) replaces stat boxes
+- [x] Daily trend: ComposedChart stacked fuel areas + renewable % line on secondary Y axis
+- [x] 36 backend tests green
 
 ---
 

@@ -1,5 +1,30 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Phase 13: Dominant-fuel choropleth + full fuel breakdown on /generation
+
+**Tried:** Expose all 10 ENTSO-E A75 fuel types through the generation map API and ZoneGenPanel,
+adding a "Dominant fuel" choropleth mode that colors each zone by its largest generation source.
+
+**Found:** All fuel data was already in `generation_daily` and `generation_latest` in DuckDB;
+the gap was purely in the API (GenMapItem only exposed 5 of 10 fuels) and the frontend
+(ZoneGenPanel daily chart only had renewable % as a line). The `ComposedChart` dual-Y-axis
+approach (MW stacked areas left, renewable % line right) works well in recharts with `yAxisId`
+routing. Dominant fuel coloring makes the nuclear dominance of FR and the hydro character
+of the Nordic zones immediately visible.
+
+**Decision:** Two-button metric selector (Renewable % / Dominant fuel) with a context-aware
+legend, tooltip top-3 fuel list, and ZoneGenPanel fuel breakdown grid replacing the stat boxes.
+The fuel breakdown sorts dominant fuel first, then by MW. Renewable % white line overlaid on
+the stacked daily chart gives the signal-vs-structure view in one panel.
+
+**Artifacts:** `GenMap.tsx` (GenMetric type, dominantFuelColor dispatch, enriched tooltip),
+`generation.tsx` (metric toggle, context stat strip, dual legend), `ZoneGenPanel.tsx`
+(fuel breakdown grid, ComposedChart dual-axis trend), `scales.ts` (FUEL_PALETTE,
+dominantFuelColor), `api.ts` + `schemas.py` (5 new fuel columns in GenMapItem,
+5 new in GenDailyPoint). 36 backend tests green.
+
+---
+
 ## 2026-06-14 - Phase 11: Clickable interconnections layer on /power
 
 **Tried:** Replace the separate "Flows" and "Congestion" map toggles with a single unified
