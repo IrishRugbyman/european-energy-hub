@@ -1,12 +1,11 @@
 # CLAUDE.md - European Energy Hub
 
-Standalone live web app at **energy.lbzgiu.xyz**. Five dashboards:
-**/gas** (EU gas storage choropleth, AGSI+), **/power** (day-ahead price choropleth by ENTSO-E bidding zone),
-**/generation** (renewable % choropleth by bidding zone, Rebase Grid API),
-**/spreads** (CSS/CDS/FSS spark/dark spread analytics), **/prices** (TTF/EUA/coal/HH commodity charts).
-Sister site to freight.lbzgiu.xyz, same stack and conventions.
-
-**Active build plan: [`docs/ROADMAP.md`](docs/ROADMAP.md).** Phase 1-5 built and live, including /generation.
+Standalone live web app at **energy.lbzgiu.xyz**. Six dashboards:
+**/gas** (EU gas storage choropleth, AGSI+), **/power** (day-ahead price choropleth + congestion + interconnections,
+ENTSO-E), **/generation** (renewable % + dominant-fuel choropleth by bidding zone, ENTSO-E A75 full mix),
+**/spreads** (CSS/CDS/FSS spark/dark spread analytics), **/prices** (TTF/EUA/coal/HH commodity charts),
+**/imbalance** (German reBAP imbalance prices, SMARD).
+Sister site to freight.lbzgiu.xyz, same stack and conventions. All phases 1-13 complete.
 
 **Data source: PostgreSQL `market_data`, NOT commo.duckdb.** Following the repo-wide
 DuckDB -> PostgreSQL migration (2026-06-13), `refresh.py` and the `analytics/` modules read
@@ -48,12 +47,18 @@ FastAPI + DuckDB + uv venv. Nginx + certbot TLS. Cloudflare proxy.
 
 ## Data sources
 - AGSI+ gas storage (agsi.gie.eu) - gas dashboard
-- ENTSO-E Transparency (transparency.entsoe.eu) - power prices, cross-border flows
-- Rebase Grid API (grid.rebase.energy) - generation mix by fuel type (beta key in market-data/.env)
+- ENTSO-E Transparency (transparency.entsoe.eu) - power prices, cross-border flows (NTC, scheduled, congestion), generation mix (A75 full fuel mix including nuclear; replaces Rebase Grid API as of Phase 12)
+- ENTSOG (entsog.eu) - physical gas flows overlay on /gas
+- SMARD (bundesnetzagentur.de) - German reBAP imbalance prices (/imbalance)
 - TTF front-month: ICE via DB.nomics
 - EUA: yfinance CO2.L
 - Coal API2: IMF via DB.nomics
 - Henry Hub: CME NYMEX via yfinance
+
+## Generation data coverage
+`refresh.py` calls `entso-e-gen-full` (not `rebase-generation`) for incremental updates. Backfill (2021-01
+to present) is in progress for the 27 non-core zones (BG CZ DK-1 DK-2 EE ES FI GR HR HU IE-SEM LT LV
+NO-1..5 PL PT RO SE-1..4 SI SK). Core 7 zones (AT BE CH DE-LU FR IT-NORD NL) were backfilled in Phase 12.
 
 ## Reference implementation: `~/quant/freight/`
 When unsure how to structure anything (db.py, systemd units, nginx, test fixtures, route layout),
