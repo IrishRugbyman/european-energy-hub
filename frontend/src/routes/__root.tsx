@@ -131,8 +131,11 @@ function AboutModal({ onClose }: { onClose: () => void }) {
               <span className="text-foreground">Cross-border flows</span> - ENTSO-E Transparency Platform
             </li>
             <li>
-              <span className="text-foreground">Generation mix</span> - Rebase Grid API,{' '}
-              <a href="https://grid.rebase.energy" className="text-primary hover:underline" target="_blank" rel="noreferrer">grid.rebase.energy</a>
+              <span className="text-foreground">Generation mix (A75 actual)</span> - ENTSO-E Transparency Platform (all fuel types incl. nuclear)
+            </li>
+            <li>
+              <span className="text-foreground">Physical gas flows</span> - ENTSOG Transparency Platform,{' '}
+              <a href="https://transparency.entsog.eu" className="text-primary hover:underline" target="_blank" rel="noreferrer">transparency.entsog.eu</a>
             </li>
             <li>
               <span className="text-foreground">German reBAP imbalance prices</span> - SMARD.de (Bundesnetzagentur),{' '}
