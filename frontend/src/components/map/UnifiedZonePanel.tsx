@@ -16,6 +16,7 @@ import {
 } from 'recharts'
 import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
 import { powerPriceColor, renewablePctColor, FUEL_PALETTE, zoneName } from '@/lib/scales'
+import { computeCarbonIntensity } from '@/components/map/EuroMap'
 import { fmtDelta } from '@/lib/utils'
 
 type TrendWindow = '3M' | '1Y' | 'ALL'
@@ -49,6 +50,7 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
 
   const priceColor = powerPriceColor(powerLatest?.base_eur)
   const reColor = renewablePctColor(genItem?.renewable_pct)
+  const carbonIntensity = computeCarbonIntensity(genItem)
 
   const hourlyPriceData = buildHourlyPriceChart(powerData?.hourly_recent)
   const allDaily = powerData?.daily_history ?? []
@@ -73,6 +75,9 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           )}
           {genItem?.renewable_pct != null && (
             <span className="text-xs text-green-400 font-medium">{genItem.renewable_pct.toFixed(0)}% RE</span>
+          )}
+          {carbonIntensity != null && (
+            <span className="text-xs text-muted-foreground font-medium">{carbonIntensity} gCO₂/kWh</span>
           )}
         </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
@@ -367,6 +372,7 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
                 <Area type="monotone" dataKey="_band_height" stackId="band" stroke="none" fill="rgba(56,189,248,0.10)" legendType="none" name="_band_base" />
                 <Line type="monotone" dataKey="base_eur" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="Base" />
                 <Line type="monotone" dataKey="peak_eur" stroke="#f59e0b" strokeWidth={1} dot={false} strokeDasharray="3 2" name="Peak" />
+                <Line type="monotone" dataKey="offpeak_eur" stroke="#818cf8" strokeWidth={1} dot={false} strokeDasharray="2 3" name="Off-peak" />
               </ComposedChart>
             </ResponsiveContainer>
           ) : (
@@ -481,12 +487,13 @@ function buildGenDailyChart(
 }
 
 function buildDailyBandData(
-  daily: { price_date: string; base_eur: number | null; peak_eur: number | null; min_eur: number | null; max_eur: number | null }[],
+  daily: { price_date: string; base_eur: number | null; peak_eur: number | null; offpeak_eur: number | null; min_eur: number | null; max_eur: number | null }[],
 ) {
   return daily.map((d) => ({
     price_date: d.price_date,
     base_eur: d.base_eur,
     peak_eur: d.peak_eur,
+    offpeak_eur: d.offpeak_eur,
     _band_base: d.min_eur,
     _band_height: d.min_eur != null && d.max_eur != null ? d.max_eur - d.min_eur : null,
   }))

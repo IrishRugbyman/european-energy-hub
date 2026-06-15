@@ -80,6 +80,7 @@ export interface PowerDailyPoint {
   price_date: string
   base_eur: number | null
   peak_eur: number | null
+  offpeak_eur: number | null
   day_range_eur: number | null
   neg_hours: number | null
   min_eur: number | null

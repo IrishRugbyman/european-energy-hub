@@ -405,7 +405,7 @@ def power_zone(zone_id: str):
 
     daily_df = db.query(
         """
-        SELECT price_date::VARCHAR AS price_date, base_eur, peak_eur, day_range_eur, neg_hours, min_eur, max_eur
+        SELECT price_date::VARCHAR AS price_date, base_eur, peak_eur, offpeak_eur, day_range_eur, neg_hours, min_eur, max_eur
         FROM power_daily
         WHERE zone = ?
           AND price_date >= current_date - INTERVAL '2 years'
@@ -418,6 +418,7 @@ def power_zone(zone_id: str):
             price_date=str(row.price_date),
             base_eur=_float(row.base_eur),
             peak_eur=_float(row.peak_eur),
+            offpeak_eur=_float(row.offpeak_eur),
             day_range_eur=_float(row.day_range_eur),
             neg_hours=int(row.neg_hours) if row.neg_hours is not None else None,
             min_eur=_float(row.min_eur),

@@ -111,6 +111,7 @@ class PowerDailyPoint(BaseModel):
     price_date: str
     base_eur: float | None
     peak_eur: float | None = None
+    offpeak_eur: float | None = None
     day_range_eur: float | None = None
     neg_hours: int | None = None
     min_eur: float | None = None
