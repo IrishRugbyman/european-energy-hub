@@ -19,6 +19,9 @@ from slowapi.util import get_remote_address
 
 from . import db
 from .schemas import (
+    BatteryHourlyPoint,
+    BatteryResponse,
+    BatterySummary,
     BorderFlowRow,
     CongestionBorderResponse,
     CongestionResponse,
@@ -837,3 +840,44 @@ def imbalance():
     ]
 
     return ImbalanceResponse(as_of=as_of, latest=latest, recent=recent, daily=daily)
+
+
+@app.get("/api/imbalance/dispatch", response_model=BatteryResponse)
+def imbalance_dispatch():
+    """Oracle battery dispatch for trailing 30 days of reBAP prices (1 MW / 2 MWh)."""
+    hourly_df = db.query(
+        "SELECT ts::VARCHAR AS ts, rebap_price, charge_mw, discharge_mw, soc_mwh, cumulative_pnl_eur "
+        "FROM battery_dispatch_recent ORDER BY ts"
+    )
+    summary_df = db.query("SELECT key, value FROM battery_summary")
+
+    hourly = [
+        BatteryHourlyPoint(
+            ts=str(r.ts),
+            rebap_price=_float(r.rebap_price),
+            charge_mw=_float(r.charge_mw),
+            discharge_mw=_float(r.discharge_mw),
+            soc_mwh=_float(r.soc_mwh),
+            cumulative_pnl_eur=_float(r.cumulative_pnl_eur),
+        )
+        for r in hourly_df.itertuples()
+    ]
+
+    summary = None
+    if not summary_df.empty:
+        kv = dict(zip(summary_df["key"], summary_df["value"]))
+        summary = BatterySummary(
+            total_pnl_eur=float(kv["total_pnl_eur"]) if "total_pnl_eur" in kv else None,
+            n_charge_hours=int(kv["n_charge_hours"]) if "n_charge_hours" in kv else None,
+            n_discharge_hours=int(kv["n_discharge_hours"]) if "n_discharge_hours" in kv else None,
+            avg_spread_captured_eur=float(kv["avg_spread_captured_eur"]) if "avg_spread_captured_eur" in kv else None,
+            avg_buy_price_eur=float(kv["avg_buy_price_eur"]) if "avg_buy_price_eur" in kv else None,
+            avg_sell_price_eur=float(kv["avg_sell_price_eur"]) if "avg_sell_price_eur" in kv else None,
+            trailing_days=int(kv["trailing_days"]) if "trailing_days" in kv else None,
+        )
+
+    return BatteryResponse(
+        as_of=_meta_val("refreshed_at_imbalance"),
+        summary=summary,
+        hourly=hourly,
+    )

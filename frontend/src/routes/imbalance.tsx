@@ -1,18 +1,21 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
   CartesianGrid,
-  Line,
   ComposedChart,
+  Line,
+  LineChart,
+  ReferenceLine,
   ResponsiveContainer,
+  Scatter,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint } from '@/lib/api'
+import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type BatteryHourlyPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/imbalance')({
@@ -37,6 +40,12 @@ function ImbalanceDashboard() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['imbalance'],
     queryFn: api.imbalance,
+    staleTime: 15 * 60 * 1000,
+  })
+
+  const { data: dispatchData } = useQuery({
+    queryKey: ['imbalance-dispatch'],
+    queryFn: api.imbalanceDispatch,
     staleTime: 15 * 60 * 1000,
   })
 
@@ -232,6 +241,9 @@ function ImbalanceDashboard() {
           </div>
         </div>
 
+        {/* Battery oracle dispatch */}
+        {dispatchData && <BatteryDispatchPanel hourly={dispatchData.hourly} summary={dispatchData.summary} />}
+
         {/* Methodology */}
         <div className="bg-card border border-border rounded-lg p-4 text-xs text-muted-foreground space-y-2">
           <p className="text-foreground font-medium text-xs">What is reBAP?</p>
@@ -256,6 +268,147 @@ function ImbalanceDashboard() {
       </div>
 
       <StaleBanner datasetKey="imbalance" variant="inline" />
+    </div>
+  )
+}
+
+function BatteryDispatchPanel({
+  hourly,
+  summary,
+}: {
+  hourly: BatteryHourlyPoint[]
+  summary: NonNullable<ReturnType<typeof api.imbalanceDispatch> extends Promise<infer T> ? T : never>['summary']
+}) {
+  const chartData = useMemo(() => {
+    const step = Math.max(1, Math.floor(hourly.length / 400))
+    return hourly
+      .filter((_, i) => i % step === 0 || i === hourly.length - 1)
+      .map((p) => {
+        const d = new Date(p.ts)
+        const label = `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}h`
+        return {
+          label,
+          rebap: p.rebap_price,
+          pnl: p.cumulative_pnl_eur,
+          charge: (p.charge_mw ?? 0) > 0.01 ? p.rebap_price : null,
+          discharge: (p.discharge_mw ?? 0) > 0.01 ? p.rebap_price : null,
+        }
+      })
+  }, [hourly])
+
+  const s = summary
+  const fmtEur = (v: number | null | undefined) => (v != null ? `${v.toFixed(0)} €` : '--')
+  const fmtRate = (v: number | null | undefined) => (v != null ? `${v.toFixed(1)} €/MWh` : '--')
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+      <div className="flex items-baseline gap-2">
+        <h2 className="text-sm font-medium text-foreground">Battery Oracle P&amp;L</h2>
+        <span className="text-xs text-muted-foreground">1 MW / 2 MWh, trailing {s?.trailing_days ?? 30} days</span>
+      </div>
+
+      {/* Summary stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SummaryCard label="Total P&L" value={fmtEur(s?.total_pnl_eur)} color="#34d399" />
+        <SummaryCard label="Avg spread" value={fmtRate(s?.avg_spread_captured_eur)} />
+        <SummaryCard label="Avg buy" value={fmtRate(s?.avg_buy_price_eur)} color="#60a5fa" />
+        <SummaryCard label="Avg sell" value={fmtRate(s?.avg_sell_price_eur)} color="#f59e0b" />
+      </div>
+
+      {/* reBAP + charge/discharge markers */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">reBAP price with charge (blue) / discharge (amber) events</p>
+        <ResponsiveContainer width="100%" height={160}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 8, fill: '#64748b' }}
+              tickLine={false}
+              interval={Math.floor(chartData.length / 8)}
+            />
+            <YAxis
+              tick={{ fontSize: 9, fill: '#64748b' }}
+              tickLine={false}
+              width={40}
+              tickFormatter={(v) => `${v}`}
+            />
+            <ReferenceLine y={0} stroke="#4b5563" strokeDasharray="3 2" />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+              formatter={(v, name) => {
+                const n = typeof v === 'number' ? v : null
+                const label = name === 'rebap' ? 'reBAP' : name === 'charge' ? 'Charge' : 'Discharge'
+                return n != null ? [`${n.toFixed(1)} €/MWh`, label] : ['--', label]
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="rebap"
+              stroke="#06b6d4"
+              strokeWidth={1}
+              dot={false}
+              name="rebap"
+            />
+            <Scatter dataKey="charge" fill="#60a5fa" name="charge" shape="circle" />
+            <Scatter dataKey="discharge" fill="#f59e0b" name="discharge" shape="circle" />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Cumulative P&L line */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">Cumulative oracle P&L (EUR)</p>
+        <ResponsiveContainer width="100%" height={120}>
+          <LineChart data={chartData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 8, fill: '#64748b' }}
+              tickLine={false}
+              interval={Math.floor(chartData.length / 8)}
+            />
+            <YAxis
+              tick={{ fontSize: 9, fill: '#64748b' }}
+              tickLine={false}
+              width={48}
+              tickFormatter={(v) => `${v}`}
+            />
+            <ReferenceLine y={0} stroke="#4b5563" strokeDasharray="3 2" />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+              formatter={(v) => {
+                const n = typeof v === 'number' ? v : null
+                return n != null ? [`${n.toFixed(0)} €`, 'Cum P&L'] : ['--', 'Cum P&L']
+              }}
+            />
+            <Line
+              type="monotone"
+              dataKey="pnl"
+              stroke="#34d399"
+              strokeWidth={1.5}
+              dot={false}
+              name="pnl"
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Oracle dispatch: perfect foresight of hourly reBAP prices. Degradation cost 28 EUR/MWh charged.
+        Upper bound on achievable P&L - actual forecast-based dispatch captures less.
+      </p>
+    </div>
+  )
+}
+
+function SummaryCard({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div className="bg-secondary rounded p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-base font-medium mt-0.5" style={color ? { color } : {}}>
+        {value}
+      </p>
     </div>
   )
 }

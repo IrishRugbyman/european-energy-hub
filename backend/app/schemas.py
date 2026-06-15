@@ -281,6 +281,31 @@ class GenZoneResponse(BaseModel):
     daily: list[GenDailyPoint]
 
 
+class BatteryHourlyPoint(BaseModel):
+    ts: str
+    rebap_price: float | None
+    charge_mw: float | None
+    discharge_mw: float | None
+    soc_mwh: float | None
+    cumulative_pnl_eur: float | None
+
+
+class BatterySummary(BaseModel):
+    total_pnl_eur: float | None
+    n_charge_hours: int | None
+    n_discharge_hours: int | None
+    avg_spread_captured_eur: float | None
+    avg_buy_price_eur: float | None
+    avg_sell_price_eur: float | None
+    trailing_days: int | None
+
+
+class BatteryResponse(BaseModel):
+    as_of: str | None
+    summary: BatterySummary | None
+    hourly: list[BatteryHourlyPoint]
+
+
 class DivergenceLatestRow(BaseModel):
     from_zone: str
     to_zone: str

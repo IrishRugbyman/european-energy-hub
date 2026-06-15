@@ -26,6 +26,7 @@ MARKET_DATA_VENV = MARKET_DATA_DIR / ".venv" / "bin" / "python"
 
 # Import analytics modules (script lives in scripts/, analytics one level up in backend/)
 sys.path.insert(0, str(BACKEND_DIR))
+from analytics.battery import build_battery_tables
 from analytics.congestion import build_congestion_tables
 from analytics.divergence import build_divergence_tables
 from analytics.gas import build_storage_tables
@@ -96,6 +97,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building German reBAP imbalance tables from market_data (PostgreSQL)...")
     imbalance_tables = build_imbalance_tables()
 
+    logger.info("Building battery oracle dispatch tables...")
+    battery_tables = build_battery_tables()
+
     ENERGY_DB.parent.mkdir(exist_ok=True)
     conn = duckdb.connect(str(ENERGY_DB))
     try:
@@ -110,6 +114,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_gas_flows(conn, gas_flows_tables)
         _write_congestion(conn, congestion_tables)
         _write_imbalance(conn, imbalance_tables)
+        _write_battery(conn, battery_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -420,6 +425,34 @@ def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     logger.info(
         f"imbalance: {len(recent)} recent rows, {len(daily)} daily rows, {len(latest)} latest rows"
     )
+
+
+def _write_battery(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    dispatch = tables["battery_dispatch_recent"]
+    summary  = tables["battery_summary"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE battery_dispatch_recent (
+            ts TIMESTAMP,
+            rebap_price REAL,
+            charge_mw REAL,
+            discharge_mw REAL,
+            soc_mwh REAL,
+            cumulative_pnl_eur REAL
+        )
+    """)
+    if not dispatch.empty:
+        conn.register("_bdr", dispatch)
+        conn.execute("INSERT INTO battery_dispatch_recent SELECT * FROM _bdr")
+    conn.execute("""
+        CREATE OR REPLACE TABLE battery_summary (
+            key VARCHAR PRIMARY KEY,
+            value VARCHAR
+        )
+    """)
+    if not summary.empty:
+        conn.register("_bs", summary)
+        conn.execute("INSERT INTO battery_summary SELECT * FROM _bs")
+    logger.info(f"battery: {len(dispatch)} hourly rows, P&L from summary")
 
 
 def _write_divergence(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

@@ -265,6 +265,31 @@ export interface CongestionBorderResponse {
   rows: CongestionRow[]
 }
 
+export interface BatteryHourlyPoint {
+  ts: string
+  rebap_price: number | null
+  charge_mw: number | null
+  discharge_mw: number | null
+  soc_mwh: number | null
+  cumulative_pnl_eur: number | null
+}
+
+export interface BatterySummary {
+  total_pnl_eur: number | null
+  n_charge_hours: number | null
+  n_discharge_hours: number | null
+  avg_spread_captured_eur: number | null
+  avg_buy_price_eur: number | null
+  avg_sell_price_eur: number | null
+  trailing_days: number | null
+}
+
+export interface BatteryResponse {
+  as_of: string | null
+  summary: BatterySummary | null
+  hourly: BatteryHourlyPoint[]
+}
+
 export interface DivergenceLatestRow {
   from_zone: string
   to_zone: string
@@ -329,4 +354,5 @@ export const api = {
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),
+  imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),
 }
