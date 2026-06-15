@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE, carbonIntensityColor, computeCarbonIntensity, EMISSION_FACTORS } from './scales'
+import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE, carbonIntensityColor, computeCarbonIntensity, EMISSION_FACTORS, gasFlowColor, priceDivergenceColor } from './scales'
 
 describe('gasFillColor', () => {
   it('returns grey for null/undefined', () => {
@@ -268,5 +268,79 @@ describe('carbonIntensityColor', () => {
   it('red for dirty (> 500)', () => {
     expect(carbonIntensityColor(600)).toBe('#b91c1c')
     expect(carbonIntensityColor(820)).toBe('#b91c1c')
+  })
+})
+
+describe('gasFlowColor', () => {
+  it('returns grey for null/undefined', () => {
+    expect(gasFlowColor(null)).toBe('#374151')
+    expect(gasFlowColor(undefined)).toBe('#374151')
+  })
+
+  it('blue-700 for large importer (net > 80)', () => {
+    expect(gasFlowColor(100)).toBe('#1d4ed8')
+    expect(gasFlowColor(81)).toBe('#1d4ed8')
+  })
+
+  it('blue-500 for moderate importer (30-80)', () => {
+    expect(gasFlowColor(50)).toBe('#3b82f6')
+    expect(gasFlowColor(31)).toBe('#3b82f6')
+  })
+
+  it('sky-300 for modest importer (5-30)', () => {
+    expect(gasFlowColor(10)).toBe('#7dd3fc')
+  })
+
+  it('grey for balanced (-5 to +5)', () => {
+    expect(gasFlowColor(0)).toBe('#4b5563')
+    expect(gasFlowColor(3)).toBe('#4b5563')
+    expect(gasFlowColor(-3)).toBe('#4b5563')
+  })
+
+  it('amber-500 for modest exporter (-30 to -5)', () => {
+    expect(gasFlowColor(-10)).toBe('#f59e0b')
+  })
+
+  it('amber-600 for moderate exporter (-80 to -30)', () => {
+    expect(gasFlowColor(-50)).toBe('#d97706')
+  })
+
+  it('amber-700 for large exporter (< -80)', () => {
+    expect(gasFlowColor(-100)).toBe('#b45309')
+    expect(gasFlowColor(-200)).toBe('#b45309')
+  })
+})
+
+describe('priceDivergenceColor', () => {
+  it('returns grey for null/undefined', () => {
+    expect(priceDivergenceColor(null)).toBe('#374151')
+    expect(priceDivergenceColor(undefined)).toBe('#374151')
+  })
+
+  it('grey for small spread (abs < 5)', () => {
+    expect(priceDivergenceColor(0)).toBe('#374151')
+    expect(priceDivergenceColor(3)).toBe('#374151')
+    expect(priceDivergenceColor(-3)).toBe('#374151')
+  })
+
+  it('yellow-600 for moderate spread (5-10)', () => {
+    expect(priceDivergenceColor(7)).toBe('#ca8a04')
+    expect(priceDivergenceColor(-7)).toBe('#ca8a04')
+  })
+
+  it('amber-600 for significant spread (10-20)', () => {
+    expect(priceDivergenceColor(15)).toBe('#d97706')
+    expect(priceDivergenceColor(-15)).toBe('#d97706')
+  })
+
+  it('red-700 for large spread (20-40)', () => {
+    expect(priceDivergenceColor(30)).toBe('#b91c1c')
+    expect(priceDivergenceColor(-30)).toBe('#b91c1c')
+  })
+
+  it('red-900 for extreme spread (>= 40)', () => {
+    expect(priceDivergenceColor(50)).toBe('#7f1d1d')
+    expect(priceDivergenceColor(-50)).toBe('#7f1d1d')
+    expect(priceDivergenceColor(76)).toBe('#7f1d1d')
   })
 })
