@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Test coverage for divergence and battery dispatch endpoints
+
+Added 4 new backend tests (total 40): `test_power_divergence`, `test_power_divergence_history`,
+`test_imbalance_dispatch`, `test_imbalance_dispatch_summary`. The conftest seeder now creates
+`divergence_latest`, `divergence_30d`, `battery_dispatch_recent`, and `battery_summary` tables
+with realistic seeded data so all new Phase 14/16 endpoints are covered.
+
+---
+
 ## 2026-06-15 - Gas flow drill-down panel (Phase 17)
 
 Clicking a country on the ENTSOG physical flows overlay now opens a dedicated `GasFlowPanel`
