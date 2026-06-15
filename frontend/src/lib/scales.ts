@@ -208,3 +208,30 @@ export function dominantFuelColor(fuel: string | null | undefined): string {
   if (!fuel) return '#374151'
   return FUEL_PALETTE[fuel] ?? '#374151'
 }
+
+// IPCC AR6 lifecycle median emission factors, gCO2eq/kWh
+export const EMISSION_FACTORS: Record<string, number> = {
+  coal:        820,
+  oil:         650,
+  gas:         490,
+  biomass:     230,
+  other:       400,
+  geothermal:   38,
+  hydro:        24,
+  nuclear:      12,
+  solar:        45,
+  wind:         11,
+}
+
+// Carbon intensity gCO2eq/kWh -> color. Low = clean green, high = red.
+export function carbonIntensityColor(gco2: number | null | undefined): string {
+  if (gco2 == null) return '#374151'
+  if (gco2 < 50)  return '#166534'   // green-800 (nuclear/hydro/wind dominated)
+  if (gco2 < 100) return '#15803d'   // green-700
+  if (gco2 < 150) return '#4d7c0f'   // lime-700
+  if (gco2 < 200) return '#65a30d'   // lime-600
+  if (gco2 < 300) return '#ca8a04'   // yellow-600
+  if (gco2 < 400) return '#d97706'   // amber-600
+  if (gco2 < 500) return '#ea580c'   // orange-600
+  return '#b91c1c'                    // red-700 (coal-heavy)
+}

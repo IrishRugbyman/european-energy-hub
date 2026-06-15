@@ -2,12 +2,12 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
-import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
+import { EuroMap, type MapMetric, isPriceMetric, zoneColor, computeCarbonIntensity } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
 import { InterconnectionLayer, type BorderKey } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
-import { FUEL_PALETTE, renewablePctColor } from '@/lib/scales'
+import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor } from '@/lib/scales'
 
 export const Route = createFileRoute('/power')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -117,10 +117,24 @@ const METRIC_CONFIG: Record<MapMetric, MetricConfig> = {
       { label: 'no data',    color: '#374151' },
     ],
   },
+  carbon_intensity: {
+    label: 'Carbon',
+    title: 'Carbon intensity (gCO₂/kWh)',
+    items: [
+      { label: '< 50 (clean)',  color: carbonIntensityColor(30) },
+      { label: '50-100',        color: carbonIntensityColor(75) },
+      { label: '100-200',       color: carbonIntensityColor(150) },
+      { label: '200-300',       color: carbonIntensityColor(250) },
+      { label: '300-400',       color: carbonIntensityColor(350) },
+      { label: '400-500',       color: carbonIntensityColor(450) },
+      { label: '> 500 (dirty)', color: carbonIntensityColor(550) },
+      { label: 'no data',       color: '#374151' },
+    ],
+  },
 }
 
 const PRICE_METRICS: MapMetric[] = ['price', 'range', 'neg_hours', 'pct_rank']
-const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel']
+const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel', 'carbon_intensity']
 
 function MapDashboard() {
   const { date: urlDate } = Route.useSearch()
@@ -172,6 +186,11 @@ function MapDashboard() {
   const totalMW = withGenData.reduce((s, z) => s + (z.total_mw ?? 0), 0)
   const weightedRE = totalMW > 0
     ? withGenData.reduce((s, z) => s + (z.renewable_pct ?? 0) * (z.total_mw ?? 0), 0) / totalMW
+    : null
+  const zonesWithCI = withGenData.map((z) => ({ ci: computeCarbonIntensity(z), mw: z.total_mw ?? 0 })).filter((z) => z.ci != null)
+  const ciTotalMW = zonesWithCI.reduce((s, z) => s + z.mw, 0)
+  const weightedCI = ciTotalMW > 0
+    ? Math.round(zonesWithCI.reduce((s, z) => s + (z.ci ?? 0) * z.mw, 0) / ciTotalMW)
     : null
   const genDate = genData?.zones[0]?.gen_date ?? null
   const minDate = genData?.min_date ?? undefined
@@ -263,6 +282,9 @@ function MapDashboard() {
             )}
             {weightedRE != null && (
               <StatChip label="EU avg renewable" value={`${weightedRE.toFixed(0)}%`} />
+            )}
+            {weightedCI != null && (
+              <StatChip label="EU carbon intensity" value={`${weightedCI} gCO₂/kWh`} />
             )}
             {priceDate && !isHistorical && (
               <span className="text-muted-foreground text-xs">{priceDate}</span>
