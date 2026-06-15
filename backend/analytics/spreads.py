@@ -15,16 +15,25 @@ COAL_EFF = 0.36
 COAL_EF = 0.96
 COAL_MWH_PER_TONNE = 6.978
 
+# Zones to include in the multi-zone spreads table.
+# All use TTF as the gas reference (standard EU practice).
+SPREAD_ZONES = ["DE-LU", "FR", "NL", "IT-NORD", "BE", "AT"]
+
 
 def build_spreads_tables() -> dict[str, pd.DataFrame]:
-    """Return two DataFrames ready to write into energy_hub.duckdb."""
+    """Return DataFrames ready to write into energy_hub.duckdb."""
     start = date(2019, 1, 1)
     end = date.today()
 
     spreads_daily = _build_spreads(start, end)
     prices_daily = _build_prices(start, end)
+    multi_zone_spreads = _build_multi_zone_spreads(start, end)
 
-    return {"spreads_daily": spreads_daily, "prices_daily": prices_daily}
+    return {
+        "spreads_daily": spreads_daily,
+        "prices_daily": prices_daily,
+        "multi_zone_spreads": multi_zone_spreads,
+    }
 
 
 def _build_spreads(start: date, end: date) -> pd.DataFrame:
@@ -113,3 +122,45 @@ def _build_prices(start: date, end: date) -> pd.DataFrame:
         if col not in out.columns:
             out[col] = None
     return out[["price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu"]].copy()
+
+
+def _build_multi_zone_spreads(start: date, end: date) -> pd.DataFrame:
+    """CSS/CDS/FSS for each zone in SPREAD_ZONES using TTF as the common gas reference."""
+    from loaders.spreads import load_spread_inputs
+
+    empty = pd.DataFrame(columns=["price_date", "zone", "power_eur_mwh",
+                                   "css", "cds", "fss", "regime_threshold"])
+    frames: list[pd.DataFrame] = []
+
+    for zone in SPREAD_ZONES:
+        try:
+            inputs = load_spread_inputs(zone, start, end)
+        except Exception:
+            continue
+        if inputs.empty:
+            continue
+
+        df = inputs.copy()
+        df.index = pd.to_datetime(df.index)
+        coal_eur_mwh = (df["coal_usd_t"] * df["eur_usd"]) / COAL_MWH_PER_TONNE
+        css = df["power_eur_mwh"] - df["ttf_eur_mwh"] / GAS_EFF - df["eua_eur_tco2"] * GAS_EF
+        cds = df["power_eur_mwh"] - coal_eur_mwh / COAL_EFF - df["eua_eur_tco2"] * COAL_EF
+        fss = css - cds
+
+        zone_df = pd.DataFrame({
+            "price_date": df.index,
+            "zone": zone,
+            "power_eur_mwh": df["power_eur_mwh"].values,
+            "css": css.round(4).values,
+            "cds": cds.round(4).values,
+            "fss": fss.round(4).values,
+            "regime_threshold": fss.apply(lambda x: "gas" if x > 0 else "coal").values,
+        })
+        frames.append(zone_df)
+
+    if not frames:
+        return empty
+
+    out = pd.concat(frames, ignore_index=True)
+    out["price_date"] = pd.to_datetime(out["price_date"]).dt.date
+    return out

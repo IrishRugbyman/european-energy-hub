@@ -318,6 +318,22 @@ export interface DivergenceResponse {
   history: DivergenceBorderHistory[]
 }
 
+export interface MultiZoneSpreadRow {
+  price_date: string
+  zone: string
+  power_eur_mwh: number | null
+  css: number | null
+  cds: number | null
+  fss: number | null
+  regime_threshold: string | null
+}
+
+export interface MultiZoneSpreadsResponse {
+  as_of: string | null
+  zones: string[]
+  rows: MultiZoneSpreadRow[]
+}
+
 export interface GasFlowItem {
   country: string
   period_date: string
@@ -349,6 +365,7 @@ export const api = {
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   spreads: () => get<SpreadsResponse>('/spreads'),
+  spreadsZones: () => get<MultiZoneSpreadsResponse>('/spreads/zones'),
   prices: () => get<PricesResponse>('/prices'),
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),

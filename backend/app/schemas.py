@@ -359,3 +359,19 @@ class ImbalanceResponse(BaseModel):
     latest: ImbalanceLatest | None
     recent: list[ImbalanceRecentPoint]
     daily: list[ImbalanceDailyPoint]
+
+
+class MultiZoneSpreadRow(BaseModel):
+    price_date: str
+    zone: str
+    power_eur_mwh: float | None
+    css: float | None
+    cds: float | None
+    fss: float | None
+    regime_threshold: str | None
+
+
+class MultiZoneSpreadsResponse(BaseModel):
+    as_of: str | None
+    zones: list[str]
+    rows: list[MultiZoneSpreadRow]

@@ -249,6 +249,7 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     spreads = tables["spreads_daily"]
     prices = tables["prices_daily"]
+    multi = tables.get("multi_zone_spreads")
 
     conn.execute("""
         CREATE OR REPLACE TABLE spreads_daily (
@@ -280,8 +281,26 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_pr", prices)
         conn.execute("INSERT INTO prices_daily SELECT * FROM _pr")
 
+    conn.execute("""
+        CREATE OR REPLACE TABLE multi_zone_spreads (
+            price_date DATE,
+            zone VARCHAR,
+            power_eur_mwh REAL,
+            css REAL,
+            cds REAL,
+            fss REAL,
+            regime_threshold VARCHAR
+        )
+    """)
+    n_multi = 0
+    if multi is not None and not multi.empty:
+        conn.register("_mz", multi)
+        conn.execute("INSERT INTO multi_zone_spreads SELECT * FROM _mz")
+        n_multi = len(multi)
+
     logger.info(
-        f"spreads: {len(spreads)} daily rows, prices: {len(prices)} daily rows"
+        f"spreads: {len(spreads)} daily rows, prices: {len(prices)} daily rows, "
+        f"multi-zone: {n_multi} rows"
     )
 
 

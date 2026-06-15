@@ -3,6 +3,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
   ComposedChart,
+  BarChart,
+  Bar,
+  Cell,
   Line,
   XAxis,
   YAxis,
@@ -13,7 +16,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/spreads')({
@@ -156,6 +159,227 @@ function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: W
   )
 }
 
+const ZONE_COLORS: Record<string, string> = {
+  'DE-LU': '#60a5fa',
+  FR: '#34d399',
+  NL: '#f472b6',
+  'IT-NORD': '#fb923c',
+  BE: '#a78bfa',
+  AT: '#facc15',
+}
+
+const ZONE_LABELS: Record<string, string> = {
+  'DE-LU': 'Germany',
+  FR: 'France',
+  NL: 'Netherlands',
+  'IT-NORD': 'Italy North',
+  BE: 'Belgium',
+  AT: 'Austria',
+}
+
+type SpreadKey = 'css' | 'cds' | 'fss'
+
+function MultiZoneTooltip({
+  active,
+  payload,
+  label,
+  spreadKey,
+}: {
+  active?: boolean
+  payload?: { name: string; value: number; color: string }[]
+  label?: string
+  spreadKey: SpreadKey
+}) {
+  if (!active || !payload?.length) return null
+  const labels: Record<SpreadKey, string> = { css: 'Clean Spark', cds: 'Clean Dark', fss: 'Fuel Switch' }
+  return (
+    <div className="bg-card border border-border rounded px-3 py-2 text-xs shadow-lg">
+      <p className="text-muted-foreground mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.name} style={{ color: p.color }}>
+          {ZONE_LABELS[p.name] ?? p.name}: {p.value != null ? `${p.value.toFixed(1)} €/MWh` : '-'}
+        </p>
+      ))}
+      <p className="text-muted-foreground/70 mt-1">{labels[spreadKey]}</p>
+    </div>
+  )
+}
+
+function MultiZoneChart({
+  rows,
+  zones,
+  spreadKey,
+  window: w,
+}: {
+  rows: MultiZoneSpreadRow[]
+  zones: string[]
+  spreadKey: SpreadKey
+  window: Window
+}) {
+  const cutoff = cutoffDate(w)
+
+  const data = useMemo(() => {
+    const filtered = cutoff ? rows.filter((r) => r.price_date >= cutoff) : rows
+    // Pivot: date -> { date, [zone]: value }
+    const map = new Map<string, Record<string, number | null>>()
+    for (const r of filtered) {
+      if (!map.has(r.price_date)) map.set(r.price_date, { date: r.price_date as unknown as number | null })
+      map.get(r.price_date)![r.zone] = r[spreadKey]
+    }
+    const sorted = Array.from(map.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, v]) => v)
+    // Sample for performance: max 400 points per zone
+    const step = Math.max(1, Math.floor(sorted.length / 400))
+    return sorted.filter((_, i) => i % step === 0 || i === sorted.length - 1)
+  }, [rows, cutoff, spreadKey])
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+        <XAxis
+          dataKey="date"
+          tick={{ fontSize: 10, fill: '#64748b' }}
+          tickLine={false}
+          interval="preserveStartEnd"
+        />
+        <YAxis
+          tick={{ fontSize: 10, fill: '#64748b' }}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(v) => `${v.toFixed(0)}`}
+          unit=" €"
+        />
+        <Tooltip content={<MultiZoneTooltip spreadKey={spreadKey} />} />
+        <Legend
+          wrapperStyle={{ fontSize: 10, paddingTop: 6 }}
+          formatter={(name) => ZONE_LABELS[name] ?? name}
+        />
+        <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+        {zones.map((zone) => (
+          <Line
+            key={zone}
+            dataKey={zone}
+            stroke={ZONE_COLORS[zone] ?? '#94a3b8'}
+            dot={false}
+            strokeWidth={1.5}
+            name={zone}
+            connectNulls
+          />
+        ))}
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
+// Latest snapshot bar chart: one bar per zone for selected spread
+function LatestSnapshotChart({
+  rows,
+  zones,
+  spreadKey,
+}: {
+  rows: MultiZoneSpreadRow[]
+  zones: string[]
+  spreadKey: SpreadKey
+}) {
+  const data = useMemo(() => {
+    const latest = new Map<string, number | null>()
+    for (const r of rows) {
+      if (r[spreadKey] != null) latest.set(r.zone, r[spreadKey])
+    }
+    return zones
+      .filter((z) => latest.has(z))
+      .map((z) => ({ zone: ZONE_LABELS[z] ?? z, value: latest.get(z) ?? null, fill: ZONE_COLORS[z] ?? '#94a3b8' }))
+  }, [rows, zones, spreadKey])
+
+  if (!data.length) return null
+  return (
+    <ResponsiveContainer width="100%" height={160}>
+      <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+        <XAxis dataKey="zone" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+        <YAxis
+          tick={{ fontSize: 10, fill: '#64748b' }}
+          tickLine={false}
+          axisLine={false}
+          tickFormatter={(v) => `${v.toFixed(0)}`}
+          unit=" €"
+        />
+        <Tooltip
+          formatter={(v) => [v != null ? `${Number(v).toFixed(1)} €/MWh` : '-', 'value']}
+          contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 4, fontSize: 11 }}
+        />
+        <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+        <Bar dataKey="value" isAnimationActive={false}>
+          {data.map((d, i) => (
+            <Cell key={i} fill={d.fill} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  )
+}
+
+function MultiZoneSection({ window: w }: { window: Window }) {
+  const [spreadKey, setSpreadKey] = useState<SpreadKey>('css')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['spreads-zones'],
+    queryFn: api.spreadsZones,
+    staleTime: 15 * 60 * 1000,
+  })
+
+  const rows = data?.rows ?? []
+  const zones = data?.zones ?? []
+
+  if (isLoading) return <p className="text-muted-foreground text-sm">Loading zone data...</p>
+  if (!rows.length) return null
+
+  const SPREAD_TABS: { key: SpreadKey; label: string; color: string }[] = [
+    { key: 'css', label: 'Clean Spark (CSS)', color: '#60a5fa' },
+    { key: 'cds', label: 'Clean Dark (CDS)', color: '#f59e0b' },
+    { key: 'fss', label: 'Fuel Switch (FSS)', color: '#a78bfa' },
+  ]
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
+        <h2 className="text-sm font-medium text-muted-foreground">Multi-Zone Comparison (€/MWh)</h2>
+        <div className="flex items-center gap-1 ml-auto">
+          {SPREAD_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setSpreadKey(t.key)}
+              className={`px-2 py-0.5 rounded text-xs ${
+                t.key === spreadKey
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {t.key.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground mb-3">
+        {SPREAD_TABS.find((t) => t.key === spreadKey)?.label} - all zones use TTF as gas reference
+      </p>
+
+      <div className="mb-4">
+        <p className="text-xs text-muted-foreground mb-2">Latest</p>
+        <LatestSnapshotChart rows={rows} zones={zones} spreadKey={spreadKey} />
+      </div>
+
+      <div>
+        <p className="text-xs text-muted-foreground mb-2">History</p>
+        <MultiZoneChart rows={rows} zones={zones} spreadKey={spreadKey} window={w} />
+      </div>
+    </div>
+  )
+}
+
 function SpreadsDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
 
@@ -229,6 +453,8 @@ function SpreadsDashboard() {
             </div>
             <SpreadChart rows={rows} window={window} />
           </div>
+
+          <MultiZoneSection window={window} />
 
           <div className="bg-card border border-border rounded-lg p-4">
             <SpreadExplainer />

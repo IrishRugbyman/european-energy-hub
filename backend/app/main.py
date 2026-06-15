@@ -60,6 +60,8 @@ from .schemas import (
     SpreadsDailyPoint,
     SpreadsResponse,
     StorageLatestRow,
+    MultiZoneSpreadRow,
+    MultiZoneSpreadsResponse,
 )
 
 
@@ -587,6 +589,36 @@ def flows(date: str | None = None):
         for r in df.itertuples()
     ]
     return FlowsResponse(price_date=price_date, rows=rows)
+
+
+@app.get("/api/spreads/zones", response_model=MultiZoneSpreadsResponse)
+def multi_zone_spreads():
+    """CSS/CDS/FSS for multiple EU bidding zones (DE-LU, FR, NL, IT-NORD, BE, AT)."""
+    df = db.query(
+        """
+        SELECT price_date::VARCHAR AS price_date, zone,
+               power_eur_mwh, css, cds, fss, regime_threshold
+        FROM multi_zone_spreads
+        ORDER BY zone, price_date
+        """
+    )
+    as_of = _meta_val("refreshed_at_spreads")
+    if df.empty:
+        return MultiZoneSpreadsResponse(as_of=as_of, zones=[], rows=[])
+    zones = sorted(df["zone"].unique().tolist())
+    rows = [
+        MultiZoneSpreadRow(
+            price_date=str(r.price_date),
+            zone=str(r.zone),
+            power_eur_mwh=_float(r.power_eur_mwh),
+            css=_float(r.css),
+            cds=_float(r.cds),
+            fss=_float(r.fss),
+            regime_threshold=str(r.regime_threshold) if r.regime_threshold else None,
+        )
+        for r in df.itertuples()
+    ]
+    return MultiZoneSpreadsResponse(as_of=as_of, zones=zones, rows=rows)
 
 
 @app.get("/api/spreads", response_model=SpreadsResponse)
