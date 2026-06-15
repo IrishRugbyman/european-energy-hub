@@ -269,7 +269,7 @@ function MapDashboard() {
         </div>
       </div>
 
-      {/* Top-center stat strip */}
+      {/* Top-center stat strip - shows the single most relevant EU aggregate for the active metric */}
       <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-4 px-4 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm pointer-events-none">
         {powerLoading ? (
           <span className="text-muted-foreground text-xs">Loading...</span>
@@ -277,13 +277,13 @@ function MapDashboard() {
           <span className="text-destructive text-xs">API unavailable</span>
         ) : (
           <>
-            {medianPrice != null && (
+            {isPriceMetric(metric) && medianPrice != null && (
               <StatChip label="EU median price" value={`${medianPrice.toFixed(0)} €/MWh`} />
             )}
-            {weightedRE != null && (
+            {(metric === 'renewable' || metric === 'dominant_fuel') && weightedRE != null && (
               <StatChip label="EU avg renewable" value={`${weightedRE.toFixed(0)}%`} />
             )}
-            {weightedCI != null && (
+            {metric === 'carbon_intensity' && weightedCI != null && (
               <StatChip label="EU carbon intensity" value={`${weightedCI} gCO₂/kWh`} />
             )}
             {priceDate && !isHistorical && (
