@@ -1,5 +1,32 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Merge /power and /generation into unified /map page
+
+Merged the two separate European choropleth pages into a single /map page, matching
+the industry-standard approach (Electricity Maps, ENTSO-E transparency). One map, six
+metric modes in the right-panel toggle grouped by type:
+
+- Prices section: Price (EUR/MWh), Range (intraday), Neg hrs, 2yr rank
+- Generation section: Renewable %, Dominant fuel
+
+Clicking any zone opens a unified UnifiedZonePanel showing price stats, 48h price
+chart, fuel breakdown grid, 24h stacked gen mix, daily fuel+RE% ComposedChart, and
+daily price range - all in one scrollable view. Tooltip always shows price + RE% +
+top-3 fuel colored dots regardless of active metric. Date picker appears only when a
+generation metric is active.
+
+/power and /generation now redirect to /map. Nav shrinks from 6 to 5 tabs.
+
+Fixed stale-ref tooltip bug from old GenMap/PowerMap: now uses `powerRef`/`genRef`
+so hover tooltips always read current data instead of the empty snapshot captured
+at layer-creation mount time.
+
+**Artifacts:** `EuroMap.tsx` (unified choropleth, MapMetric type, ref-based tooltip),
+`UnifiedZonePanel.tsx` (merged price+gen panel), `map.tsx` (new route), `power.tsx`
+and `generation.tsx` (now redirects), `__root.tsx` (nav update, Map icon).
+
+---
+
 ## 2026-06-15 - Phase 13: Dominant-fuel choropleth + full fuel breakdown on /generation
 
 **Tried:** Expose all 10 ENTSO-E A75 fuel types through the generation map API and ZoneGenPanel,

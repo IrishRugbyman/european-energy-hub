@@ -1,11 +1,12 @@
 # CLAUDE.md - European Energy Hub
 
-Standalone live web app at **energy.lbzgiu.xyz**. Six dashboards:
-**/gas** (EU gas storage choropleth, AGSI+), **/power** (day-ahead price choropleth + congestion + interconnections,
-ENTSO-E), **/generation** (renewable % + dominant-fuel choropleth by bidding zone, ENTSO-E A75 full mix),
+Standalone live web app at **energy.lbzgiu.xyz**. Five dashboards:
+**/gas** (EU gas storage choropleth, AGSI+), **/map** (unified power+generation choropleth - six metric
+modes: Price/Range/Neg-hrs/2yr-rank + Renewable%/Dominant-fuel; interconnections toggle; unified zone
+panel with price stats, fuel breakdown, 48h price chart, daily gen+RE% trend, daily price range),
 **/spreads** (CSS/CDS/FSS spark/dark spread analytics), **/prices** (TTF/EUA/coal/HH commodity charts),
-**/imbalance** (German reBAP imbalance prices, SMARD).
-Sister site to freight.lbzgiu.xyz, same stack and conventions. All phases 1-13 complete.
+**/imbalance** (German reBAP imbalance prices, SMARD). /power and /generation redirect to /map.
+Sister site to freight.lbzgiu.xyz, same stack and conventions.
 
 **Data source: PostgreSQL `market_data`, NOT commo.duckdb.** Following the repo-wide
 DuckDB -> PostgreSQL migration (2026-06-13), `refresh.py` and the `analytics/` modules read
@@ -22,8 +23,8 @@ is still DuckDB - it is precomputed by `refresh.py` and served read-only by the 
 | `backend/scripts/refresh.py` | Rebuilds energy_hub.duckdb from the `market_data` PostgreSQL DB |
 | `backend/analytics/` | gas.py, power.py, spreads.py, flows.py, generation.py |
 | `backend/data/energy_hub.duckdb` | Precomputed read-only DB served by API |
-| `frontend/src/routes/` | gas.tsx, power.tsx, generation.tsx, spreads.tsx, prices.tsx |
-| `frontend/src/components/generation/` | GenMap.tsx, ZoneGenPanel.tsx |
+| `frontend/src/routes/` | gas.tsx, map.tsx, spreads.tsx, prices.tsx, imbalance.tsx (power/generation redirect to map) |
+| `frontend/src/components/map/` | EuroMap.tsx (unified choropleth, MapMetric), UnifiedZonePanel.tsx |
 | `frontend/public/geo/` | countries.geojson (GISCO 1:3M), bidding_zones.geojson (EM-contrib) |
 | `nginx-energy.conf` | Production nginx config (TLS) |
 | `energy-api.service` | systemd unit, :8004 |
