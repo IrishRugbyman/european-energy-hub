@@ -281,6 +281,34 @@ class GenZoneResponse(BaseModel):
     daily: list[GenDailyPoint]
 
 
+class DivergenceLatestRow(BaseModel):
+    from_zone: str
+    to_zone: str
+    price_date: str
+    from_price: float | None
+    to_price: float | None
+    diff_eur_mwh: float | None
+
+
+class DivergenceDailyPoint(BaseModel):
+    price_date: str
+    from_price: float | None
+    to_price: float | None
+    diff_eur_mwh: float | None
+
+
+class DivergenceBorderHistory(BaseModel):
+    from_zone: str
+    to_zone: str
+    history: list[DivergenceDailyPoint]
+
+
+class DivergenceResponse(BaseModel):
+    as_of: str | None
+    rows: list[DivergenceLatestRow]
+    history: list[DivergenceBorderHistory]
+
+
 class ImbalanceRecentPoint(BaseModel):
     ts: str
     rebap_eur_mwh: float | None

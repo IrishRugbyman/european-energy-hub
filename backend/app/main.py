@@ -23,6 +23,10 @@ from .schemas import (
     CongestionBorderResponse,
     CongestionResponse,
     CongestionRow,
+    DivergenceBorderHistory,
+    DivergenceDailyPoint,
+    DivergenceLatestRow,
+    DivergenceResponse,
     FlowsResponse,
     GasCountryResponse,
     GasFlowCountryResponse,
@@ -333,6 +337,59 @@ def power_congestion_border(from_zone: str, to_zone: str):
         for r in df.itertuples()
     ]
     return CongestionBorderResponse(from_zone=fz, to_zone=tz, rows=rows)
+
+
+@app.get("/api/power/divergence", response_model=DivergenceResponse)
+def power_divergence():
+    """Latest DA price spread per border pair + 30-day daily history."""
+    latest_df = db.query(
+        """
+        SELECT from_zone, to_zone, price_date::VARCHAR AS price_date,
+               from_price, to_price, diff_eur_mwh
+        FROM divergence_latest
+        ORDER BY ABS(diff_eur_mwh) DESC NULLS LAST
+        """
+    )
+    hist_df = db.query(
+        """
+        SELECT from_zone, to_zone, price_date::VARCHAR AS price_date,
+               from_price, to_price, diff_eur_mwh
+        FROM divergence_30d
+        ORDER BY from_zone, to_zone, price_date
+        """
+    )
+
+    rows = [
+        DivergenceLatestRow(
+            from_zone=str(r.from_zone),
+            to_zone=str(r.to_zone),
+            price_date=str(r.price_date),
+            from_price=_float(r.from_price),
+            to_price=_float(r.to_price),
+            diff_eur_mwh=_float(r.diff_eur_mwh),
+        )
+        for r in latest_df.itertuples()
+    ]
+
+    history: list[DivergenceBorderHistory] = []
+    if not hist_df.empty:
+        for (fz, tz), grp in hist_df.groupby(["from_zone", "to_zone"]):
+            pts = [
+                DivergenceDailyPoint(
+                    price_date=str(r.price_date),
+                    from_price=_float(r.from_price),
+                    to_price=_float(r.to_price),
+                    diff_eur_mwh=_float(r.diff_eur_mwh),
+                )
+                for r in grp.itertuples()
+            ]
+            history.append(DivergenceBorderHistory(from_zone=str(fz), to_zone=str(tz), history=pts))
+
+    return DivergenceResponse(
+        as_of=_meta_val("refreshed_at_power"),
+        rows=rows,
+        history=history,
+    )
 
 
 @app.get("/api/power/map", response_model=PowerMapResponse)

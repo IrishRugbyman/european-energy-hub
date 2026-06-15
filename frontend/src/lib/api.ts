@@ -265,6 +265,34 @@ export interface CongestionBorderResponse {
   rows: CongestionRow[]
 }
 
+export interface DivergenceLatestRow {
+  from_zone: string
+  to_zone: string
+  price_date: string
+  from_price: number | null
+  to_price: number | null
+  diff_eur_mwh: number | null
+}
+
+export interface DivergenceDailyPoint {
+  price_date: string
+  from_price: number | null
+  to_price: number | null
+  diff_eur_mwh: number | null
+}
+
+export interface DivergenceBorderHistory {
+  from_zone: string
+  to_zone: string
+  history: DivergenceDailyPoint[]
+}
+
+export interface DivergenceResponse {
+  as_of: string | null
+  rows: DivergenceLatestRow[]
+  history: DivergenceBorderHistory[]
+}
+
 export interface GasFlowItem {
   country: string
   period_date: string
@@ -292,6 +320,7 @@ export const api = {
   gasFlowsCountry: (cc: string) => get<GasFlowCountryResponse>(`/gas/flows/${cc}`),
   powerCongestion: () => get<CongestionResponse>('/power/congestion'),
   powerCongestionBorder: (fz: string, tz: string) => get<CongestionBorderResponse>(`/power/congestion/border/${fz}/${tz}`),
+  powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   spreads: () => get<SpreadsResponse>('/spreads'),

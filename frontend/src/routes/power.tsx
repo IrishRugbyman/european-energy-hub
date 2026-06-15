@@ -5,7 +5,7 @@ import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
 import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
-import { InterconnectionLayer, type BorderKey } from '@/components/power/InterconnectionLayer'
+import { InterconnectionLayer, type BorderKey, type InterconnMode } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
 import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity } from '@/lib/scales'
 
@@ -25,6 +25,14 @@ const UTILIZATION_LEGEND = [
   { label: '20-40%',  color: '#16a34a' },
   { label: '< 20%',   color: '#15803d' },
   { label: 'no data', color: '#374151' },
+]
+
+const DIVERGENCE_LEGEND = [
+  { label: '> 40 €/MWh',  color: '#7f1d1d' },
+  { label: '20-40 €/MWh', color: '#b91c1c' },
+  { label: '10-20 €/MWh', color: '#d97706' },
+  { label: '5-10 €/MWh',  color: '#ca8a04' },
+  { label: '< 5 €/MWh',   color: '#374151' },
 ]
 
 type MetricConfig = {
@@ -142,6 +150,7 @@ function MapDashboard() {
   const [selectedZone, setSelectedZone]     = useState<string | null>(null)
   const [selectedBorder, setSelectedBorder] = useState<BorderKey | null>(null)
   const [showInterconnections, setShowInterconnections] = useState(false)
+  const [interconnMode, setInterconnMode]   = useState<InterconnMode>('congestion')
   const [metric, setMetric]                 = useState<MapMetric>('price')
 
   const { data: powerData, isLoading: powerLoading, error: powerError } = useQuery({
@@ -165,6 +174,13 @@ function MapDashboard() {
   const { data: flowsData } = useQuery({
     queryKey: ['flows'],
     queryFn: api.flows,
+    staleTime: 15 * 60 * 1000,
+    enabled: showInterconnections,
+  })
+
+  const { data: divergenceData } = useQuery({
+    queryKey: ['power-divergence'],
+    queryFn: api.powerDivergence,
     staleTime: 15 * 60 * 1000,
     enabled: showInterconnections,
   })
@@ -220,18 +236,44 @@ function MapDashboard() {
     <div className="relative h-full flex">
       {/* Top-right controls */}
       <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5 items-end">
-        {/* Interconnections toggle */}
-        <button
-          onClick={() => setShowInterconnections((v) => !v)}
-          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
-            showInterconnections
-              ? 'bg-amber-900 border-amber-600 text-amber-200'
-              : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
-          } backdrop-blur shadow`}
-        >
-          <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
-          Interconnections
-        </button>
+        {/* Interconnections toggle + mode sub-toggle */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowInterconnections((v) => !v)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-xs border transition-colors ${
+              showInterconnections
+                ? 'bg-amber-900 border-amber-600 text-amber-200'
+                : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
+            } backdrop-blur shadow`}
+          >
+            <span className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0" />
+            Interconnections
+          </button>
+          {showInterconnections && (
+            <div className="flex rounded border border-border bg-card/90 backdrop-blur shadow overflow-hidden text-xs">
+              <button
+                onClick={() => setInterconnMode('congestion')}
+                className={`px-2 py-1.5 transition-colors ${
+                  interconnMode === 'congestion'
+                    ? 'bg-amber-800 text-amber-200'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                NTC
+              </button>
+              <button
+                onClick={() => setInterconnMode('spread')}
+                className={`px-2 py-1.5 transition-colors ${
+                  interconnMode === 'spread'
+                    ? 'bg-amber-800 text-amber-200'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                }`}
+              >
+                Spread
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Date picker (gen metrics) */}
         {isGenMetric && (minDate || maxDate) && (
@@ -310,8 +352,10 @@ function MapDashboard() {
       )}
       {showInterconnections && (
         <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
-          <p className="text-muted-foreground mb-1 font-medium">NTC utilization</p>
-          {UTILIZATION_LEGEND.map(({ label, color }) => (
+          <p className="text-muted-foreground mb-1 font-medium">
+            {interconnMode === 'spread' ? 'Price spread' : 'NTC utilization'}
+          </p>
+          {(interconnMode === 'spread' ? DIVERGENCE_LEGEND : UTILIZATION_LEGEND).map(({ label, color }) => (
             <div key={label} className="flex items-center gap-1.5">
               <div className="w-3 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: color }} />
               <span className="text-muted-foreground">{label}</span>
@@ -333,6 +377,8 @@ function MapDashboard() {
             <InterconnectionLayer
               congestion={congestionData?.rows ?? []}
               flows={flowsData?.rows ?? []}
+              divergence={divergenceData?.rows ?? []}
+              colorMode={interconnMode}
               selected={selectedBorder}
               onSelect={handleSelectBorder}
             />
@@ -357,15 +403,26 @@ function MapDashboard() {
               selectedDate={urlDate}
             />
           )}
-          {selectedBorder && (
-            <BorderPanel
-              from={selectedBorder.from}
-              to={selectedBorder.to}
-              congestion={congestionData?.rows ?? []}
-              flows={flowsData?.rows ?? []}
-              onClose={() => setSelectedBorder(null)}
-            />
-          )}
+          {selectedBorder && (() => {
+            const bKey = [selectedBorder.from, selectedBorder.to].sort().join('|')
+            const divRow = (divergenceData?.rows ?? []).find(
+              (r) => [r.from_zone, r.to_zone].sort().join('|') === bKey,
+            ) ?? null
+            const divHist = (divergenceData?.history ?? []).find(
+              (h) => [h.from_zone, h.to_zone].sort().join('|') === bKey,
+            )?.history ?? []
+            return (
+              <BorderPanel
+                from={selectedBorder.from}
+                to={selectedBorder.to}
+                congestion={congestionData?.rows ?? []}
+                flows={flowsData?.rows ?? []}
+                divergenceRow={divRow}
+                divergenceHistory={divHist}
+                onClose={() => setSelectedBorder(null)}
+              />
+            )
+          })()}
         </div>
       )}
     </div>

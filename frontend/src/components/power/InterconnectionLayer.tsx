@@ -1,8 +1,8 @@
 import L from 'leaflet'
 import { useMap } from 'react-leaflet'
 import { useEffect, useRef } from 'react'
-import { utilizationColor, zoneName } from '@/lib/scales'
-import type { CongestionRow, BorderFlowRow } from '@/lib/api'
+import { utilizationColor, priceDivergenceColor, zoneName } from '@/lib/scales'
+import type { CongestionRow, BorderFlowRow, DivergenceLatestRow } from '@/lib/api'
 
 export const ZONE_CENTROIDS: Record<string, [number, number]> = {
   'AT':      [47.5, 14.5],
@@ -32,14 +32,18 @@ function bearing(from: [number, number], to: [number, number]): number {
   return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360
 }
 
+export type InterconnMode = 'congestion' | 'spread'
+
 interface Props {
   congestion: CongestionRow[]
   flows: BorderFlowRow[]
+  divergence: DivergenceLatestRow[]
+  colorMode: InterconnMode
   selected: BorderKey | null
   onSelect: (b: BorderKey | null) => void
 }
 
-export function InterconnectionLayer({ congestion, flows, selected, onSelect }: Props) {
+export function InterconnectionLayer({ congestion, flows, divergence, colorMode, selected, onSelect }: Props) {
   const map = useMap()
   const layerRef = useRef<L.LayerGroup | null>(null)
   const selectedRef = useRef<BorderKey | null>(selected)
@@ -68,8 +72,14 @@ export function InterconnectionLayer({ congestion, flows, selected, onSelect }: 
       flowByKey.set(borderKey(row.from_zone, row.to_zone), row)
     }
 
-    // Collect all unique undirected border pairs across both datasets
-    const allKeys = new Set([...congByKey.keys(), ...flowByKey.keys()])
+    // Build lookup: undirected key -> divergence row
+    const divByKey = new Map<string, DivergenceLatestRow>()
+    for (const row of divergence) {
+      divByKey.set(borderKey(row.from_zone, row.to_zone), row)
+    }
+
+    // Collect all unique undirected border pairs across all datasets
+    const allKeys = new Set([...congByKey.keys(), ...flowByKey.keys(), ...divByKey.keys()])
 
     const maxAbsFlow = Math.max(
       ...Array.from(flowByKey.values()).map((f) => Math.abs(f.net_flow_mw ?? 0)),
@@ -78,13 +88,14 @@ export function InterconnectionLayer({ congestion, flows, selected, onSelect }: 
 
     for (const key of allKeys) {
       const congRows = congByKey.get(key) ?? []
-      const flowRow = flowByKey.get(key)
+      const flowRow  = flowByKey.get(key)
+      const divRow   = divByKey.get(key)
 
       // Pick the two zones from whichever dataset has them
-      const sample = congRows[0] ?? flowRow
+      const sample = congRows[0] ?? flowRow ?? divRow
       if (!sample) continue
-      const zA = 'from_zone' in sample ? sample.from_zone : (sample as BorderFlowRow).from_zone
-      const zB = 'to_zone' in sample ? sample.to_zone : (sample as BorderFlowRow).to_zone
+      const zA = sample.from_zone
+      const zB = sample.to_zone
 
       const fromCoord = ZONE_CENTROIDS[zA]
       const toCoord   = ZONE_CENTROIDS[zB]
@@ -97,9 +108,15 @@ export function InterconnectionLayer({ congestion, flows, selected, onSelect }: 
       }, null)
 
       const netFlow  = flowRow?.net_flow_mw ?? null
-      const color    = utilizationColor(bestUtil)
-      const isSel    = selected !== null && borderKey(selected.from, selected.to) === key
-      const weight   = isSel ? 5 : 2 + (bestUtil != null ? Math.min(bestUtil / 35, 2.5) : 0)
+      const diffEur  = divRow?.diff_eur_mwh ?? null
+
+      const color = colorMode === 'spread'
+        ? priceDivergenceColor(diffEur)
+        : utilizationColor(bestUtil)
+      const isSel = selected !== null && borderKey(selected.from, selected.to) === key
+      const weight = isSel ? 5 : colorMode === 'spread'
+        ? 2 + (diffEur != null ? Math.min(Math.abs(diffEur) / 15, 2.5) : 0)
+        : 2 + (bestUtil != null ? Math.min(bestUtil / 35, 2.5) : 0)
 
       // Main line
       const line = L.polyline([fromCoord, toCoord], {
@@ -117,22 +134,39 @@ export function InterconnectionLayer({ congestion, flows, selected, onSelect }: 
       })
 
       // Build tooltip
-      const utilStr = bestUtil != null ? `${bestUtil.toFixed(0)}%` : '--'
       const flowStr = netFlow != null
         ? `${Math.abs(netFlow).toFixed(0)} MW ${netFlow >= 0 ? `${zA}→${zB}` : `${zB}→${zA}`}`
         : '--'
-      const maxNtc  = congRows.reduce<number | null>((acc, r) => {
-        if (r.ntc_mw == null) return acc
-        return acc == null ? r.ntc_mw : Math.max(acc, r.ntc_mw)
-      }, null)
-      const congested = (bestUtil ?? 0) > 80
+
+      let tooltipBody: string
+      if (colorMode === 'spread') {
+        const fromP = divRow?.from_price != null ? `${divRow.from_price.toFixed(0)} €` : '--'
+        const toP   = divRow?.to_price   != null ? `${divRow.to_price.toFixed(0)} €` : '--'
+        const diffStr = diffEur != null
+          ? `<strong style="color:${color}">${diffEur >= 0 ? '+' : ''}${diffEur.toFixed(0)} €/MWh</strong>`
+          : '--'
+        tooltipBody = `
+          ${zoneName(zA)}: ${fromP}/MWh<br/>
+          ${zoneName(zB)}: ${toP}/MWh<br/>
+          Spread: ${diffStr}<br/>
+          Net flow: ${flowStr}`
+      } else {
+        const utilStr  = bestUtil != null ? `${bestUtil.toFixed(0)}%` : '--'
+        const maxNtc   = congRows.reduce<number | null>((acc, r) => {
+          if (r.ntc_mw == null) return acc
+          return acc == null ? r.ntc_mw : Math.max(acc, r.ntc_mw)
+        }, null)
+        const congested = (bestUtil ?? 0) > 80
+        tooltipBody = `
+          Utilization: <strong style="color:${color}">${utilStr}</strong>${congested ? ' &#x26A0;' : ''}<br/>
+          Net flow: ${flowStr}<br/>
+          ${maxNtc != null ? `Max NTC: ${maxNtc.toFixed(0)} MW` : ''}`
+      }
 
       line.bindTooltip(
         `<div style="font-size:12px;line-height:1.6">
           <strong>${zoneName(zA)} &harr; ${zoneName(zB)}</strong><br/>
-          Utilization: <strong style="color:${color}">${utilStr}</strong>${congested ? ' &#x26A0;' : ''}<br/>
-          Net flow: ${flowStr}<br/>
-          ${maxNtc != null ? `Max NTC: ${maxNtc.toFixed(0)} MW` : ''}
+          ${tooltipBody}
         </div>`,
         { sticky: true, opacity: 0.97 },
       )
@@ -167,8 +201,12 @@ export function InterconnectionLayer({ congestion, flows, selected, onSelect }: 
         L.marker(tip, { icon, interactive: false }).addTo(group)
       }
 
-      // Utilization label at midpoint
-      if (bestUtil != null) {
+      // Midpoint label: utilization % in congestion mode, spread EUR in spread mode
+      const midLabel = colorMode === 'spread'
+        ? (diffEur != null ? `${diffEur >= 0 ? '+' : ''}${diffEur.toFixed(0)}€` : null)
+        : (bestUtil != null ? `${bestUtil.toFixed(0)}%` : null)
+
+      if (midLabel != null) {
         const mid: [number, number] = [(fromCoord[0] + toCoord[0]) / 2, (fromCoord[1] + toCoord[1]) / 2]
         const label = L.divIcon({
           html: `<div style="
@@ -182,7 +220,7 @@ export function InterconnectionLayer({ congestion, flows, selected, onSelect }: 
             pointer-events:none;
             border:1px solid ${color}44;
             box-shadow:0 1px 3px rgba(0,0,0,0.5);
-          ">${utilStr}</div>`,
+          ">${midLabel}</div>`,
           iconSize: [0, 0],
           iconAnchor: [-2, 6],
           className: '',

@@ -27,6 +27,7 @@ MARKET_DATA_VENV = MARKET_DATA_DIR / ".venv" / "bin" / "python"
 # Import analytics modules (script lives in scripts/, analytics one level up in backend/)
 sys.path.insert(0, str(BACKEND_DIR))
 from analytics.congestion import build_congestion_tables
+from analytics.divergence import build_divergence_tables
 from analytics.gas import build_storage_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables
@@ -74,6 +75,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building power tables from market_data (PostgreSQL)...")
     power_tables = build_power_tables()
 
+    logger.info("Building cross-zone price divergence tables...")
+    divergence_tables = build_divergence_tables(power_tables["power_daily"])
+
     logger.info("Building spreads/prices tables from market_data (PostgreSQL)...")
     spreads_tables = build_spreads_tables()
 
@@ -99,6 +103,7 @@ def rebuild(skip_ingest: bool = False) -> None:
 
         _write_storage(conn, storage_tables)
         _write_power(conn, power_tables)
+        _write_divergence(conn, divergence_tables)
         _write_spreads(conn, spreads_tables)
         _write_flows(conn, flows_tables)
         _write_generation(conn, generation_tables)
@@ -415,6 +420,21 @@ def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     logger.info(
         f"imbalance: {len(recent)} recent rows, {len(daily)} daily rows, {len(latest)} latest rows"
     )
+
+
+def _write_divergence(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    latest = tables["divergence_latest"]
+    hist = tables["divergence_30d"]
+    _DIVERG_COLS = "(from_zone VARCHAR, to_zone VARCHAR, price_date DATE, from_price REAL, to_price REAL, diff_eur_mwh REAL)"
+    conn.execute(f"CREATE OR REPLACE TABLE divergence_latest {_DIVERG_COLS}")
+    if not latest.empty:
+        conn.register("_dvl", latest)
+        conn.execute("INSERT INTO divergence_latest SELECT * FROM _dvl")
+    conn.execute(f"CREATE OR REPLACE TABLE divergence_30d {_DIVERG_COLS}")
+    if not hist.empty:
+        conn.register("_dvh", hist)
+        conn.execute("INSERT INTO divergence_30d SELECT * FROM _dvh")
+    logger.info(f"divergence: {len(latest)} border pairs, {len(hist)} history rows")
 
 
 def _write_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

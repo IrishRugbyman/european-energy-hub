@@ -140,6 +140,18 @@ export function gasFlowColor(net: number | null | undefined): string {
   return '#b45309'                    // amber-700 - large exporter
 }
 
+// Cross-zone DA price divergence EUR/MWh -> color. Absolute spread:
+// grey (converged) -> yellow -> amber -> red (extreme arbitrage).
+export function priceDivergenceColor(diffEur: number | null | undefined): string {
+  if (diffEur == null) return '#374151'
+  const abs = Math.abs(diffEur)
+  if (abs >= 40) return '#7f1d1d'   // red-900  - extreme divergence
+  if (abs >= 20) return '#b91c1c'   // red-700
+  if (abs >= 10) return '#d97706'   // amber-600
+  if (abs >= 5)  return '#ca8a04'   // yellow-600
+  return '#374151'                   // grey - effectively converged
+}
+
 // Intraday price range EUR/MWh -> color. Higher range = more battery opportunity.
 // Null = grey. Sequential purple scale: light (low range) to deep purple (high range).
 export function dayRangeColor(range: number | null | undefined): string {

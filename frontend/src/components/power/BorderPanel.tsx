@@ -12,8 +12,8 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '@/lib/api'
-import type { CongestionRow, BorderFlowRow } from '@/lib/api'
-import { utilizationColor, zoneName } from '@/lib/scales'
+import type { CongestionRow, BorderFlowRow, DivergenceDailyPoint, DivergenceLatestRow } from '@/lib/api'
+import { utilizationColor, priceDivergenceColor, zoneName } from '@/lib/scales'
 
 type HistWindow = '3M' | '1Y' | 'all'
 
@@ -22,10 +22,12 @@ interface Props {
   to: string
   congestion: CongestionRow[]
   flows: BorderFlowRow[]
+  divergenceRow: DivergenceLatestRow | null
+  divergenceHistory: DivergenceDailyPoint[]
   onClose: () => void
 }
 
-export function BorderPanel({ from, to, congestion, flows, onClose }: Props) {
+export function BorderPanel({ from, to, congestion, flows, divergenceRow, divergenceHistory, onClose }: Props) {
   const [histWindow, setHistWindow] = useState<HistWindow>('1Y')
 
   const fwdRow = congestion.find((r) => r.from_zone === from && r.to_zone === to) ?? null
@@ -99,6 +101,75 @@ export function BorderPanel({ from, to, congestion, flows, onClose }: Props) {
           <p className="text-sm font-medium text-foreground">{netFlowStr}</p>
         </div>
       </div>
+
+      {/* Price spread section */}
+      {divergenceRow && (
+        <div className="p-4 border-b border-border space-y-2">
+          <p className="text-xs text-muted-foreground font-medium">DA price spread (30 days)</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-secondary rounded p-2">
+              <p className="text-xs text-muted-foreground font-mono">{from}</p>
+              <p className="text-sm font-medium text-foreground">
+                {divergenceRow.from_price != null ? `${divergenceRow.from_price.toFixed(0)} €` : '--'}
+              </p>
+            </div>
+            <div className="bg-secondary rounded p-2">
+              <p className="text-xs text-muted-foreground font-mono">{to}</p>
+              <p className="text-sm font-medium text-foreground">
+                {divergenceRow.to_price != null ? `${divergenceRow.to_price.toFixed(0)} €` : '--'}
+              </p>
+            </div>
+            <div className="bg-secondary rounded p-2">
+              <p className="text-xs text-muted-foreground">Spread</p>
+              <p
+                className="text-sm font-medium"
+                style={{ color: priceDivergenceColor(divergenceRow.diff_eur_mwh) }}
+              >
+                {divergenceRow.diff_eur_mwh != null
+                  ? `${divergenceRow.diff_eur_mwh >= 0 ? '+' : ''}${divergenceRow.diff_eur_mwh.toFixed(0)} €`
+                  : '--'}
+              </p>
+            </div>
+          </div>
+          {divergenceHistory.length > 1 && (
+            <ResponsiveContainer width="100%" height={80}>
+              <LineChart data={divergenceHistory} margin={{ top: 2, right: 8, bottom: 2, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="price_date"
+                  tick={{ fontSize: 8, fill: '#64748b' }}
+                  tickLine={false}
+                  interval={Math.floor(divergenceHistory.length / 4)}
+                  tickFormatter={(v) => (v as string)?.slice(5) ?? ''}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  width={28}
+                  tickFormatter={(v) => `${v}`}
+                />
+                <ReferenceLine y={0} stroke="#4b5563" strokeDasharray="3 2" />
+                <Tooltip
+                  contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                  formatter={(v) => {
+                    const num = typeof v === 'number' ? v : null
+                    return num != null ? [`${num >= 0 ? '+' : ''}${num.toFixed(0)} €/MWh`, 'Spread'] : ['--', 'Spread']
+                  }}
+                  labelFormatter={(l) => String(l)}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="diff_eur_mwh"
+                  stroke="#d97706"
+                  strokeWidth={1.5}
+                  dot={false}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
 
       {/* Historical utilization chart */}
       <div className="flex-1 p-4 overflow-y-auto">
