@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-15 - Multi-zone CSS/CDS/FSS comparison on /spreads
+
+Extended spread analytics from DE-LU-only to 6 EU bidding zones (DE-LU, FR, NL, IT-NORD, BE, AT),
+all using TTF as the common gas reference (standard EU practice). Backend: `_build_multi_zone_spreads`
+in `analytics/spreads.py` loops over SPREAD_ZONES using the existing `load_spread_inputs` loader,
+writes 10k+ rows to a new `multi_zone_spreads` DuckDB table. New endpoint `GET /api/spreads/zones`
+returns pivoted zone data. Frontend: `/spreads` gains a multi-zone comparison section below the
+DE-LU history chart - CSS/CDS/FSS toggle, latest snapshot bar chart (one bar per zone) and a
+history line chart with per-zone colour coding.
+
+---
+
 ## 2026-06-15 - Test coverage for divergence and battery dispatch endpoints
 
 Added 4 new backend tests (total 40): `test_power_divergence`, `test_power_divergence_history`,

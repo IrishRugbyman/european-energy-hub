@@ -387,6 +387,35 @@ def _seed_db(path: str) -> None:
     ]:
         conn.execute("INSERT INTO battery_summary VALUES (?, ?)", [key, val])
 
+    # multi-zone spreads (Phase multi-zone extension)
+    conn.execute("""
+        CREATE TABLE multi_zone_spreads (
+            price_date DATE, zone VARCHAR,
+            power_eur_mwh REAL, css REAL, cds REAL, fss REAL,
+            regime_threshold VARCHAR
+        )
+    """)
+    mz_start = date(today.year - 1, 1, 1)
+    mz_zones = ["DE-LU", "FR", "NL", "IT-NORD", "BE", "AT"]
+    mz_rows = []
+    for zone_idx, zone in enumerate(mz_zones):
+        base_power = 75.0 + zone_idx * 5.0
+        for i in range((today - mz_start).days + 1):
+            day = (mz_start + timedelta(days=i)).isoformat()
+            power = round(base_power + (i % 365 - 182) * 0.2, 2)
+            ttf = round(35.0 + (i % 365 - 182) * 0.05, 2)
+            eua = 65.0
+            coal_eur_mwh = 12.0
+            css = round(power - ttf / 0.49 - eua * 0.364, 4)
+            cds = round(power - coal_eur_mwh / 0.36 - eua * 0.96, 4)
+            fss = round(css - cds, 4)
+            regime = "gas" if fss > 0 else "coal"
+            mz_rows.append([day, zone, power, css, cds, fss, regime])
+    conn.executemany(
+        "INSERT INTO multi_zone_spreads VALUES (?, ?, ?, ?, ?, ?, ?)",
+        mz_rows,
+    )
+
     conn.close()
 
 

@@ -325,3 +325,31 @@ def test_imbalance_dispatch_summary(client):
     assert "n_discharge_hours" in s
     assert "avg_spread_captured_eur" in s
     assert s["trailing_days"] == 30
+
+
+def test_spreads_zones(client):
+    r = client.get("/api/spreads/zones")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data and "rows" in data
+    # All 6 zones present
+    assert set(data["zones"]) == {"AT", "BE", "DE-LU", "FR", "IT-NORD", "NL"}
+    assert len(data["rows"]) > 0
+    row = data["rows"][0]
+    assert "price_date" in row and "zone" in row
+    assert "css" in row and "cds" in row and "fss" in row
+    assert row["regime_threshold"] in ("gas", "coal")
+
+
+def test_spreads_zones_per_zone_count(client):
+    r = client.get("/api/spreads/zones")
+    data = r.json()
+    rows = data["rows"]
+    by_zone: dict[str, int] = {}
+    for row in rows:
+        by_zone[row["zone"]] = by_zone.get(row["zone"], 0) + 1
+    # Each zone should have the same number of rows
+    counts = list(by_zone.values())
+    assert len(counts) == 6
+    # All zones have the same row count (1 row per calendar day)
+    assert min(counts) == max(counts)
