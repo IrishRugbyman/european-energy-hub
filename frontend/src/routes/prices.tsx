@@ -2,8 +2,12 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
+  BarChart,
+  Bar,
   LineChart,
   Line,
+  ScatterChart,
+  Scatter,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -11,6 +15,7 @@ import {
   Legend,
   ResponsiveContainer,
   ReferenceLine,
+  Cell,
 } from 'recharts'
 import { api, type PricesDailyPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
@@ -21,6 +26,8 @@ export const Route = createFileRoute('/prices')({
 
 type Window = '1Y' | '2Y' | '5Y' | 'ALL'
 const WINDOWS: Window[] = ['1Y', '2Y', '5Y', 'ALL']
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function cutoffDate(w: Window): string | null {
   const now = new Date()
@@ -46,6 +53,31 @@ const SERIES = [
 ] as const
 
 type SeriesKey = (typeof SERIES)[number]['key']
+
+// Pearson correlation between two arrays of equal length (no nulls)
+function pearson(xs: number[], ys: number[]): number {
+  const n = xs.length
+  if (n < 5) return NaN
+  const mx = xs.reduce((a, b) => a + b, 0) / n
+  const my = ys.reduce((a, b) => a + b, 0) / n
+  let num = 0, dx2 = 0, dy2 = 0
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx, dy = ys[i] - my
+    num += dx * dy; dx2 += dx * dx; dy2 += dy * dy
+  }
+  return dx2 === 0 || dy2 === 0 ? 0 : num / Math.sqrt(dx2 * dy2)
+}
+
+function correlationColor(r: number): string {
+  if (isNaN(r)) return '#374151'
+  if (r > 0.7)  return '#15803d'
+  if (r > 0.4)  return '#65a30d'
+  if (r > 0.1)  return '#4b5563'
+  if (r > -0.1) return '#4b5563'
+  if (r > -0.4) return '#b45309'
+  if (r > -0.7) return '#d97706'
+  return '#b91c1c'
+}
 
 function computeIndexed(
   rows: (PricesDailyPoint & { label: string })[],
@@ -135,8 +167,6 @@ function PricesChart({
           tick={{ fontSize: 10, fill: '#64748b' }}
           tickLine={false}
           axisLine={false}
-          tickFormatter={(v) => (indexed ? v.toFixed(0) : v.toFixed(0))}
-          unit={indexed ? '' : ''}
           label={
             indexed
               ? { value: 'Indexed (base=100)', angle: -90, position: 'insideLeft', offset: 12, style: { fontSize: 9, fill: '#64748b' } }
@@ -160,6 +190,186 @@ function PricesChart({
         ))}
       </LineChart>
     </ResponsiveContainer>
+  )
+}
+
+// Rolling 90d Pearson correlations among TTF, EUA, Coal
+function CorrelationMatrix({ rows }: { rows: PricesDailyPoint[] }) {
+  const pairs = useMemo(() => {
+    const recent = rows.slice(-90)
+    const ttf  = recent.filter((r) => r.ttf_eur_mwh != null && r.eua_eur_t != null && r.coal_usd_t != null)
+    const xs = ttf.map((r) => r.ttf_eur_mwh as number)
+    const ys = ttf.map((r) => r.eua_eur_t as number)
+    const zs = ttf.map((r) => r.coal_usd_t as number)
+    return [
+      { label: 'TTF / EUA',   r: pearson(xs, ys) },
+      { label: 'TTF / Coal',  r: pearson(xs, zs) },
+      { label: 'EUA / Coal',  r: pearson(ys, zs) },
+    ]
+  }, [rows])
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-3">90-day rolling correlation</h2>
+      <div className="grid grid-cols-3 gap-3">
+        {pairs.map(({ label, r }) => {
+          const color = correlationColor(r)
+          return (
+            <div key={label} className="bg-secondary rounded p-3 text-center">
+              <p className="text-xs text-muted-foreground mb-1">{label}</p>
+              <p className="text-xl font-semibold" style={{ color }}>
+                {isNaN(r) ? '--' : r.toFixed(2)}
+              </p>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">Green = co-move, red = diverge, based on last 90 trading days</p>
+    </div>
+  )
+}
+
+// TTF vs EUA scatter, last 365 days, colored by year
+function TtfEuaScatter({ rows }: { rows: PricesDailyPoint[] }) {
+  const { byYear, years } = useMemo(() => {
+    const cutoff = new Date()
+    cutoff.setFullYear(cutoff.getFullYear() - 1)
+    const cutStr = cutoff.toISOString().slice(0, 10)
+    const valid = rows.filter((r) => r.price_date >= cutStr && r.ttf_eur_mwh != null && r.eua_eur_t != null)
+    const yMap = new Map<number, { ttf: number; eua: number }[]>()
+    for (const r of valid) {
+      const y = parseInt(r.price_date.slice(0, 4))
+      if (!yMap.has(y)) yMap.set(y, [])
+      yMap.get(y)!.push({ ttf: r.ttf_eur_mwh as number, eua: r.eua_eur_t as number })
+    }
+    const sortedYears = Array.from(yMap.keys()).sort()
+    return { byYear: yMap, years: sortedYears }
+  }, [rows])
+
+  const YEAR_COLORS = ['#60a5fa', '#34d399', '#f59e0b', '#f87171', '#a78bfa']
+
+  if (years.length === 0) return null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-3">TTF vs EUA scatter (trailing 12 months)</h2>
+      <ResponsiveContainer width="100%" height={260}>
+        <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="ttf"
+            name="TTF"
+            unit=" €/MWh"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            label={{ value: 'TTF (€/MWh)', position: 'insideBottom', offset: -4, style: { fontSize: 10, fill: '#64748b' } }}
+          />
+          <YAxis
+            dataKey="eua"
+            name="EUA"
+            unit=" €/t"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            width={40}
+            label={{ value: 'EUA (€/t)', angle: -90, position: 'insideLeft', offset: 8, style: { fontSize: 10, fill: '#64748b' } }}
+          />
+          <Tooltip
+            cursor={{ strokeDasharray: '3 3' }}
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v, name) => [`${(v as number).toFixed(1)}`, String(name)]}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+          {years.map((y, i) => (
+            <Scatter
+              key={y}
+              name={String(y)}
+              data={byYear.get(y)!}
+              fill={YEAR_COLORS[i % YEAR_COLORS.length]}
+              opacity={0.7}
+              shape="circle"
+            />
+          ))}
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+// TTF monthly seasonality: 5yr avg vs current year
+function TtfSeasonality({ rows }: { rows: PricesDailyPoint[] }) {
+  const data = useMemo(() => {
+    const valid = rows.filter((r) => r.ttf_eur_mwh != null)
+    const currentYear = new Date().getFullYear()
+    const fiveYrCutoff = String(currentYear - 5) + '-01-01'
+
+    // Group by (year, month)
+    const byYearMonth = new Map<string, number[]>()
+    for (const r of valid) {
+      if (r.price_date < fiveYrCutoff) continue
+      const [yr, mo] = r.price_date.split('-').map(Number)
+      const k = `${yr}-${mo}`
+      if (!byYearMonth.has(k)) byYearMonth.set(k, [])
+      byYearMonth.get(k)!.push(r.ttf_eur_mwh as number)
+    }
+
+    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length
+
+    return Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1
+      // 5yr avg across all prior complete years (exclude current)
+      const hist: number[] = []
+      for (let y = currentYear - 5; y < currentYear; y++) {
+        const vals = byYearMonth.get(`${y}-${month}`)
+        if (vals && vals.length > 0) hist.push(avg(vals))
+      }
+      const currVals = byYearMonth.get(`${currentYear}-${month}`)
+      return {
+        month: MONTHS[i],
+        avg5: hist.length > 0 ? parseFloat(avg(hist).toFixed(2)) : null,
+        current: currVals && currVals.length > 0 ? parseFloat(avg(currVals).toFixed(2)) : null,
+      }
+    })
+  }, [rows])
+
+  const hasData = data.some((d) => d.avg5 != null || d.current != null)
+  if (!hasData) return null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-3">
+        TTF monthly seasonality (€/MWh)
+      </h2>
+      <ResponsiveContainer width="100%" height={240}>
+        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={34}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v, name) => {
+              const num = typeof v === 'number' ? v : null
+              return num != null ? [`${num.toFixed(2)} €/MWh`, String(name)] : ['--', String(name)]
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
+          <Bar dataKey="avg5" name="5yr avg" fill="#60a5fa" opacity={0.6} radius={[2, 2, 0, 0]}>
+            {data.map((_, idx) => (
+              <Cell key={idx} fill="#60a5fa" opacity={0.55} />
+            ))}
+          </Bar>
+          <Bar dataKey="current" name={`${new Date().getFullYear()}`} fill="#34d399" radius={[2, 2, 0, 0]}>
+            {data.map((_, idx) => (
+              <Cell key={idx} fill="#34d399" opacity={0.85} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
   )
 }
 
@@ -226,11 +436,17 @@ function PricesDashboard() {
       {error && <p className="text-destructive text-sm">API unavailable</p>}
 
       {rows.length > 0 && (
-        <div className="bg-card border border-border rounded-lg p-4">
-          <h2 className="text-sm font-medium text-muted-foreground mb-3">
-            Commodity Prices{indexed ? ' - Indexed to 100 at window start' : ''}
-          </h2>
-          <PricesChart rows={rows} window={window} indexed={indexed} />
+        <div className="space-y-4">
+          <div className="bg-card border border-border rounded-lg p-4">
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+              Commodity Prices{indexed ? ' - Indexed to 100 at window start' : ''}
+            </h2>
+            <PricesChart rows={rows} window={window} indexed={indexed} />
+          </div>
+
+          <CorrelationMatrix rows={rows} />
+          <TtfEuaScatter rows={rows} />
+          <TtfSeasonality rows={rows} />
         </div>
       )}
 
