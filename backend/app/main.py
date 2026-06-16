@@ -656,7 +656,7 @@ def prices():
     df = db.query(
         """
         SELECT price_date::VARCHAR AS price_date,
-               ttf_eur_mwh, eua_eur_t, coal_usd_t, hh_usd_mmbtu
+               ttf_eur_mwh, eua_eur_t, coal_usd_t, hh_usd_mmbtu, nbp_eur_mwh
         FROM prices_daily
         ORDER BY price_date
         """
@@ -671,6 +671,7 @@ def prices():
             eua_eur_t=_float(r.eua_eur_t),
             coal_usd_t=_float(r.coal_usd_t),
             hh_usd_mmbtu=_float(r.hh_usd_mmbtu),
+            nbp_eur_mwh=_float(r.nbp_eur_mwh),
         )
         for r in df.itertuples()
     ]

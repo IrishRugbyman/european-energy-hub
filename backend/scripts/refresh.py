@@ -274,7 +274,8 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             ttf_eur_mwh REAL,
             eua_eur_t REAL,
             coal_usd_t REAL,
-            hh_usd_mmbtu REAL
+            hh_usd_mmbtu REAL,
+            nbp_eur_mwh REAL
         )
     """)
     if not prices.empty:

@@ -136,7 +136,8 @@ def _seed_db(path: str) -> None:
             ttf_eur_mwh REAL,
             eua_eur_t REAL,
             coal_usd_t REAL,
-            hh_usd_mmbtu REAL
+            hh_usd_mmbtu REAL,
+            nbp_eur_mwh REAL
         )
     """)
 
@@ -156,9 +157,10 @@ def _seed_db(path: str) -> None:
             "INSERT INTO spreads_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [day, round(power, 2), round(ttf, 2), eua, coal_eur_mwh, css, cds, fss, regime],
         )
+        nbp = round(ttf * 0.88, 2)  # ~12% discount to TTF
         conn.execute(
-            "INSERT INTO prices_daily VALUES (?, ?, ?, ?, ?)",
-            [day, round(ttf, 2), eua, 120.0, 2.5],
+            "INSERT INTO prices_daily VALUES (?, ?, ?, ?, ?, ?)",
+            [day, round(ttf, 2), eua, 120.0, 2.5, nbp],
         )
 
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_spreads", "2026-06-12T12:00:00+00:00"])

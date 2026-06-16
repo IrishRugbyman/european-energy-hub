@@ -46,9 +46,10 @@ function latest(rows: PricesDailyPoint[], key: keyof PricesDailyPoint): number |
 }
 
 const SERIES = [
-  { key: 'ttf_eur_mwh', label: 'TTF (€/MWh)', color: '#60a5fa', unit: '€/MWh' },
-  { key: 'eua_eur_t',   label: 'EUA (€/tCO2)', color: '#34d399', unit: '€/t' },
-  { key: 'coal_usd_t',  label: 'Coal ($/t)', color: '#f59e0b', unit: '$/t' },
+  { key: 'ttf_eur_mwh',  label: 'TTF (€/MWh)',       color: '#60a5fa', unit: '€/MWh'   },
+  { key: 'nbp_eur_mwh',  label: 'NBP (€/MWh)',        color: '#a78bfa', unit: '€/MWh'   },
+  { key: 'eua_eur_t',    label: 'EUA (€/tCO2)',       color: '#34d399', unit: '€/t'     },
+  { key: 'coal_usd_t',   label: 'Coal ($/t)',          color: '#f59e0b', unit: '$/t'     },
   { key: 'hh_usd_mmbtu', label: 'Henry Hub ($/MMBtu)', color: '#f87171', unit: '$/MMBtu' },
 ] as const
 
@@ -193,18 +194,24 @@ function PricesChart({
   )
 }
 
-// Rolling 90d Pearson correlations among TTF, EUA, Coal
+// Rolling 90d Pearson correlations among TTF, NBP, EUA, Coal
 function CorrelationMatrix({ rows }: { rows: PricesDailyPoint[] }) {
   const pairs = useMemo(() => {
     const recent = rows.slice(-90)
-    const ttf  = recent.filter((r) => r.ttf_eur_mwh != null && r.eua_eur_t != null && r.coal_usd_t != null)
-    const xs = ttf.map((r) => r.ttf_eur_mwh as number)
-    const ys = ttf.map((r) => r.eua_eur_t as number)
-    const zs = ttf.map((r) => r.coal_usd_t as number)
+    const valid = recent.filter(
+      (r) => r.ttf_eur_mwh != null && r.nbp_eur_mwh != null && r.eua_eur_t != null && r.coal_usd_t != null,
+    )
+    const xs  = valid.map((r) => r.ttf_eur_mwh as number)
+    const nbp = valid.map((r) => r.nbp_eur_mwh as number)
+    const ys  = valid.map((r) => r.eua_eur_t as number)
+    const zs  = valid.map((r) => r.coal_usd_t as number)
     return [
-      { label: 'TTF / EUA',   r: pearson(xs, ys) },
-      { label: 'TTF / Coal',  r: pearson(xs, zs) },
-      { label: 'EUA / Coal',  r: pearson(ys, zs) },
+      { label: 'TTF / NBP',  r: pearson(xs, nbp) },
+      { label: 'TTF / EUA',  r: pearson(xs, ys) },
+      { label: 'TTF / Coal', r: pearson(xs, zs) },
+      { label: 'NBP / EUA',  r: pearson(nbp, ys) },
+      { label: 'NBP / Coal', r: pearson(nbp, zs) },
+      { label: 'EUA / Coal', r: pearson(ys, zs) },
     ]
   }, [rows])
 
@@ -373,6 +380,63 @@ function TtfSeasonality({ rows }: { rows: PricesDailyPoint[] }) {
   )
 }
 
+// TTF minus NBP spread - the UK/EU gas basis
+function TtfNbpSpread({ rows }: { rows: PricesDailyPoint[] }) {
+  const data = useMemo(() => {
+    const cutoff = new Date()
+    cutoff.setFullYear(cutoff.getFullYear() - 2)
+    const cutStr = cutoff.toISOString().slice(0, 10)
+    return rows
+      .filter((r) => r.price_date >= cutStr && r.ttf_eur_mwh != null && r.nbp_eur_mwh != null)
+      .map((r) => ({
+        label: r.price_date.slice(0, 10),
+        spread: parseFloat(((r.ttf_eur_mwh as number) - (r.nbp_eur_mwh as number)).toFixed(2)),
+      }))
+  }, [rows])
+
+  if (data.length === 0) return null
+
+  const avg = data.reduce((a, b) => a + b.spread, 0) / data.length
+  const latestSpread = data[data.length - 1]?.spread ?? null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">TTF minus NBP basis (€/MWh, trailing 2Y)</h2>
+        <span className="text-xs text-muted-foreground ml-auto">
+          Latest: <span className="font-semibold text-foreground">{latestSpread != null ? `${latestSpread > 0 ? '+' : ''}${latestSpread.toFixed(2)}` : '--'}</span>
+          {' '}&bull;{' '}2Y avg: <span className="font-semibold text-foreground">{`${avg > 0 ? '+' : ''}${avg.toFixed(2)}`}</span>
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v) => [`${(v as number).toFixed(2)} €/MWh`, 'TTF - NBP']}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+          <ReferenceLine y={avg} stroke="#a78bfa" strokeDasharray="3 3" strokeOpacity={0.6} label={{ value: 'avg', position: 'right', fontSize: 9, fill: '#a78bfa' }} />
+          <Line dataKey="spread" name="TTF - NBP" stroke="#60a5fa" dot={false} strokeWidth={1.5} connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">Positive = TTF premium over NBP (EU gas more expensive than UK)</p>
+    </div>
+  )
+}
+
 function PricesDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [indexed, setIndexed] = useState(false)
@@ -445,6 +509,7 @@ function PricesDashboard() {
           </div>
 
           <CorrelationMatrix rows={rows} />
+          <TtfNbpSpread rows={rows} />
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality rows={rows} />
         </div>
