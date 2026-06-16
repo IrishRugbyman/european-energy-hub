@@ -221,9 +221,9 @@ function MultiZoneChart({
   const data = useMemo(() => {
     const filtered = cutoff ? rows.filter((r) => r.price_date >= cutoff) : rows
     // Pivot: date -> { date, [zone]: value }
-    const map = new Map<string, Record<string, number | null>>()
+    const map = new Map<string, Record<string, string | number | null>>()
     for (const r of filtered) {
-      if (!map.has(r.price_date)) map.set(r.price_date, { date: r.price_date as unknown as number | null })
+      if (!map.has(r.price_date)) map.set(r.price_date, { date: r.price_date })
       map.get(r.price_date)![r.zone] = r[spreadKey]
     }
     const sorted = Array.from(map.entries())
