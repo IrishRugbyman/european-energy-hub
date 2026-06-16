@@ -1,5 +1,29 @@
 # Energy Hub Changelog
 
+## 2026-06-16 - UK NBP gas price on /prices page (Phase 18)
+
+Added UK NBP (National Balancing Point) front-month gas price to the /prices dashboard.
+
+Data source: yfinance `NBP=F` (NYMEX, USD/MMBtu). History: 2017-05-22 to present (2147 rows).
+Conversion to EUR/MWh uses the daily `eur_usd` rate from `fx_rates` in `market_data` PostgreSQL
+(price_eur_mwh = price_usd_mmbtu * eur_usd / 0.29307). Current spread: NBP at ~39.7 EUR/MWh vs
+TTF at ~48.7 EUR/MWh (UK trading at discount to EU).
+
+Changes:
+- `market-data/fetchers/nbp.py`: incremental yfinance fetcher, stores raw USD/MMBtu
+- `market-data/db.py`: `nbp_prices (price_date PK, front_month, source)` table
+- `market-data/ingest.py`: `nbp` CLI command, added to `run_all`
+- `market-data/loaders/gas.py`: `load_nbp_daily()` loader
+- `analytics/spreads.py`: `_build_prices()` extended with NBP->EUR/MWh conversion
+- `scripts/refresh.py`: `prices_daily` schema gains `nbp_eur_mwh REAL`
+- `schemas.py` + `main.py`: `PricesDailyPoint` and `/api/prices` return `nbp_eur_mwh`
+- `prices.tsx`: NBP (violet line) added to stat strip, chart, correlation matrix (6 pairs:
+  TTF/NBP, TTF/EUA, TTF/Coal, NBP/EUA, NBP/Coal, EUA/Coal); new TTF-NBP basis spread panel
+  (2Y trailing, with zero line and 2Y average) shows UK/EU gas arb
+- `tests/conftest.py`: seeder adds `nbp_eur_mwh` to `prices_daily` fixture
+
+---
+
 ## 2026-06-15 - Multi-zone CSS/CDS/FSS comparison on /spreads
 
 Extended spread analytics from DE-LU-only to 6 EU bidding zones (DE-LU, FR, NL, IT-NORD, BE, AT),

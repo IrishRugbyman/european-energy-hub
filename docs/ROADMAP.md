@@ -214,33 +214,7 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 15 - /prices page enrichment (EUA/coal correlation, TTF-EUA scatter, seasonality) [COMPLETE 2026-06-15]
 - Phase 16 - Battery dispatch widget on /imbalance [COMPLETE 2026-06-15]
 - Phase 17 - Gas flow volume drill-down panel on /gas [COMPLETE 2026-06-15]
-- [ ] Phase 18 - NBP / UK gas (requires new fetcher + GB zone on gas choropleth)
-
-## Phase 18 - NBP / UK gas
-
-Add UK gas (NBP front-month) to the gas dashboard and gas choropleth.
-
-**Data gap (hard constraint):** NBP is not yet ingested. No fetcher exists. Per the
-no-synthetic-data rule, this phase cannot start until a real data source is confirmed and
-a fetcher is written. Candidate sources:
-- ICE NBP via DB.nomics (check `db.nomics.world` for ICE/NBP series)
-- Quandl/Nasdaq Data Link (requires free API key)
-- yfinance `NGF=F` or similar (verify availability before committing)
-
-**Scope (once data is confirmed):**
-- Market-data: new fetcher `market-data/fetchers/nbp.py`, registered in `ingest.py`.
-  Table: `nbp_prices (price_date DATE, front_month REAL)` in `market_data` PostgreSQL.
-- Backend: extend refresh.py to populate `prices_daily` with an `nbp_eur_mwh` column
-  (convert from GBp/therm to EUR/MWh using a real daily GBPEUR rate - add `GBPEUR=X`
-  via yfinance to the market-data fetcher, same pattern as EUA via `CO2.L`).
-  Add `GB` row to gas storage tables if AGSI exposes GB data; otherwise gas choropleth
-  remains EU-only and NBP appears only on /prices.
-- Frontend: add NBP line to the /prices chart. If GB storage data exists, add GB to the
-  gas choropleth with appropriate GeoJSON (add GB polygon to `countries.geojson`).
-
-**Prerequisite:** confirm data source and write fetcher BEFORE starting frontend work.
-**New duckdb tables:** extend `prices_daily` (new column); optionally storage tables if GB data available
-**New routes:** none (extend existing `/api/prices` response)
+- Phase 18 - NBP / UK gas price on /prices page [COMPLETE 2026-06-16]
 
 ## 9. Build order summary
 
