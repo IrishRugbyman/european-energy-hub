@@ -1,5 +1,23 @@
 # Energy Hub Changelog
 
+## 2026-06-17 - TTF forward curve panel + stale price data fix
+
+**TTF forward curve** added to `/prices` as a color-coded bar chart below the main price history.
+22 contracts from Q3-26 through CAL-30, ordered by delivery start, color-coded by tenor type
+(quarterly = indigo, summer = amber, winter = sky-blue, calendar = emerald). Shows the current
+deep backwardation: 42.6 EUR/MWh near-term to 22.1 EUR/MWh in 2030.
+
+Backend: `analytics/spreads.py` gains `_build_ttf_curve()` which pulls the latest snapshot from
+`ttf_curve` in `market_data` PostgreSQL and sorts by delivery date. `refresh.py` writes a new
+`ttf_curve_latest` DuckDB table. New endpoint `GET /api/prices/curve` filters to Q*/SUM/WIN/CAL
+tenor types (excludes individual monthly contracts) and returns them sorted. 43 backend tests pass.
+
+**Stale price data fix**: `dbnomics` Python package was missing from the market-data venv (not in
+`pyproject.toml`), causing TTF spot to stall at 2026-05-22. Added to deps + uv.lock. All prices
+refreshed: TTF 42.5, EUA 75.6, Coal 99.2 USD/t, HH 3.25 USD/MMBtu, NBP 39.9 EUR/MWh.
+
+---
+
 ## 2026-06-16 - UK NBP gas price on /prices page (Phase 18)
 
 Added UK NBP (National Balancing Point) front-month gas price to the /prices dashboard.
