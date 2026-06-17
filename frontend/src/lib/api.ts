@@ -177,6 +177,23 @@ export interface GenZoneResponse {
   daily: GenDailyPoint[]
 }
 
+export interface CapacityFactorPoint {
+  gen_date: string
+  wind_cf: number | null
+  solar_cf: number | null
+  wind_mw: number | null
+  solar_mw: number | null
+  wind_installed_mw: number | null
+  solar_installed_mw: number | null
+}
+
+export interface GenCapacityResponse {
+  zone: string
+  wind_installed_mw: number | null
+  solar_installed_mw: number | null
+  daily: CapacityFactorPoint[]
+}
+
 export interface ImbalanceRecentPoint {
   ts: string
   rebap_eur_mwh: number | null
@@ -383,6 +400,7 @@ export const api = {
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
+  genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),
   imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),
 }

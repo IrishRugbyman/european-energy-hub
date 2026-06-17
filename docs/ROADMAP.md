@@ -215,6 +215,11 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 16 - Battery dispatch widget on /imbalance [COMPLETE 2026-06-15]
 - Phase 17 - Gas flow volume drill-down panel on /gas [COMPLETE 2026-06-15]
 - Phase 18 - NBP / UK gas price on /prices page [COMPLETE 2026-06-16]
+- Phase 19 - Wind/solar capacity factor trend on /generation
+- Phase 20 - Interconnector utilization % coloring on /map flow arrows
+- Phase 21 - Gas storage pace-to-target widget on /gas
+- Phase 22 - TTF seasonality strip on /prices (monthly boxplot vs 5yr range)
+- Phase 23 - Power price heatmap calendar on zone drill-down panel
 
 ## 9. Build order summary
 
@@ -235,6 +240,11 @@ quantiles). Components per dashboard under `src/components/gas/` and
 | 16 | Battery dispatch widget on /imbalance | +1 (battery_dispatch_recent) | +1 | 1-2 |
 | 17 | Gas flow volume drill-down panel | +0 | +1 | 1 |
 | 18 | NBP / UK gas | +0/+1 col | +0 | 2 (needs fetcher first) |
+| 19 | Wind/solar capacity factor trend on /generation | +0 (compute from generation_daily vs installed cap) | +0 | 1 |
+| 20 | Interconnector utilization % on /map flow arrows | +0 (derive from congestion + borders tables) | +0 | 1 |
+| 21 | Gas storage pace-to-target widget on /gas | +0 (analytics over storage_history) | +0 | 1 |
+| 22 | TTF seasonality strip on /prices (monthly boxplot) | +1 (ttf_seasonality) | +0 | 1 |
+| 23 | Power price heatmap calendar on zone drill-down | +0 (reuses power_daily) | +0 | 1 |
 
 ## 10. Deliberately NOT building (v1)
 

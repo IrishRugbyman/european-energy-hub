@@ -291,6 +291,23 @@ def _seed_db(path: str) -> None:
         gen_hourly.append(["DE-LU", ts, 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 0.0, 200.0, 500.0, solar_h, wind_h])
     conn.executemany("INSERT INTO generation_hourly_recent VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_hourly)
 
+    # capacity_factors_daily (2 years of daily CF data for DE-LU)
+    conn.execute("""
+        CREATE TABLE capacity_factors_daily (
+            zone VARCHAR, gen_date DATE,
+            wind_cf REAL, solar_cf REAL,
+            wind_mw REAL, solar_mw REAL,
+            wind_installed_mw REAL, solar_installed_mw REAL
+        )
+    """)
+    cf_rows = []
+    for i in range((today - daily_start).days + 1):
+        day = (daily_start + timedelta(days=i)).isoformat()
+        solar = round(4000.0 + 2000.0 * ((i % 365 - 180) / 365), 1)
+        wind = round(10000.0 + 2000.0 * ((i % 365 - 90) / 365), 1)
+        cf_rows.append(["DE-LU", day, round(wind / 68000, 4), round(solar / 60000, 4), wind, solar, 68000.0, 60000.0])
+    conn.executemany("INSERT INTO capacity_factors_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)", cf_rows)
+
     # imbalance tables (trailing 10 days 15-min + 2Y daily + latest)
     from datetime import datetime as dt
     conn.execute("""

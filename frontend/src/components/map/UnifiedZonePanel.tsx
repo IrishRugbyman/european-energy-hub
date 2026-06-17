@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
+import { api, type PowerLatestRow, type GenMapItem, type CapacityFactorPoint } from '@/lib/api'
 import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
@@ -47,6 +47,13 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
     staleTime: 15 * 60 * 1000,
   })
 
+  const { data: capacityData } = useQuery({
+    queryKey: ['gen-capacity', zone],
+    queryFn: () => api.genCapacity(zone),
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  })
+
   const priceColor = powerPriceColor(powerLatest?.base_eur)
   const reColor = renewablePctColor(genItem?.renewable_pct)
   const carbonIntensity = computeCarbonIntensity(genItem)
@@ -61,6 +68,7 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
   const genHourlyChart = buildGenHourlyChart(genData?.hourly ?? [])
 
   const latestFuels = buildFuelBreakdown(genItem)
+  const capacityFactorChart = buildCapacityFactorChart(capacityData?.daily ?? [])
 
   return (
     <div className="flex flex-col h-full">
@@ -334,6 +342,54 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           )}
         </div>
 
+        {/* Wind & Solar capacity factors */}
+        {capacityFactorChart.length > 0 && (
+          <div className="p-3 border-b border-border">
+            <p className="text-xs text-muted-foreground mb-2">
+              Wind &amp; solar capacity factor
+              {capacityData?.wind_installed_mw != null && capacityData?.solar_installed_mw != null && (
+                <span className="ml-1 text-xs opacity-70">
+                  ({(capacityData.wind_installed_mw / 1000).toFixed(0)} GW wind / {(capacityData.solar_installed_mw / 1000).toFixed(0)} GW solar installed)
+                </span>
+              )}
+            </p>
+            <ResponsiveContainer width="100%" height={110}>
+              <LineChart data={capacityFactorChart} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis
+                  dataKey="gen_date"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  interval={Math.floor(capacityFactorChart.length / 5)}
+                  tickFormatter={(v) => (v as string)?.slice(5) ?? ''}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  width={28}
+                  tickFormatter={(v) => `${Math.round((v as number) * 100)}%`}
+                  domain={[0, 'auto']}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                  formatter={(v, name) => {
+                    const n = typeof v === 'number' ? v : null
+                    return n != null ? [`${(n * 100).toFixed(1)}%`, String(name) === 'wind_cf30' ? 'Wind CF' : 'Solar CF'] : ['--', String(name)]
+                  }}
+                  labelFormatter={(l) => String(l)}
+                />
+                <Line type="monotone" dataKey="wind_cf30" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="wind_cf30" />
+                <Line type="monotone" dataKey="solar_cf30" stroke="#fbbf24" strokeWidth={1.5} dot={false} name="solar_cf30" />
+              </LineChart>
+            </ResponsiveContainer>
+            <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+              <div className="flex items-center gap-1"><div className="w-4 h-0.5 bg-sky-400" /><span>Wind CF</span></div>
+              <div className="flex items-center gap-1"><div className="w-4 h-0.5 bg-amber-400" /><span>Solar CF</span></div>
+              <span className="opacity-60">30d rolling avg</span>
+            </div>
+          </div>
+        )}
+
         {/* Daily price range */}
         <div className="p-3">
           <div className="flex items-center justify-between mb-2">
@@ -564,6 +620,24 @@ function buildGenDailyChart(
     nuclear: pt.nuclear ?? 0, biomass: pt.biomass ?? 0, gas: pt.gas ?? 0,
     oil: pt.oil ?? 0, coal: pt.coal ?? 0, geothermal: pt.geothermal ?? 0, other: pt.other ?? 0,
   }))
+}
+
+function buildCapacityFactorChart(daily: CapacityFactorPoint[], windowDays = 30) {
+  if (daily.length === 0) return []
+  // Compute rolling average over windowDays for both wind_cf and solar_cf
+  const result: { gen_date: string; wind_cf30: number | null; solar_cf30: number | null }[] = []
+  for (let i = 0; i < daily.length; i++) {
+    const slice = daily.slice(Math.max(0, i - windowDays + 1), i + 1)
+    const windVals = slice.map((p) => p.wind_cf).filter((v): v is number => v != null)
+    const solarVals = slice.map((p) => p.solar_cf).filter((v): v is number => v != null)
+    result.push({
+      gen_date: daily[i].gen_date,
+      wind_cf30: windVals.length > 0 ? windVals.reduce((s, v) => s + v, 0) / windVals.length : null,
+      solar_cf30: solarVals.length > 0 ? solarVals.reduce((s, v) => s + v, 0) / solarVals.length : null,
+    })
+  }
+  // Skip the initial warm-up period (< 15 days of data)
+  return result.filter((_, i) => i >= 14)
 }
 
 function buildDailyBandData(

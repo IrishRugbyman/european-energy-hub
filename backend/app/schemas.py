@@ -293,6 +293,23 @@ class GenZoneResponse(BaseModel):
     daily: list[GenDailyPoint]
 
 
+class CapacityFactorPoint(BaseModel):
+    gen_date: str
+    wind_cf: float | None = None
+    solar_cf: float | None = None
+    wind_mw: float | None = None
+    solar_mw: float | None = None
+    wind_installed_mw: float | None = None
+    solar_installed_mw: float | None = None
+
+
+class GenCapacityResponse(BaseModel):
+    zone: str
+    wind_installed_mw: float | None = None
+    solar_installed_mw: float | None = None
+    daily: list[CapacityFactorPoint]
+
+
 class BatteryHourlyPoint(BaseModel):
     ts: str
     rebap_price: float | None

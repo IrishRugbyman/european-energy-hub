@@ -64,6 +64,8 @@ from .schemas import (
     MultiZoneSpreadsResponse,
     TtfCurvePoint,
     TtfCurveResponse,
+    CapacityFactorPoint,
+    GenCapacityResponse,
 )
 
 
@@ -861,6 +863,54 @@ def _float(v) -> float | None:
         return None if pd.isna(f) else round(f, 4)
     except (TypeError, ValueError):
         return None
+
+
+@app.get("/api/generation/zone/{zone_id}/capacity", response_model=GenCapacityResponse)
+def generation_zone_capacity(zone_id: str):
+    """Daily wind/solar capacity factors for a zone (2Y, rolling on full history).
+
+    CF = daily_avg_mw / installed_mw (ENTSO-E annual snapshot, forward-filled).
+    Returns the most recent installed_mw as top-level context stats.
+    """
+    zone_id = zone_id.upper()
+    df = db.query(
+        """
+        SELECT gen_date::VARCHAR AS gen_date,
+               wind_cf, solar_cf,
+               wind_mw, solar_mw,
+               wind_installed_mw, solar_installed_mw
+        FROM capacity_factors_daily
+        WHERE zone = ?
+          AND gen_date >= current_date - interval '2 years'
+        ORDER BY gen_date
+        """,
+        [zone_id],
+    )
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No capacity factor data for zone {zone_id!r}")
+
+    # Most recent installed MW for header stats
+    latest = df.iloc[-1]
+
+    daily = [
+        CapacityFactorPoint(
+            gen_date=str(r.gen_date),
+            wind_cf=_float(r.wind_cf),
+            solar_cf=_float(r.solar_cf),
+            wind_mw=_float(r.wind_mw),
+            solar_mw=_float(r.solar_mw),
+            wind_installed_mw=_float(r.wind_installed_mw),
+            solar_installed_mw=_float(r.solar_installed_mw),
+        )
+        for r in df.itertuples()
+    ]
+
+    return GenCapacityResponse(
+        zone=zone_id,
+        wind_installed_mw=_float(latest["wind_installed_mw"]),
+        solar_installed_mw=_float(latest["solar_installed_mw"]),
+        daily=daily,
+    )
 
 
 @app.get("/api/imbalance", response_model=ImbalanceResponse)

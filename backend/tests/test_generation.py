@@ -77,3 +77,23 @@ def test_generation_zone_fr(client):
     assert data["renewable_pct"] == 22.3
     # FR fixture has nuclear=38000 MW as the largest fuel type
     assert data["dominant_fuel"] == "nuclear"
+
+
+def test_generation_zone_capacity(client):
+    r = client.get("/api/generation/zone/DE-LU/capacity")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["wind_installed_mw"] == 68000.0
+    assert data["solar_installed_mw"] == 60000.0
+    assert len(data["daily"]) > 0
+    row = data["daily"][0]
+    assert "wind_cf" in row
+    assert "solar_cf" in row
+    assert 0.0 <= (row["wind_cf"] or 0) <= 1.0
+    assert 0.0 <= (row["solar_cf"] or 0) <= 1.0
+
+
+def test_generation_zone_capacity_unknown(client):
+    r = client.get("/api/generation/zone/ZZ-99/capacity")
+    assert r.status_code == 404

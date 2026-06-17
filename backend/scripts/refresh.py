@@ -111,6 +111,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_spreads(conn, spreads_tables)
         _write_flows(conn, flows_tables)
         _write_generation(conn, generation_tables)
+        _write_capacity_factors(conn, generation_tables)
         _write_gas_flows(conn, gas_flows_tables)
         _write_congestion(conn, congestion_tables)
         _write_imbalance(conn, imbalance_tables)
@@ -414,6 +415,26 @@ def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     logger.info(
         f"generation: {len(gen)} latest rows, {len(daily)} daily rows, {len(hourly)} hourly rows"
     )
+
+
+def _write_capacity_factors(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    cf = tables.get("capacity_factors_daily")
+    conn.execute("""
+        CREATE OR REPLACE TABLE capacity_factors_daily (
+            zone              VARCHAR,
+            gen_date          DATE,
+            wind_cf           REAL,
+            solar_cf          REAL,
+            wind_mw           REAL,
+            solar_mw          REAL,
+            wind_installed_mw REAL,
+            solar_installed_mw REAL
+        )
+    """)
+    if cf is not None and not cf.empty:
+        conn.register("_cf", cf)
+        conn.execute("INSERT INTO capacity_factors_daily SELECT * FROM _cf")
+    logger.info(f"capacity_factors: {len(cf) if cf is not None else 0} rows")
 
 
 def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
