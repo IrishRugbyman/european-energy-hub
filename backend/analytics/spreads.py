@@ -28,11 +28,13 @@ def build_spreads_tables() -> dict[str, pd.DataFrame]:
     spreads_daily = _build_spreads(start, end)
     prices_daily = _build_prices(start, end)
     multi_zone_spreads = _build_multi_zone_spreads(start, end)
+    ttf_curve = _build_ttf_curve()
 
     return {
         "spreads_daily": spreads_daily,
         "prices_daily": prices_daily,
         "multi_zone_spreads": multi_zone_spreads,
+        "ttf_curve": ttf_curve,
     }
 
 
@@ -182,3 +184,58 @@ def _build_multi_zone_spreads(start: date, end: date) -> pd.DataFrame:
     out = pd.concat(frames, ignore_index=True)
     out["price_date"] = pd.to_datetime(out["price_date"]).dt.date
     return out
+
+
+# Month offset within year for sorting contracts by delivery start
+_TENOR_MONTH = {
+    "Q1": 1, "Q2": 4, "Q3": 7, "Q4": 10,
+    "SUM": 4, "WIN": 10, "CAL": 1,
+}
+
+
+def _contract_sort_key(contract: str) -> int:
+    """Sort TTF curve contracts by approximate delivery start (year*100 + month)."""
+    parts = contract.split("-")
+    if len(parts) != 2:
+        return 999999
+    tenor, yr_str = parts
+    try:
+        year = 2000 + int(yr_str)
+    except ValueError:
+        return 999999
+    month = _TENOR_MONTH.get(tenor, 6)
+    # Calendar contracts sort before their seasonals (Jan of that year)
+    # but after the prior year's WIN, so shift CAL by +0 months at year start
+    return year * 100 + month
+
+
+def _build_ttf_curve() -> pd.DataFrame:
+    """Return latest TTF forward curve snapshot, sorted by delivery date."""
+    from loaders._base import _query, get_read_conn
+
+    empty = pd.DataFrame(columns=["contract", "settlement", "tenor_type", "sort_key"])
+    try:
+        conn = get_read_conn()
+        df = _query(
+            conn,
+            """
+            SELECT contract, settlement
+            FROM ttf_curve
+            WHERE price_date = (SELECT MAX(price_date) FROM ttf_curve)
+            ORDER BY contract
+            """,
+            [],
+        )
+        conn.close()
+    except Exception:
+        return empty
+
+    if df.empty:
+        return empty
+
+    df["sort_key"] = df["contract"].apply(_contract_sort_key)
+    df["tenor_type"] = df["contract"].apply(
+        lambda c: c.split("-")[0] if "-" in c else "OTHER"
+    )
+    df = df.sort_values("sort_key").reset_index(drop=True)
+    return df[["contract", "settlement", "tenor_type", "sort_key"]].copy()

@@ -62,6 +62,8 @@ from .schemas import (
     StorageLatestRow,
     MultiZoneSpreadRow,
     MultiZoneSpreadsResponse,
+    TtfCurvePoint,
+    TtfCurveResponse,
 )
 
 
@@ -676,6 +678,31 @@ def prices():
         for r in df.itertuples()
     ]
     return PricesResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/prices/curve", response_model=TtfCurveResponse)
+def prices_curve():
+    """TTF forward curve snapshot: latest available settlement for each listed contract."""
+    df = db.query(
+        """
+        SELECT contract, settlement, tenor_type
+        FROM ttf_curve_latest
+        WHERE tenor_type IN ('Q1','Q2','Q3','Q4','WIN','SUM','CAL')
+        ORDER BY sort_key
+        """
+    )
+    as_of = _meta_val("refreshed_at_spreads")
+    if df.empty:
+        return TtfCurveResponse(as_of=as_of, rows=[])
+    rows = [
+        TtfCurvePoint(
+            contract=str(r.contract),
+            settlement=float(r.settlement),
+            tenor_type=str(r.tenor_type),
+        )
+        for r in df.itertuples()
+    ]
+    return TtfCurveResponse(as_of=as_of, rows=rows)
 
 
 @app.get("/api/generation/map", response_model=GenMapResponse)

@@ -418,6 +418,24 @@ def _seed_db(path: str) -> None:
         mz_rows,
     )
 
+    # TTF forward curve
+    conn.execute("""
+        CREATE TABLE ttf_curve_latest (
+            contract VARCHAR, settlement REAL, tenor_type VARCHAR, sort_key INTEGER
+        )
+    """)
+    curve_contracts = [
+        ("Q3-26", 42.6, "Q3", 202607),
+        ("Q4-26", 42.4, "Q4", 202610),
+        ("WIN-26", 41.7, "WIN", 202610),
+        ("CAL-27", 34.8, "CAL", 202701),
+        ("SUM-27", 33.0, "SUM", 202704),
+        ("WIN-27", 32.0, "WIN", 202710),
+        ("CAL-28", 27.2, "CAL", 202801),
+        ("SUM-28", 25.7, "SUM", 202804),
+    ]
+    conn.executemany("INSERT INTO ttf_curve_latest VALUES (?, ?, ?, ?)", curve_contracts)
+
     conn.close()
 
 

@@ -162,6 +162,17 @@ class PricesResponse(BaseModel):
     rows: list[PricesDailyPoint]
 
 
+class TtfCurvePoint(BaseModel):
+    contract: str
+    settlement: float
+    tenor_type: str
+
+
+class TtfCurveResponse(BaseModel):
+    as_of: str | None
+    rows: list[TtfCurvePoint]
+
+
 # Flows
 
 class BorderFlowRow(BaseModel):

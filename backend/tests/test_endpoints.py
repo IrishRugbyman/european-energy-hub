@@ -114,6 +114,23 @@ def test_prices(client):
     row = data["rows"][0]
     assert row["ttf_eur_mwh"] is not None
     assert row["eua_eur_t"] is not None
+    assert "nbp_eur_mwh" in row
+
+
+def test_prices_curve(client):
+    r = client.get("/api/prices/curve")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["rows"]) > 0
+    row = data["rows"][0]
+    assert "contract" in row
+    assert "settlement" in row
+    assert "tenor_type" in row
+    # Contracts should be sorted by delivery (Q3-26 is first)
+    assert data["rows"][0]["contract"] == "Q3-26"
+    # No individual monthly contracts in response
+    tenor_types = {r["tenor_type"] for r in data["rows"]}
+    assert tenor_types.issubset({"Q1", "Q2", "Q3", "Q4", "WIN", "SUM", "CAL"})
 
 
 def test_flows(client):

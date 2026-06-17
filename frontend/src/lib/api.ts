@@ -235,6 +235,17 @@ export interface PricesResponse {
   rows: PricesDailyPoint[]
 }
 
+export interface TtfCurvePoint {
+  contract: string
+  settlement: number
+  tenor_type: string
+}
+
+export interface TtfCurveResponse {
+  as_of: string | null
+  rows: TtfCurvePoint[]
+}
+
 export interface BorderFlowRow {
   from_zone: string
   to_zone: string
@@ -368,6 +379,7 @@ export const api = {
   spreads: () => get<SpreadsResponse>('/spreads'),
   spreadsZones: () => get<MultiZoneSpreadsResponse>('/spreads/zones'),
   prices: () => get<PricesResponse>('/prices'),
+  pricesCurve: () => get<TtfCurveResponse>('/prices/curve'),
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),

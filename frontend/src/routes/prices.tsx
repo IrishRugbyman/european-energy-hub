@@ -17,7 +17,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint } from '@/lib/api'
+import { api, type PricesDailyPoint, type TtfCurvePoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/prices')({
@@ -437,6 +437,92 @@ function TtfNbpSpread({ rows }: { rows: PricesDailyPoint[] }) {
   )
 }
 
+const TENOR_COLORS: Record<string, string> = {
+  Q1: '#818cf8',
+  Q2: '#818cf8',
+  Q3: '#818cf8',
+  Q4: '#818cf8',
+  SUM: '#f59e0b',
+  WIN: '#60a5fa',
+  CAL: '#6ee7b7',
+}
+
+function tenorColor(tenorType: string): string {
+  return TENOR_COLORS[tenorType] ?? '#94a3b8'
+}
+
+function TtfForwardCurve({ rows }: { rows: TtfCurvePoint[] }) {
+  if (rows.length === 0) return null
+
+  const spotApprox = rows[0]?.settlement ?? null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">TTF forward curve (€/MWh)</h2>
+        <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
+          {[
+            { label: 'Quarterly', color: TENOR_COLORS.Q1 },
+            { label: 'Summer', color: TENOR_COLORS.SUM },
+            { label: 'Winter', color: TENOR_COLORS.WIN },
+            { label: 'Calendar', color: TENOR_COLORS.CAL },
+          ].map(({ label, color }) => (
+            <span key={label} className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: color }} />
+              {label}
+            </span>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={rows} margin={{ top: 4, right: 16, bottom: 24, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="contract"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            angle={-35}
+            textAnchor="end"
+            interval={0}
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            domain={['auto', 'auto']}
+            width={36}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v, _name, props) => [
+              `${(v as number).toFixed(2)} €/MWh`,
+              props.payload?.contract ?? '',
+            ]}
+            labelFormatter={() => ''}
+          />
+          {spotApprox != null && (
+            <ReferenceLine
+              y={spotApprox}
+              stroke="#60a5fa"
+              strokeDasharray="4 2"
+              strokeOpacity={0.5}
+              label={{ value: 'front', position: 'right', fontSize: 9, fill: '#60a5fa' }}
+            />
+          )}
+          <Bar dataKey="settlement" name="Settlement" radius={[2, 2, 0, 0]}>
+            {rows.map((r, i) => (
+              <Cell key={i} fill={tenorColor(r.tenor_type)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">
+        Dashed line = near-term contract. Backwardation = market expects prices to fall.
+      </p>
+    </div>
+  )
+}
+
 function PricesDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [indexed, setIndexed] = useState(false)
@@ -447,7 +533,14 @@ function PricesDashboard() {
     staleTime: 15 * 60 * 1000,
   })
 
+  const { data: curveData } = useQuery({
+    queryKey: ['prices-curve'],
+    queryFn: api.pricesCurve,
+    staleTime: 15 * 60 * 1000,
+  })
+
   const rows = data?.rows ?? []
+  const curveRows = curveData?.rows ?? []
 
   return (
     <div className="p-4 h-full overflow-y-auto">
@@ -508,6 +601,7 @@ function PricesDashboard() {
             <PricesChart rows={rows} window={window} indexed={indexed} />
           </div>
 
+          {curveRows.length > 0 && <TtfForwardCurve rows={curveRows} />}
           <CorrelationMatrix rows={rows} />
           <TtfNbpSpread rows={rows} />
           <TtfEuaScatter rows={rows} />
