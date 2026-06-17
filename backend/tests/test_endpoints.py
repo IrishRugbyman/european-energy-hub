@@ -370,3 +370,21 @@ def test_spreads_zones_per_zone_count(client):
     assert len(counts) == 6
     # All zones have the same row count (1 row per calendar day)
     assert min(counts) == max(counts)
+
+
+def test_gas_pace(client):
+    r = client.get("/api/gas/pace")
+    assert r.status_code == 200
+    data = r.json()
+    assert "eu" in data
+    eu = data["eu"]
+    assert eu["country"] == "EU"
+    assert eu["target_pct"] == 90.0
+    assert eu["target_date"] is not None
+    assert eu["days_to_target"] > 0
+    assert len(eu["history"]) > 0
+    # Verify history has actual + projected sections
+    actual = [h for h in eu["history"] if h["full_pct"] is not None]
+    projected = [h for h in eu["history"] if h["projected"] is not None]
+    assert len(actual) > 0
+    assert len(projected) > 0

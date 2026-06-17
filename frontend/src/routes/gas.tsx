@@ -1,7 +1,16 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
-import { api, type StorageLatestRow } from '@/lib/api'
+import {
+  ComposedChart,
+  Line,
+  ReferenceLine,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
+import { api, type StorageLatestRow, type GasPaceStats } from '@/lib/api'
 import { GasMap } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
@@ -49,6 +58,12 @@ function GasDashboard() {
     enabled: showFlows,
   })
 
+  const { data: paceData } = useQuery({
+    queryKey: ['gas-pace'],
+    queryFn: api.gasPace,
+    staleTime: 60 * 60 * 1000,
+  })
+
   const latestByCountry: Record<string, StorageLatestRow> = {}
   for (const row of data?.rows ?? []) {
     latestByCountry[row.country] = row
@@ -85,6 +100,13 @@ function GasDashboard() {
           <span className="text-destructive text-xs">API unavailable</span>
         ) : null}
       </div>
+
+      {/* Pace-to-target widget (below stat strip, hidden on mobile) */}
+      {paceData?.eu && (
+        <div className="hidden sm:block absolute top-14 left-1/2 -translate-x-1/2 z-[1000] w-72 bg-card/95 backdrop-blur border border-border rounded-lg shadow-lg overflow-hidden">
+          <PaceWidget eu={paceData.eu} />
+        </div>
+      )}
 
       {/* Physical flows toggle (top-right) */}
       <div className="absolute top-3 right-3 z-[1000]">
@@ -156,6 +178,81 @@ function GasDashboard() {
           </div>
         )
       })()}
+    </div>
+  )
+}
+
+function PaceWidget({ eu }: { eu: GasPaceStats }) {
+  const onTrack = eu.on_track
+  const statusColor = onTrack === true ? '#22c55e' : onTrack === false ? '#f87171' : '#6b7280'
+  const statusLabel = onTrack === true ? 'On track' : onTrack === false ? 'Behind' : '--'
+
+  const chartData = eu.history.map((h) => ({
+    gas_day: h.gas_day.slice(5),
+    fill: h.full_pct != null ? Number(h.full_pct.toFixed(1)) : null,
+    avg5: h.avg5 != null ? Number(h.avg5.toFixed(1)) : null,
+    projected: h.projected != null ? Number(h.projected.toFixed(1)) : null,
+  }))
+
+  const reqRate = eu.required_gwh_per_day
+  const curRate = eu.current_rate_gwh_per_day
+  const daysLeft = eu.days_to_target
+
+  return (
+    <div className="p-2.5">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-xs font-medium text-muted-foreground">90% target - Nov 1</span>
+        <span className="text-xs font-semibold" style={{ color: statusColor }}>{statusLabel}</span>
+      </div>
+      <div className="flex gap-3 mb-2 text-xs">
+        <div>
+          <span className="text-muted-foreground">Need </span>
+          <span className="font-medium text-foreground">{reqRate != null ? `${(reqRate / 1000).toFixed(1)} TWh/d` : '--'}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">Pace </span>
+          <span className="font-medium" style={{ color: statusColor }}>{curRate != null ? `${(curRate / 1000).toFixed(1)} TWh/d` : '--'}</span>
+        </div>
+        <div>
+          <span className="text-muted-foreground">{daysLeft}d left</span>
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={90}>
+        <ComposedChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
+          <XAxis
+            dataKey="gas_day"
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            interval={Math.floor(chartData.length / 4)}
+          />
+          <YAxis
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            width={24}
+            domain={[0, 100]}
+            tickFormatter={(v) => `${v as number}%`}
+            ticks={[0, 25, 50, 75, 90, 100]}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 9 }}
+            formatter={(v, name) => {
+              const n = typeof v === 'number' ? v : null
+              const label = name === 'fill' ? 'Actual' : name === 'avg5' ? '5yr avg' : 'Projected'
+              return n != null ? [`${n.toFixed(1)}%`, label] : ['--', label]
+            }}
+            labelFormatter={(l) => String(l)}
+          />
+          <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="4 2" strokeWidth={1} />
+          <Line type="monotone" dataKey="avg5" stroke="#64748b" strokeWidth={1} dot={false} strokeDasharray="2 2" connectNulls name="avg5" />
+          <Line type="monotone" dataKey="fill" stroke="#38bdf8" strokeWidth={1.5} dot={false} connectNulls name="fill" />
+          <Line type="monotone" dataKey="projected" stroke={statusColor} strokeWidth={1.5} dot={false} strokeDasharray="3 2" connectNulls name="projected" />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-sky-400" /><span>Actual</span></div>
+        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-slate-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg,#64748b 0,#64748b 2px,transparent 2px,transparent 4px)' }} /><span>5yr avg</span></div>
+        <div className="flex items-center gap-1"><div className="w-3 h-0.5" style={{ backgroundColor: statusColor }} /><span>Pace</span></div>
+      </div>
     </div>
   )
 }

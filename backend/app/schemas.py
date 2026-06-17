@@ -37,6 +37,34 @@ class GasMapResponse(BaseModel):
     rows: list[StorageLatestRow]
 
 
+# Gas pace-to-target
+
+class GasPacePoint(BaseModel):
+    gas_day: str
+    full_pct: float | None = None
+    avg5: float | None = None
+    projected: float | None = None
+
+
+class GasPaceStats(BaseModel):
+    country: str
+    current_pct: float | None
+    current_date: str
+    target_date: str
+    target_pct: float
+    days_to_target: int
+    pct_gap: float | None
+    required_gwh_per_day: float | None
+    current_rate_gwh_per_day: float | None
+    days_at_current_rate: float | None
+    on_track: bool | None
+    history: list[GasPacePoint]
+
+
+class GasPaceResponse(BaseModel):
+    eu: GasPaceStats
+
+
 # Gas physical flows (ENTSOG)
 
 class GasFlowItem(BaseModel):

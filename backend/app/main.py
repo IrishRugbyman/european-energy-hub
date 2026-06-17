@@ -6,7 +6,8 @@ Port :8004. Read-only against energy_hub.duckdb (rebuilt by scripts/refresh.py).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import math
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -66,6 +67,9 @@ from .schemas import (
     TtfCurveResponse,
     CapacityFactorPoint,
     GenCapacityResponse,
+    GasPacePoint,
+    GasPaceStats,
+    GasPaceResponse,
 )
 
 
@@ -287,6 +291,110 @@ def gas_flows_country(cc: str):
         for r in df.itertuples()
     ]
     return GasFlowCountryResponse(country=cc, rows=rows)
+
+
+_GAS_FILL_TARGET_PCT = 90.0
+
+
+@app.get("/api/gas/pace", response_model=GasPaceResponse)
+def gas_pace_to_target():
+    """EU gas storage pace-to-target.
+
+    Returns current fill %, required daily injection rate to reach 90% by Nov 1,
+    current 7-day avg net injection rate, whether on track, and a 90-day history
+    with 5yr seasonal avg band and projected trajectory to Nov 1.
+    """
+    # Last 90 days of EU history + seasonal band
+    hist_df = db.query("""
+        SELECT h.gas_day::VARCHAR AS gas_day,
+               h.full_pct,
+               h.injection,
+               h.withdrawal,
+               h.working_gas_volume,
+               s.avg5
+        FROM storage_history h
+        LEFT JOIN storage_seasonal s
+          ON s.country = 'EU'
+         AND s.doy = DAYOFYEAR(h.gas_day)
+        WHERE h.country = 'EU'
+          AND h.gas_day >= current_date - INTERVAL '90 days'
+        ORDER BY h.gas_day
+    """)
+    if hist_df is None or hist_df.empty:
+        raise HTTPException(status_code=503, detail="Gas storage data not available")
+
+    latest = hist_df.iloc[-1]
+    current_pct = _float(latest["full_pct"]) or 0.0
+    current_date_str = str(latest["gas_day"])
+    current_date_obj = date.fromisoformat(current_date_str)
+    wgv_twh = _float(latest["working_gas_volume"]) or 1.0
+
+    # Target date: Nov 1 this year (or next if already past)
+    nov1 = date(current_date_obj.year, 11, 1)
+    if current_date_obj >= nov1:
+        nov1 = date(current_date_obj.year + 1, 11, 1)
+    days_to_target = (nov1 - current_date_obj).days
+
+    # 7-day avg net injection (GWh/day)
+    recent = hist_df.tail(7)
+    inj_vals = (recent["injection"].fillna(0) - recent["withdrawal"].fillna(0))
+    current_rate = float(inj_vals.mean()) if not inj_vals.empty else 0.0
+
+    # Required total injection (GWh)
+    pct_gap = _GAS_FILL_TARGET_PCT - current_pct
+    required_total_gwh = (pct_gap / 100) * wgv_twh * 1000  # TWh -> GWh
+    required_rate = required_total_gwh / days_to_target if days_to_target > 0 else None
+    days_at_current = (
+        required_total_gwh / current_rate if current_rate > 0 else None
+    )
+    on_track = (
+        days_at_current is not None and days_at_current <= days_to_target
+    ) if days_at_current is not None else None
+
+    # Build history list (actual fill + seasonal avg5)
+    history: list[GasPacePoint] = []
+    for r in hist_df.itertuples():
+        history.append(GasPacePoint(
+            gas_day=str(r.gas_day),
+            full_pct=_float(r.full_pct),
+            avg5=_float(r.avg5),
+            projected=None,
+        ))
+
+    # Append projected trajectory from current date to Nov 1 at current rate
+    wgv_gwh = wgv_twh * 1000
+    for d_offset in range(1, days_to_target + 1):
+        proj_day = date(
+            current_date_obj.year,
+            current_date_obj.month,
+            current_date_obj.day,
+        )
+        proj_day = date.fromordinal(current_date_obj.toordinal() + d_offset)
+        projected_gwh_stored = (current_pct / 100 * wgv_gwh) + current_rate * d_offset
+        projected_pct = min(projected_gwh_stored / wgv_gwh * 100, 100.0)
+        history.append(GasPacePoint(
+            gas_day=proj_day.isoformat(),
+            full_pct=None,
+            avg5=None,
+            projected=round(projected_pct, 2),
+        ))
+
+    stats = GasPaceStats(
+        country="EU",
+        current_pct=round(current_pct, 2) if current_pct else None,
+        current_date=current_date_str,
+        target_date=nov1.isoformat(),
+        target_pct=_GAS_FILL_TARGET_PCT,
+        days_to_target=days_to_target,
+        pct_gap=round(pct_gap, 2) if pct_gap else None,
+        required_gwh_per_day=round(required_rate, 1) if required_rate is not None else None,
+        current_rate_gwh_per_day=round(current_rate, 1),
+        days_at_current_rate=round(days_at_current, 0) if days_at_current is not None and not math.isinf(days_at_current) else None,
+        on_track=on_track,
+        history=history,
+    )
+
+    return GasPaceResponse(eu=stats)
 
 
 @app.get("/api/power/congestion", response_model=CongestionResponse)

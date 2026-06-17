@@ -23,6 +23,32 @@ export interface GasMapResponse {
   rows: StorageLatestRow[]
 }
 
+export interface GasPacePoint {
+  gas_day: string
+  full_pct: number | null
+  avg5: number | null
+  projected: number | null
+}
+
+export interface GasPaceStats {
+  country: string
+  current_pct: number | null
+  current_date: string
+  target_date: string
+  target_pct: number
+  days_to_target: number
+  pct_gap: number | null
+  required_gwh_per_day: number | null
+  current_rate_gwh_per_day: number | null
+  days_at_current_rate: number | null
+  on_track: boolean | null
+  history: GasPacePoint[]
+}
+
+export interface GasPaceResponse {
+  eu: GasPaceStats
+}
+
 export interface SeasonalPoint {
   gas_day: string
   full_pct: number | null
@@ -388,6 +414,7 @@ export const api = {
   gasCountry: (cc: string) => get<GasCountryResponse>(`/gas/country/${cc}`),
   gasFlows: () => get<GasFlowResponse>('/gas/flows'),
   gasFlowsCountry: (cc: string) => get<GasFlowCountryResponse>(`/gas/flows/${cc}`),
+  gasPace: () => get<GasPaceResponse>('/gas/pace'),
   powerCongestion: () => get<CongestionResponse>('/power/congestion'),
   powerCongestionBorder: (fz: string, tz: string) => get<CongestionBorderResponse>(`/power/congestion/border/${fz}/${tz}`),
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
