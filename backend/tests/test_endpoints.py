@@ -257,6 +257,21 @@ def test_gen_map_out_of_range_date(client):
     assert r.status_code == 404
 
 
+def test_gen_trends(client):
+    r = client.get("/api/generation/trends")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data and "years" in data and "rows" in data
+    assert isinstance(data["zones"], list)
+    assert isinstance(data["years"], list)
+    # Each row has zone, year, renewable_pct
+    for row in data["rows"]:
+        assert "zone" in row
+        assert "year" in row
+        if row["renewable_pct"] is not None:
+            assert 0.0 <= row["renewable_pct"] <= 100.0
+
+
 def test_imbalance_endpoint(client):
     r = client.get("/api/imbalance")
     assert r.status_code == 200

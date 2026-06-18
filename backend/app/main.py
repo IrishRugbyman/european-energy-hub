@@ -40,6 +40,8 @@ from .schemas import (
     GasFlowItem,
     GasFlowResponse,
     GasMapResponse,
+    GenAnnualRow,
+    GenTrendsResponse,
     GenDailyPoint,
     GenHourlyPoint,
     GenMapItem,
@@ -1169,6 +1171,49 @@ def generation_zone_capacity(zone_id: str):
         solar_installed_mw=_float(latest["solar_installed_mw"]),
         daily=daily,
     )
+
+
+@app.get("/api/generation/trends", response_model=GenTrendsResponse)
+def generation_trends():
+    """Annual average renewable % per zone from 2021 onwards.
+
+    Excludes 2020 (only 1 day per zone) and partial years are included as-is.
+    Zones sorted descending by their most recent full-year RE%.
+    """
+    df = db.query("""
+        WITH agg AS (
+            SELECT zone,
+                   YEAR(gen_date) AS year,
+                   AVG(renewable_pct) AS renewable_pct,
+                   COUNT(*) AS n
+            FROM generation_daily
+            WHERE renewable_pct IS NOT NULL
+              AND YEAR(gen_date) >= 2021
+            GROUP BY zone, YEAR(gen_date)
+        )
+        SELECT zone, year, renewable_pct
+        FROM agg
+        WHERE n >= 30
+        ORDER BY zone, year
+    """)
+
+    if df is None or df.empty:
+        return GenTrendsResponse(zones=[], years=[], rows=[])
+
+    years_set = sorted(df["year"].unique().tolist())
+
+    # Sort zones by their latest available year's RE%
+    latest_re: dict[str, float] = {}
+    for r in df.itertuples():
+        latest_re[r.zone] = _float(r.renewable_pct) or 0.0
+    zones_sorted = sorted(latest_re.keys(), key=lambda z: latest_re[z], reverse=True)
+
+    rows = [
+        GenAnnualRow(zone=r.zone, year=int(r.year), renewable_pct=round(_float(r.renewable_pct) or 0.0, 1))
+        for r in df.itertuples()
+    ]
+
+    return GenTrendsResponse(zones=zones_sorted, years=years_set, rows=rows)
 
 
 @app.get("/api/imbalance", response_model=ImbalanceResponse)

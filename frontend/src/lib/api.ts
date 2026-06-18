@@ -384,6 +384,18 @@ export interface BatteryResponse {
   hourly: BatteryHourlyPoint[]
 }
 
+export interface GenAnnualRow {
+  zone: string
+  year: number
+  renewable_pct: number | null
+}
+
+export interface GenTrendsResponse {
+  zones: string[]
+  years: number[]
+  rows: GenAnnualRow[]
+}
+
 export interface DivergenceLatestRow {
   from_zone: string
   to_zone: string
@@ -467,6 +479,7 @@ export const api = {
   pricesRegime: () => get<PriceRegimeResponse>('/prices/regime'),
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
+  genTrends: () => get<GenTrendsResponse>('/generation/trends'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

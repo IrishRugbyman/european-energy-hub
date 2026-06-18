@@ -360,6 +360,18 @@ class GenZoneResponse(BaseModel):
     daily: list[GenDailyPoint]
 
 
+class GenAnnualRow(BaseModel):
+    zone: str
+    year: int
+    renewable_pct: float | None
+
+
+class GenTrendsResponse(BaseModel):
+    zones: list[str]
+    years: list[int]
+    rows: list[GenAnnualRow]
+
+
 class CapacityFactorPoint(BaseModel):
     gen_date: str
     wind_cf: float | None = None
