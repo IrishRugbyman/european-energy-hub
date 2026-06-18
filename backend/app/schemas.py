@@ -65,6 +65,20 @@ class GasPaceResponse(BaseModel):
     eu: GasPaceStats
 
 
+class CountryPaceRow(BaseModel):
+    country: str
+    current_pct: float | None
+    current_rate_gwh_per_day: float | None
+    required_gwh_per_day: float | None
+    pct_gap: float | None
+    on_track: bool | None
+
+
+class GasPaceCountriesResponse(BaseModel):
+    target_date: str
+    rows: list[CountryPaceRow]
+
+
 # Gas physical flows (ENTSOG)
 
 class GasFlowItem(BaseModel):

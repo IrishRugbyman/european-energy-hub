@@ -49,6 +49,20 @@ export interface GasPaceResponse {
   eu: GasPaceStats
 }
 
+export interface CountryPaceRow {
+  country: string
+  current_pct: number | null
+  current_rate_gwh_per_day: number | null
+  required_gwh_per_day: number | null
+  pct_gap: number | null
+  on_track: boolean | null
+}
+
+export interface GasPaceCountriesResponse {
+  target_date: string
+  rows: CountryPaceRow[]
+}
+
 export interface SeasonalPoint {
   gas_day: string
   full_pct: number | null
@@ -501,6 +515,7 @@ export const api = {
   gasFlows: () => get<GasFlowResponse>('/gas/flows'),
   gasFlowsCountry: (cc: string) => get<GasFlowCountryResponse>(`/gas/flows/${cc}`),
   gasPace: () => get<GasPaceResponse>('/gas/pace'),
+  gasPaceCountries: () => get<GasPaceCountriesResponse>('/gas/pace/countries'),
   powerCongestion: () => get<CongestionResponse>('/power/congestion'),
   powerCongestionBorder: (fz: string, tz: string) => get<CongestionBorderResponse>(`/power/congestion/border/${fz}/${tz}`),
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),

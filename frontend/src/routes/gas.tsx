@@ -14,7 +14,7 @@ import {
   YAxis,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { api, type StorageLatestRow, type GasPaceStats } from '@/lib/api'
+import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow } from '@/lib/api'
 import { GasMap } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
@@ -307,7 +307,7 @@ function StatChip({
   )
 }
 
-type RankingsView = 'table' | 'chart'
+type RankingsView = 'table' | 'chart' | 'pace'
 
 function StorageRankings({
   rows,
@@ -320,6 +320,13 @@ function StorageRankings({
 }) {
   const [sortKey, setSortKey] = useState<'full_pct' | 'yoy_pct' | 'vs_avg5_pct'>('full_pct')
   const [view, setView] = useState<RankingsView>('table')
+
+  const { data: paceData } = useQuery({
+    queryKey: ['gas-pace-countries'],
+    queryFn: api.gasPaceCountries,
+    staleTime: 60 * 60 * 1000,
+    enabled: view === 'pace',
+  })
 
   const sorted = useMemo(() => {
     return [...rows]
@@ -366,7 +373,7 @@ function StorageRankings({
         <div className="flex items-center gap-2">
           {/* Table/Chart toggle */}
           <div className="flex rounded border border-border overflow-hidden text-xs">
-            {(['table', 'chart'] as RankingsView[]).map((v) => (
+            {([['table', 'Table'], ['chart', 'vs avg'], ['pace', 'Pace']] as [RankingsView, string][]).map(([v, label]) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -376,7 +383,7 @@ function StorageRankings({
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                {v === 'table' ? 'Table' : 'vs avg'}
+                {label}
               </button>
             ))}
           </div>
@@ -425,6 +432,20 @@ function StorageRankings({
             </BarChart>
           </ResponsiveContainer>
           <p className="text-xs text-muted-foreground mt-1">Click a bar to open country detail</p>
+        </div>
+      ) : view === 'pace' ? (
+        <div className="flex-1 overflow-y-auto">
+          {!paceData ? (
+            <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">Loading...</div>
+          ) : (
+            <>
+              <p className="text-xs text-muted-foreground px-4 pt-3 pb-1">
+                Current vs required injection rate (GWh/d) to reach 90% by {paceData.target_date}
+              </p>
+              <PaceComparisonChart rows={paceData.rows} onSelect={onSelect} />
+              <p className="text-xs text-muted-foreground px-4 pb-2">Click a row to open country detail</p>
+            </>
+          )}
         </div>
       ) : (
         <>
@@ -482,6 +503,88 @@ function StorageRankings({
 
       </> /* end table view */
       )}
+    </div>
+  )
+}
+
+function PaceComparisonChart({
+  rows,
+  onSelect,
+}: {
+  rows: CountryPaceRow[]
+  onSelect: (cc: string) => void
+}) {
+  // Only countries with a positive pct_gap (still need to fill), sorted by most deficit first
+  const chartData = useMemo(() => {
+    return [...rows]
+      .filter((r) => r.pct_gap != null && r.pct_gap > 0 && r.required_gwh_per_day != null)
+      .sort((a, b) => (b.pct_gap ?? 0) - (a.pct_gap ?? 0))
+      .map((r) => ({
+        country: r.country,
+        current: Math.max(0, r.current_rate_gwh_per_day ?? 0),
+        required: r.required_gwh_per_day ?? 0,
+        on_track: r.on_track,
+        _raw: r,
+      }))
+  }, [rows])
+
+  if (!chartData.length) return <div className="text-xs text-muted-foreground p-4">No pace data</div>
+
+  return (
+    <div className="px-3 py-1">
+      <ResponsiveContainer width="100%" height={Math.max(chartData.length * 22, 200)}>
+        <BarChart data={chartData} layout="vertical" margin={{ top: 2, right: 48, bottom: 2, left: 28 }}>
+          <XAxis
+            type="number"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(v) => `${(v as number).toFixed(0)}`}
+            unit=" G"
+          />
+          <YAxis
+            type="category"
+            dataKey="country"
+            tick={{ fontSize: 9, fill: '#94a3b8' }}
+            tickLine={false}
+            width={28}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => {
+              const n = typeof v === 'number' ? v : null
+              const label = name === 'current' ? 'Current rate' : 'Required rate'
+              return [n != null ? `${n.toFixed(0)} GWh/d` : '--', label]
+            }}
+            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+          />
+          <Bar
+            dataKey="required"
+            fill="#334155"
+            radius={[0, 2, 2, 0]}
+            name="required"
+            onClick={(d: unknown) => { const r = d as { country: string }; if (r?.country) onSelect(r.country) }}
+          />
+          <Bar
+            dataKey="current"
+            radius={[0, 2, 2, 0]}
+            name="current"
+            onClick={(d: unknown) => { const r = d as { country: string }; if (r?.country) onSelect(r.country) }}
+          >
+            {chartData.map((r) => (
+              <Cell
+                key={r.country}
+                fill={r.on_track ? '#16a34a' : r.on_track === false ? '#dc2626' : '#64748b'}
+                opacity={0.85}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-4 mt-1 px-1">
+        <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm bg-[#334155]" /><span className="text-xs text-muted-foreground">Required</span></div>
+        <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm bg-green-700" /><span className="text-xs text-muted-foreground">On track</span></div>
+        <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm bg-red-700" /><span className="text-xs text-muted-foreground">Behind</span></div>
+      </div>
     </div>
   )
 }

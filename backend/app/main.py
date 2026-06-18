@@ -84,6 +84,8 @@ from .schemas import (
     GasPacePoint,
     GasPaceStats,
     GasPaceResponse,
+    CountryPaceRow,
+    GasPaceCountriesResponse,
 )
 
 
@@ -472,6 +474,71 @@ def gas_pace_to_target():
     )
 
     return GasPaceResponse(eu=stats)
+
+
+@app.get("/api/gas/pace/countries", response_model=GasPaceCountriesResponse)
+def gas_pace_countries():
+    """Injection pace vs required rate for all countries (excluding EU aggregate).
+
+    Uses the latest snapshot + 7-day avg injection rate to compute whether
+    each country is on track to reach 90% fill by Nov 1.
+    """
+    latest_df = db.query(
+        """
+        SELECT country, full_pct, gas_day::VARCHAR AS gas_day, working_gas_volume
+        FROM storage_latest
+        WHERE country != 'EU' AND working_gas_volume IS NOT NULL AND working_gas_volume > 0
+        ORDER BY full_pct
+        """
+    )
+    if latest_df is None or latest_df.empty:
+        raise HTTPException(status_code=503, detail="Gas storage data not available")
+
+    rate_df = db.query(
+        """
+        SELECT country, AVG(injection - withdrawal) AS rate
+        FROM storage_history
+        WHERE gas_day >= current_date - INTERVAL '7 days' AND country != 'EU'
+        GROUP BY country
+        """
+    )
+    rates = {} if rate_df.empty else dict(zip(rate_df["country"], rate_df["rate"].fillna(0)))
+
+    # Determine target date using the most common gas_day
+    sample_date_str = str(latest_df.iloc[0]["gas_day"])
+    sample_date_obj = date.fromisoformat(sample_date_str)
+    nov1 = date(sample_date_obj.year, 11, 1)
+    if sample_date_obj >= nov1:
+        nov1 = date(sample_date_obj.year + 1, 11, 1)
+    days_to_t = max(1, (nov1 - sample_date_obj).days)
+
+    rows: list[CountryPaceRow] = []
+    for r in latest_df.itertuples():
+        cc = str(r.country)
+        c_pct = _float(r.full_pct)
+        wgv_twh = _float(r.working_gas_volume) or 1.0
+        c_rate = float(rates.get(cc, 0.0))
+        pct_gap = (_GAS_FILL_TARGET_PCT - c_pct) if c_pct is not None else None
+        req_rate: float | None = None
+        on_track: bool | None = None
+        if pct_gap is not None and pct_gap > 0:
+            req_total = (pct_gap / 100) * wgv_twh * 1000
+            req_rate = req_total / days_to_t
+            if c_rate > 0:
+                days_at = req_total / c_rate
+                on_track = days_at <= days_to_t
+        elif pct_gap is not None and pct_gap <= 0:
+            on_track = True  # already at or above target
+        rows.append(CountryPaceRow(
+            country=cc,
+            current_pct=round(c_pct, 2) if c_pct is not None else None,
+            current_rate_gwh_per_day=round(c_rate, 1),
+            required_gwh_per_day=round(req_rate, 1) if req_rate is not None else None,
+            pct_gap=round(pct_gap, 2) if pct_gap is not None else None,
+            on_track=on_track,
+        ))
+
+    return GasPaceCountriesResponse(target_date=nov1.isoformat(), rows=rows)
 
 
 @app.get("/api/power/congestion", response_model=CongestionResponse)
