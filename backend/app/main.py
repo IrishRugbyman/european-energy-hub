@@ -849,6 +849,7 @@ def multi_zone_spreads():
         SELECT price_date::VARCHAR AS price_date, zone,
                power_eur_mwh, css, cds, fss, regime_threshold
         FROM multi_zone_spreads
+        WHERE price_date >= current_date - INTERVAL '2 years'
         ORDER BY zone, price_date
         """
     )
