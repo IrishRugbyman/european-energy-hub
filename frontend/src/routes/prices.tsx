@@ -31,6 +31,24 @@ const WINDOWS: Window[] = ['1Y', '2Y', '5Y', 'ALL']
 
 const latest = (rows: PricesDailyPoint[], key: keyof PricesDailyPoint) => latestNonNull(rows, key)
 
+function yearAgo(rows: PricesDailyPoint[], key: keyof PricesDailyPoint): number | null {
+  if (!rows.length) return null
+  const latestDate = new Date(rows[rows.length - 1].price_date)
+  const target = new Date(latestDate)
+  target.setFullYear(target.getFullYear() - 1)
+  const targetMs = target.getTime()
+  let best: PricesDailyPoint | null = null
+  let bestDelta = Infinity
+  for (const r of rows) {
+    const v = r[key]
+    if (v == null) continue
+    const delta = Math.abs(new Date(r.price_date).getTime() - targetMs)
+    if (delta < bestDelta) { bestDelta = delta; best = r }
+  }
+  const v = best ? best[key] : null
+  return typeof v === 'number' ? v : null
+}
+
 const SERIES = [
   { key: 'ttf_eur_mwh',  label: 'TTF (€/MWh)',       color: '#60a5fa', unit: '€/MWh'   },
   { key: 'nbp_eur_mwh',  label: 'NBP (€/MWh)',        color: '#a78bfa', unit: '€/MWh'   },
@@ -756,12 +774,19 @@ function PricesDashboard() {
       <div className="flex flex-wrap items-center gap-6 mb-4">
         {SERIES.map(({ key, label, color, unit }) => {
           const v = latest(rows, key as keyof PricesDailyPoint)
+          const ya = yearAgo(rows, key as keyof PricesDailyPoint)
+          const yoyPct = v != null && ya != null && ya !== 0 ? ((v - ya) / Math.abs(ya)) * 100 : null
           return (
             <div key={key} className="flex flex-col">
               <span className="text-xs text-muted-foreground">{label}</span>
               <span className="text-sm font-semibold" style={{ color }}>
                 {v != null ? `${v.toFixed(2)} ${unit}` : '-'}
               </span>
+              {yoyPct != null && (
+                <span className={`text-xs font-medium ${yoyPct >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                  {yoyPct >= 0 ? '+' : ''}{yoyPct.toFixed(1)}% YoY
+                </span>
+              )}
             </div>
           )
         })}
