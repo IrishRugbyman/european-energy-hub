@@ -41,8 +41,8 @@ from analytics.flows import build_flows_tables
 def run_ingest(fetcher: str) -> bool:
     """Run market-data ingest.py for one fetcher. Returns True if OK."""
     try:
-        # entso-e-gen-full fetches up to 34 zones incrementally; allow 30 min
-        fetch_timeout = 1800 if "gen-full" in fetcher else 600
+        # entso-e-gen-full fetches up to 34 zones incrementally; allow 2 hours
+        fetch_timeout = 7200 if "gen-full" in fetcher else 600
         result = subprocess.run(
             [str(MARKET_DATA_VENV), "ingest.py", fetcher],
             cwd=str(MARKET_DATA_DIR),
@@ -65,7 +65,7 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "ttf", "eua_carbon", "coal_api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de"]:
+        for fetcher in ["agsi", "ttf", "eua-carbon", "coal-api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
