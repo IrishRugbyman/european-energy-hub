@@ -2,6 +2,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
+  Bar,
+  BarChart,
+  Cell,
   ComposedChart,
   Line,
   ReferenceLine,
@@ -304,6 +307,8 @@ function StatChip({
   )
 }
 
+type RankingsView = 'table' | 'chart'
+
 function StorageRankings({
   rows,
   onSelect,
@@ -314,6 +319,7 @@ function StorageRankings({
   onClose: () => void
 }) {
   const [sortKey, setSortKey] = useState<'full_pct' | 'yoy_pct' | 'vs_avg5_pct'>('full_pct')
+  const [view, setView] = useState<RankingsView>('table')
 
   const sorted = useMemo(() => {
     return [...rows]
@@ -324,6 +330,13 @@ function StorageRankings({
         return bv - av
       })
   }, [rows, sortKey])
+
+  // For the comparison chart: sort by vs_avg5_pct ascending (most deficit first)
+  const chartRows = useMemo(() => {
+    return [...rows]
+      .filter((r) => r.country !== 'EU' && r.vs_avg5_pct != null)
+      .sort((a, b) => (a.vs_avg5_pct ?? 0) - (b.vs_avg5_pct ?? 0))
+  }, [rows])
 
   const fmtPct = (v: number | null | undefined, d = 1) =>
     v != null ? `${v.toFixed(d)}%` : '--'
@@ -350,10 +363,71 @@ function StorageRankings({
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="font-medium text-sm">Storage rankings</span>
-        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Table/Chart toggle */}
+          <div className="flex rounded border border-border overflow-hidden text-xs">
+            {(['table', 'chart'] as RankingsView[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setView(v)}
+                className={`px-2 py-0.5 transition-colors ${
+                  view === v
+                    ? 'bg-primary/20 text-primary'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {v === 'table' ? 'Table' : 'vs avg'}
+              </button>
+            ))}
+          </div>
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
+
+      {view === 'chart' ? (
+        <div className="flex-1 overflow-y-auto p-3">
+          <p className="text-xs text-muted-foreground mb-2">vs 5yr average (pp) - deficit countries at top</p>
+          <ResponsiveContainer width="100%" height={Math.max(chartRows.length * 18, 200)}>
+            <BarChart data={chartRows} layout="vertical" margin={{ top: 2, right: 32, bottom: 2, left: 28 }}>
+              <XAxis
+                type="number"
+                tick={{ fontSize: 9, fill: '#64748b' }}
+                tickLine={false}
+                tickFormatter={(v) => `${v > 0 ? '+' : ''}${(v as number).toFixed(0)}pp`}
+              />
+              <YAxis
+                type="category"
+                dataKey="country"
+                tick={{ fontSize: 9, fill: '#94a3b8' }}
+                tickLine={false}
+                width={28}
+              />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                formatter={(v: unknown) => {
+                  const n = typeof v === 'number' ? v : null
+                  return [n != null ? `${n >= 0 ? '+' : ''}${n.toFixed(1)}pp` : '--', 'vs 5yr avg']
+                }}
+                cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+              />
+              <ReferenceLine x={0} stroke="#475569" strokeWidth={1} />
+              <Bar dataKey="vs_avg5_pct" radius={[0, 2, 2, 0]} onClick={(d: unknown) => { const r = d as StorageLatestRow; if (r?.country) onSelect(r.country) }}>
+                {chartRows.map((r) => (
+                  <Cell
+                    key={r.country}
+                    fill={(r.vs_avg5_pct ?? 0) >= 0 ? '#4ade80' : '#f87171'}
+                    opacity={0.8}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+          <p className="text-xs text-muted-foreground mt-1">Click a bar to open country detail</p>
+        </div>
+      ) : (
+        <>
 
       {/* Sort controls */}
       <div className="flex items-center gap-1 px-4 py-2 border-b border-border">
@@ -405,6 +479,9 @@ function StorageRankings({
       <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
         Click a row to open country detail
       </div>
+
+      </> /* end table view */
+      )}
     </div>
   )
 }
