@@ -42,7 +42,10 @@ interface Props {
   selectedDate?: string
 }
 
+type PanelTab = 'price' | 'generation'
+
 export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selectedDate }: Props) {
+  const [tab, setTab] = useState<PanelTab>('price')
   const [genWindow, setGenWindow] = useState<TrendWindow>('1Y')
   const [priceWindow, setPriceWindow] = useState<DailyWindow>('1Y')
 
@@ -117,7 +120,27 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
         </button>
       </div>
 
+      {/* Tab switcher */}
+      <div className="flex border-b border-border">
+        {(['price', 'generation'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2 text-xs font-medium transition-colors ${
+              tab === t
+                ? 'text-foreground border-b-2 border-sky-500'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t === 'price' ? 'Price' : 'Generation'}
+          </button>
+        ))}
+      </div>
+
       <div className="flex-1 overflow-y-auto">
+        {/* ---- PRICE TAB ---- */}
+        {tab === 'price' && <>
+
         {/* Price stats */}
         {powerLatest && (
           <div className="p-3 border-b border-border">
@@ -201,6 +224,11 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
             <SeasonalityCharts dow={seasonalityData.dow} monthly={seasonalityData.monthly} />
           </div>
         )}
+
+        </> /* end price tab */}
+
+        {/* ---- GENERATION TAB ---- */}
+        {tab === 'generation' && <>
 
         {/* Fuel mix today */}
         <div className="p-3 border-b border-border">
@@ -432,6 +460,11 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           </div>
         )}
 
+        </> /* end generation tab */}
+
+        {/* ---- PRICE TAB (continued: historical charts) ---- */}
+        {tab === 'price' && <>
+
         {/* Calendar heatmap - 52 weeks of daily base price */}
         {allDaily.length >= 14 && (
           <div className="p-3 pt-1">
@@ -493,6 +526,8 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
             <NoData />
           )}
         </div>
+
+        </> /* end price tab continued */}
       </div>
     </div>
   )
