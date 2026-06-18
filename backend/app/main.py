@@ -264,6 +264,50 @@ def gas_country(cc: str):
             pts = [GasDoyPoint(doy=doy, full_pct=fp) for _, doy, fp in group]
             yearly_tracks.append(GasYearTrack(year=yr, data=pts))
 
+    # Pace-to-target stats using the most recent 90d history
+    pace_stats: GasPaceStats | None = None
+    recent_hist = db.query(
+        """
+        SELECT gas_day::VARCHAR AS gas_day, full_pct, injection, withdrawal, working_gas_volume
+        FROM storage_history
+        WHERE country = ?
+          AND gas_day >= current_date - INTERVAL '90 days'
+        ORDER BY gas_day
+        """,
+        [cc],
+    )
+    if recent_hist is not None and not recent_hist.empty:
+        lat = recent_hist.iloc[-1]
+        c_pct = _float(lat["full_pct"]) or 0.0
+        c_date_str = str(lat["gas_day"])
+        c_date_obj = date.fromisoformat(c_date_str)
+        wgv_twh = _float(lat["working_gas_volume"]) or 1.0
+        nov1 = date(c_date_obj.year, 11, 1)
+        if c_date_obj >= nov1:
+            nov1 = date(c_date_obj.year + 1, 11, 1)
+        days_to_t = (nov1 - c_date_obj).days
+        tail7 = recent_hist.tail(7)
+        inj_vals = tail7["injection"].fillna(0) - tail7["withdrawal"].fillna(0)
+        c_rate = float(inj_vals.mean()) if not inj_vals.empty else 0.0
+        pct_gap = _GAS_FILL_TARGET_PCT - c_pct
+        req_total = (pct_gap / 100) * wgv_twh * 1000
+        req_rate = req_total / days_to_t if days_to_t > 0 else None
+        days_at = req_total / c_rate if c_rate > 0 else None
+        pace_stats = GasPaceStats(
+            country=cc,
+            current_pct=round(c_pct, 2),
+            current_date=c_date_str,
+            target_date=nov1.isoformat(),
+            target_pct=_GAS_FILL_TARGET_PCT,
+            days_to_target=days_to_t,
+            pct_gap=round(pct_gap, 2),
+            required_gwh_per_day=round(req_rate, 1) if req_rate is not None else None,
+            current_rate_gwh_per_day=round(c_rate, 1),
+            days_at_current_rate=round(days_at) if days_at is not None else None,
+            on_track=(days_at <= days_to_t) if days_at is not None else None,
+            history=[],
+        )
+
     return GasCountryResponse(
         country=cc,
         latest=latest,
@@ -271,6 +315,7 @@ def gas_country(cc: str):
         prior_year=prior,
         seasonal_band=band,
         yearly_tracks=yearly_tracks,
+        pace=pace_stats,
     )
 
 

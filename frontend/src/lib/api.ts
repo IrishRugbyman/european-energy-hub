@@ -80,6 +80,7 @@ export interface GasCountryResponse {
   prior_year: SeasonalPoint[]
   seasonal_band: SeasonalBandPoint[]
   yearly_tracks: GasYearTrack[]
+  pace: GasPaceStats | null
 }
 
 export interface MetaResponse {

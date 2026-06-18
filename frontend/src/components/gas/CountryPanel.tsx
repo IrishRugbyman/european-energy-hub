@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type GasYearTrack, type StorageLatestRow } from '@/lib/api'
+import { api, type GasPaceStats, type GasYearTrack, type StorageLatestRow } from '@/lib/api'
 import { countryName, gasFillColor } from '@/lib/scales'
 import { fmtDelta, fmtPct } from '@/lib/utils'
 
@@ -67,6 +67,9 @@ export function CountryPanel({ country, latest, onClose }: Props) {
           <StatBox label="As of" value={latest.gas_day} />
         </div>
       )}
+
+      {/* Pace-to-target widget */}
+      {data?.pace && <CountryPaceBar pace={data.pace} />}
 
       {/* Physical gas flows (ENTSOG - AT, BE, DE, FR, IT, NL only) */}
       {flowData && flowData.rows.length > 0 && (() => {
@@ -241,6 +244,63 @@ export function CountryPanel({ country, latest, onClose }: Props) {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function CountryPaceBar({ pace }: { pace: GasPaceStats }) {
+  const onTrack = pace.on_track
+  const req = pace.required_gwh_per_day
+  const cur = pace.current_rate_gwh_per_day
+  const targetYear = pace.target_date.slice(0, 4)
+
+  // Only show for injection season (positive gap means below target)
+  const gap = pace.pct_gap ?? 0
+  if (gap <= 0) return null
+
+  return (
+    <div className="px-4 py-3 border-b border-border">
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-xs text-muted-foreground font-medium">Pace to 90% by Nov 1 {targetYear}</p>
+        {onTrack != null && (
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${onTrack ? 'bg-green-900/50 text-green-400' : 'bg-red-900/50 text-red-400'}`}>
+            {onTrack ? 'On track' : 'Behind'}
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div className="bg-secondary rounded p-2">
+          <p className="text-xs text-muted-foreground">Current rate</p>
+          <p className={`text-sm font-medium ${(cur ?? 0) > 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {cur != null ? `${cur >= 0 ? '+' : ''}${cur.toFixed(0)}` : '--'}
+            <span className="text-xs font-normal text-muted-foreground ml-1">GWh/d</span>
+          </p>
+        </div>
+        <div className="bg-secondary rounded p-2">
+          <p className="text-xs text-muted-foreground">Required rate</p>
+          <p className="text-sm font-medium text-foreground">
+            {req != null ? `+${req.toFixed(0)}` : '--'}
+            <span className="text-xs font-normal text-muted-foreground ml-1">GWh/d</span>
+          </p>
+        </div>
+      </div>
+      {req != null && cur != null && cur > 0 && (
+        <div className="mt-2">
+          <div className="flex justify-between text-xs text-muted-foreground mb-0.5">
+            <span>Rate vs required</span>
+            <span>{((cur / req) * 100).toFixed(0)}%</span>
+          </div>
+          <div className="h-1.5 bg-secondary rounded overflow-hidden">
+            <div
+              className="h-full rounded transition-all"
+              style={{
+                width: `${Math.min(100, (cur / req) * 100).toFixed(0)}%`,
+                backgroundColor: cur >= req ? '#16a34a' : '#dc2626',
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -118,6 +118,7 @@ class GasCountryResponse(BaseModel):
     prior_year: list[SeasonalPoint]
     seasonal_band: list[SeasonalBandPoint]
     yearly_tracks: list[GasYearTrack] = []
+    pace: "GasPaceStats | None" = None
 
 
 # Power map
