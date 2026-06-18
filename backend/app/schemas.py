@@ -79,6 +79,19 @@ class GasPaceCountriesResponse(BaseModel):
     rows: list[CountryPaceRow]
 
 
+class ImbalanceHourlyPoint(BaseModel):
+    hour: int
+    avg_eur: float | None
+    p25_eur: float | None
+    p75_eur: float | None
+    neg_pct: float | None
+
+
+class ImbalanceProfileResponse(BaseModel):
+    days: int
+    rows: list[ImbalanceHourlyPoint]
+
+
 # Gas physical flows (ENTSOG)
 
 class GasFlowItem(BaseModel):

@@ -4,7 +4,9 @@ import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
+  Bar,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
   LineChart,
@@ -15,7 +17,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type BatteryHourlyPoint } from '@/lib/api'
+import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/imbalance')({
@@ -47,6 +49,12 @@ function ImbalanceDashboard() {
     queryKey: ['imbalance-dispatch'],
     queryFn: api.imbalanceDispatch,
     staleTime: 15 * 60 * 1000,
+  })
+
+  const { data: profileData } = useQuery({
+    queryKey: ['imbalance-profile'],
+    queryFn: api.imbalanceProfile,
+    staleTime: 60 * 60 * 1000,
   })
 
   const latest = data?.latest
@@ -240,6 +248,11 @@ function ImbalanceDashboard() {
             </span>
           </div>
         </div>
+
+        {/* Hourly reBAP profile */}
+        {(profileData?.rows.length ?? 0) > 0 && (
+          <RebalancingHourlyProfile rows={profileData!.rows} />
+        )}
 
         {/* Battery oracle dispatch */}
         {dispatchData && <BatteryDispatchPanel hourly={dispatchData.hourly} summary={dispatchData.summary} />}
@@ -447,4 +460,95 @@ function buildDailyChart(daily: ImbalanceDailyPoint[], w: Window) {
     min: p.min_eur,
     max: p.max_eur,
   }))
+}
+
+function RebalancingHourlyProfile({ rows }: { rows: ImbalanceHourlyPoint[] }) {
+  const data = rows.map((r) => ({
+    h: `${r.hour.toString().padStart(2, '0')}h`,
+    avg: r.avg_eur,
+    p25: r.p25_eur,
+    p75: r.p75_eur,
+    neg: r.neg_pct,
+  }))
+
+  // Color by avg: negative/near-zero = purple, low = green, mid = amber, high = red
+  const color = (avg: number | null) => {
+    if (avg == null) return '#475569'
+    if (avg < 0) return '#7c3aed'
+    if (avg < 40) return '#16a34a'
+    if (avg < 80) return '#d97706'
+    if (avg < 130) return '#dc2626'
+    return '#9f1239'
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <p className="text-xs text-muted-foreground mb-1">
+        reBAP hourly profile - 90-day avg by CET hour (avg/IQR + negative price %)
+      </p>
+      <ResponsiveContainer width="100%" height={160}>
+        <ComposedChart data={data} margin={{ top: 4, right: 42, bottom: 2, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="h" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={1} />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            width={38}
+            tickFormatter={(v) => `${v}`}
+          />
+          <YAxis
+            yAxisId="neg"
+            orientation="right"
+            tick={{ fontSize: 9, fill: '#f87171' }}
+            tickLine={false}
+            width={36}
+            tickFormatter={(v) => `${v}%`}
+            domain={[0, 100]}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => {
+              const n = typeof v === 'number' ? v : null
+              if (name === 'neg') return n != null ? [`${n.toFixed(1)}%`, 'Neg price'] : ['--', 'Neg price']
+              if (name === 'avg') return n != null ? [`${n.toFixed(1)} €/MWh`, 'Avg reBAP'] : ['--', 'Avg']
+              return n != null ? [`${n.toFixed(1)} €/MWh`, String(name)] : ['--', String(name)]
+            }}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="2 2" strokeWidth={1} />
+          {/* IQR band */}
+          <Area type="monotone" dataKey="p75" stroke="none" fill="#06b6d4" fillOpacity={0.1} legendType="none" />
+          <Area type="monotone" dataKey="p25" stroke="none" fill="#0f1117" fillOpacity={1} legendType="none" />
+          {/* Avg line with colored dots */}
+          <Line
+            type="monotone"
+            dataKey="avg"
+            stroke="#06b6d4"
+            strokeWidth={1.5}
+            dot={(props) => {
+              const { cx, cy, payload } = props as { cx: number; cy: number; payload: typeof data[0] }
+              return <circle key={`dot-${payload.h}`} cx={cx} cy={cy} r={3} fill={color(payload.avg)} />
+            }}
+            name="avg"
+          />
+          {/* Negative % bars on right axis */}
+          <Bar yAxisId="neg" dataKey="neg" name="neg" opacity={0.35}>
+            {data.map((d) => (
+              <Cell key={d.h} fill="#f87171" />
+            ))}
+          </Bar>
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="w-4 border-t border-cyan-400/30 bg-cyan-400/10 h-3 inline-block rounded-sm" /> IQR band
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-4 border-t-2 border-cyan-400 inline-block" /> avg reBAP
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="w-3 h-2 bg-red-400/35 inline-block rounded-sm" /> neg price %
+        </span>
+      </div>
+    </div>
+  )
 }

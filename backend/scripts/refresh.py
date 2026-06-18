@@ -496,8 +496,23 @@ def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_il", latest)
         conn.execute("INSERT INTO imbalance_latest SELECT * FROM _il")
 
+    hourly_profile = tables.get("imbalance_hourly_profile")
+    conn.execute("""
+        CREATE OR REPLACE TABLE imbalance_hourly_profile (
+            hour TINYINT,
+            avg_eur REAL,
+            p25_eur REAL,
+            p75_eur REAL,
+            neg_pct REAL
+        )
+    """)
+    if hourly_profile is not None and not hourly_profile.empty:
+        conn.register("_ihp", hourly_profile)
+        conn.execute("INSERT INTO imbalance_hourly_profile SELECT * FROM _ihp")
+
     logger.info(
-        f"imbalance: {len(recent)} recent rows, {len(daily)} daily rows, {len(latest)} latest rows"
+        f"imbalance: {len(recent)} recent rows, {len(daily)} daily rows, "
+        f"{len(hourly_profile) if hourly_profile is not None else 0} profile rows"
     )
 
 

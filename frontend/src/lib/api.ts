@@ -246,6 +246,19 @@ export interface GenCapacityResponse {
   daily: CapacityFactorPoint[]
 }
 
+export interface ImbalanceHourlyPoint {
+  hour: number
+  avg_eur: number | null
+  p25_eur: number | null
+  p75_eur: number | null
+  neg_pct: number | null
+}
+
+export interface ImbalanceProfileResponse {
+  days: number
+  rows: ImbalanceHourlyPoint[]
+}
+
 export interface ImbalanceRecentPoint {
   ts: string
   rebap_eur_mwh: number | null
@@ -535,5 +548,6 @@ export const api = {
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),
+  imbalanceProfile: () => get<ImbalanceProfileResponse>('/imbalance/profile'),
   imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),
 }

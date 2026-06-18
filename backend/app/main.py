@@ -86,6 +86,8 @@ from .schemas import (
     GasPaceResponse,
     CountryPaceRow,
     GasPaceCountriesResponse,
+    ImbalanceHourlyPoint,
+    ImbalanceProfileResponse,
 )
 
 
@@ -1433,6 +1435,27 @@ def imbalance():
     ]
 
     return ImbalanceResponse(as_of=as_of, latest=latest, recent=recent, daily=daily)
+
+
+@app.get("/api/imbalance/profile", response_model=ImbalanceProfileResponse)
+def imbalance_profile():
+    """90-day average reBAP profile by CET hour (0-23): avg/p25/p75/neg_pct."""
+    df = db.query(
+        "SELECT hour, avg_eur, p25_eur, p75_eur, neg_pct FROM imbalance_hourly_profile ORDER BY hour"
+    )
+    if df is None or df.empty:
+        return ImbalanceProfileResponse(days=90, rows=[])
+    rows = [
+        ImbalanceHourlyPoint(
+            hour=int(r.hour),
+            avg_eur=_float(r.avg_eur),
+            p25_eur=_float(r.p25_eur),
+            p75_eur=_float(r.p75_eur),
+            neg_pct=_float(r.neg_pct),
+        )
+        for r in df.itertuples()
+    ]
+    return ImbalanceProfileResponse(days=90, rows=rows)
 
 
 @app.get("/api/imbalance/dispatch", response_model=BatteryResponse)

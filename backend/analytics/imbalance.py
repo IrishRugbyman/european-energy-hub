@@ -4,9 +4,10 @@ Reads imbalance_prices_de from PostgreSQL market_data.
 Sign convention: long_eur_mwh == short_eur_mwh in the SMARD dataset (single settlement price).
 
 Tables produced for energy_hub.duckdb:
-  imbalance_recent  - trailing 10 days of 15-min prices
-  imbalance_daily   - trailing 2 years of daily aggregates (mean/min/max)
-  imbalance_latest  - most recent 15-min snapshot + today's stats
+  imbalance_recent         - trailing 10 days of 15-min prices
+  imbalance_daily          - trailing 2 years of daily aggregates (mean/min/max)
+  imbalance_latest         - most recent 15-min snapshot + today's stats
+  imbalance_hourly_profile - 90-day avg/p25/p75/neg_pct by hour-of-day (24 rows)
 """
 
 from __future__ import annotations
@@ -76,8 +77,42 @@ def build_imbalance_tables() -> dict[str, pd.DataFrame]:
         "today_max": round(float(today_rows.max()), 2) if not today_rows.empty else None,
     }])
 
+    # 90-day hourly reBAP profile (CET hour 0-23)
+    cutoff_profile = max_ts - pd.Timedelta(days=90)
+    profile_raw = raw[raw["ts"] >= cutoff_profile].copy()
+    # Convert to CET (Europe/Berlin)
+    profile_raw["ts_cet"] = profile_raw["ts"].dt.tz_localize("UTC").dt.tz_convert("Europe/Berlin")
+    profile_raw["hour"] = profile_raw["ts_cet"].dt.hour
+
+    if not profile_raw.empty:
+        agg = (
+            profile_raw.groupby("hour")["rebap_eur_mwh"]
+            .agg(
+                avg_eur="mean",
+                p25_eur=lambda x: float(x.quantile(0.25)),
+                p75_eur=lambda x: float(x.quantile(0.75)),
+            )
+            .reset_index()
+        )
+        neg_pct = (
+            profile_raw.assign(is_neg=profile_raw["rebap_eur_mwh"] < 0)
+            .groupby("hour")["is_neg"]
+            .mean()
+            .mul(100)
+            .reset_index()
+            .rename(columns={"is_neg": "neg_pct"})
+        )
+        imbalance_hourly_profile = agg.merge(neg_pct, on="hour")
+        for col in ["avg_eur", "p25_eur", "p75_eur", "neg_pct"]:
+            imbalance_hourly_profile[col] = imbalance_hourly_profile[col].round(2)
+    else:
+        imbalance_hourly_profile = pd.DataFrame(
+            columns=["hour", "avg_eur", "p25_eur", "p75_eur", "neg_pct"]
+        )
+
     return {
         "imbalance_recent": imbalance_recent,
         "imbalance_daily": imbalance_daily,
         "imbalance_latest": imbalance_latest,
+        "imbalance_hourly_profile": imbalance_hourly_profile,
     }
