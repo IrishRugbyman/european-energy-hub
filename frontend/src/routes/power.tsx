@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
+import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow } from '@/lib/api'
 import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
@@ -152,6 +152,7 @@ function MapDashboard() {
   const [selectedBorder, setSelectedBorder] = useState<BorderKey | null>(null)
   const [showInterconnections, setShowInterconnections] = useState(false)
   const [showZoneTable, setShowZoneTable]    = useState(false)
+  const [showBordersTable, setShowBordersTable] = useState(false)
   const [interconnMode, setInterconnMode]   = useState<InterconnMode>('congestion')
   const [metric, setMetric]                 = useState<MapMetric>('price')
 
@@ -231,7 +232,7 @@ function MapDashboard() {
 
   const cfg = METRIC_CONFIG[metric]
   const legend = showInterconnections ? null : cfg
-  const panelOpen = selectedZone !== null || selectedBorder !== null || showZoneTable
+  const panelOpen = selectedZone !== null || selectedBorder !== null || showZoneTable || showBordersTable
   const isGenMetric = !isPriceMetric(metric)
 
   return (
@@ -279,7 +280,7 @@ function MapDashboard() {
 
         {/* Zone table toggle */}
         <button
-          onClick={() => { setShowZoneTable((v) => !v); setSelectedZone(null); setSelectedBorder(null) }}
+          onClick={() => { setShowZoneTable((v) => !v); setSelectedZone(null); setSelectedBorder(null); setShowBordersTable(false) }}
           className={`px-2.5 py-1.5 rounded text-xs border transition-colors backdrop-blur shadow ${
             showZoneTable
               ? 'bg-sky-900 border-sky-600 text-sky-200'
@@ -287,6 +288,18 @@ function MapDashboard() {
           }`}
         >
           Zone table
+        </button>
+
+        {/* Borders table toggle */}
+        <button
+          onClick={() => { setShowBordersTable((v) => !v); setSelectedZone(null); setSelectedBorder(null); setShowZoneTable(false); if (!showInterconnections) setShowInterconnections(true) }}
+          className={`px-2.5 py-1.5 rounded text-xs border transition-colors backdrop-blur shadow ${
+            showBordersTable
+              ? 'bg-amber-900 border-amber-600 text-amber-200'
+              : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Borders
         </button>
 
         {/* Date picker (gen metrics) */}
@@ -445,6 +458,14 @@ function MapDashboard() {
               onClose={() => setShowZoneTable(false)}
             />
           )}
+          {showBordersTable && !selectedZone && !selectedBorder && (
+            <BordersTable
+              divergence={divergenceData?.rows ?? []}
+              congestion={congestionData?.rows ?? []}
+              onSelect={(fz, tz) => { setShowBordersTable(false); setSelectedBorder({ from: fz, to: tz }) }}
+              onClose={() => setShowBordersTable(false)}
+            />
+          )}
         </div>
       )}
     </div>
@@ -583,6 +604,119 @@ function ZoneTable({
 
       <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
         Click a row to open zone detail - click column headers to sort
+      </div>
+    </div>
+  )
+}
+
+type BorderSortKey = 'diff' | 'util' | 'ntc'
+
+function BordersTable({
+  divergence,
+  congestion,
+  onSelect,
+  onClose,
+}: {
+  divergence: DivergenceLatestRow[]
+  congestion: CongestionRow[]
+  onSelect: (fz: string, tz: string) => void
+  onClose: () => void
+}) {
+  const [sortKey, setSortKey] = useState<BorderSortKey>('diff')
+  const [sortAsc, setSortAsc] = useState(false)
+
+  const congMap = useMemo(() => {
+    const m: Record<string, CongestionRow> = {}
+    congestion.forEach((r) => { m[`${r.from_zone}|${r.to_zone}`] = r })
+    return m
+  }, [congestion])
+
+  const rows = useMemo(() => {
+    return [...divergence]
+      .map((d) => {
+        const cong = congMap[`${d.from_zone}|${d.to_zone}`] ?? congMap[`${d.to_zone}|${d.from_zone}`]
+        return {
+          from_zone: d.from_zone,
+          to_zone: d.to_zone,
+          diff: d.diff_eur_mwh != null ? Math.abs(d.diff_eur_mwh) : null,
+          util: cong?.utilization_pct ?? null,
+          ntc: cong?.ntc_mw ?? null,
+        }
+      })
+      .sort((a, b) => {
+        const av = a[sortKey] as number | null
+        const bv = b[sortKey] as number | null
+        const diff = (av ?? (sortAsc ? Infinity : -Infinity)) - (bv ?? (sortAsc ? Infinity : -Infinity))
+        return sortAsc ? diff : -diff
+      })
+  }, [divergence, congMap, sortKey, sortAsc])
+
+  const toggleSort = (key: BorderSortKey) => {
+    if (sortKey === key) setSortAsc((v) => !v)
+    else { setSortKey(key); setSortAsc(false) }
+  }
+
+  const sortArrow = (key: BorderSortKey) => sortKey === key ? (sortAsc ? ' ▲' : ' ▼') : ''
+
+  const headerBtn = (key: BorderSortKey, label: string) => (
+    <th
+      className="px-2 py-1.5 text-right font-normal text-muted-foreground cursor-pointer select-none hover:text-foreground whitespace-nowrap"
+      onClick={() => toggleSort(key)}
+    >
+      {label}{sortArrow(key)}
+    </th>
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="font-medium text-sm">Border spreads + congestion</span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-card border-b border-border">
+            <tr>
+              <th className="text-left px-4 py-1.5 font-normal text-muted-foreground">Border</th>
+              {headerBtn('diff', 'Spread')}
+              {headerBtn('util', 'NTC util')}
+              {headerBtn('ntc', 'NTC MW')}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const diffColor = r.diff == null ? '#64748b' : r.diff >= 30 ? '#f87171' : r.diff >= 10 ? '#fbbf24' : '#4ade80'
+              const utilColor = r.util == null ? '#64748b' : r.util >= 90 ? '#f87171' : r.util >= 70 ? '#fbbf24' : '#4ade80'
+              return (
+                <tr
+                  key={`${r.from_zone}-${r.to_zone}`}
+                  className="border-b border-border/40 hover:bg-secondary/50 cursor-pointer"
+                  onClick={() => onSelect(r.from_zone, r.to_zone)}
+                >
+                  <td className="px-4 py-1.5 font-mono text-foreground whitespace-nowrap">
+                    {r.from_zone} <span className="text-muted-foreground">→</span> {r.to_zone}
+                  </td>
+                  <td className="px-2 py-1.5 text-right font-medium" style={{ color: diffColor }}>
+                    {r.diff != null ? `${r.diff.toFixed(1)} €/MWh` : '--'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right" style={{ color: utilColor }}>
+                    {r.util != null ? `${Math.min(r.util, 150).toFixed(0)}%` : '--'}
+                  </td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">
+                    {r.ntc != null ? `${r.ntc.toFixed(0)}` : '--'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
+        Click a row to open border detail - spread color: green &lt;10, amber &lt;30, red 30+ EUR/MWh
       </div>
     </div>
   )
