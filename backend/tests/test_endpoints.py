@@ -452,6 +452,32 @@ def test_gas_pace(client):
     assert len(projected) > 0
 
 
+def test_gas_pace_countries(client):
+    r = client.get("/api/gas/pace/countries")
+    assert r.status_code == 200
+    data = r.json()
+    assert "target_date" in data
+    assert "rows" in data
+    rows = data["rows"]
+    # Should include DE and FR, but NOT EU
+    countries = {r["country"] for r in rows}
+    assert "DE" in countries
+    assert "FR" in countries
+    assert "EU" not in countries
+    # Verify field structure
+    for row in rows:
+        assert "country" in row
+        assert "current_pct" in row
+        assert "current_rate_gwh_per_day" in row
+        assert "required_gwh_per_day" in row
+        assert "pct_gap" in row
+        assert "on_track" in row
+    # DE is seeded at 72.5% fill - pct_gap should be 90 - 72.5 = 17.5
+    de_row = next(r for r in rows if r["country"] == "DE")
+    assert de_row["pct_gap"] is not None
+    assert abs(de_row["pct_gap"] - 17.5) < 0.1
+
+
 def test_prices_seasonality(client):
     r = client.get("/api/prices/seasonality")
     assert r.status_code == 200
