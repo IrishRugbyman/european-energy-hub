@@ -1,6 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { X } from 'lucide-react'
 import { api, type PowerLatestRow, type GenMapItem } from '@/lib/api'
 import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
@@ -150,6 +151,7 @@ function MapDashboard() {
   const [selectedZone, setSelectedZone]     = useState<string | null>(null)
   const [selectedBorder, setSelectedBorder] = useState<BorderKey | null>(null)
   const [showInterconnections, setShowInterconnections] = useState(false)
+  const [showZoneTable, setShowZoneTable]    = useState(false)
   const [interconnMode, setInterconnMode]   = useState<InterconnMode>('congestion')
   const [metric, setMetric]                 = useState<MapMetric>('price')
 
@@ -229,7 +231,7 @@ function MapDashboard() {
 
   const cfg = METRIC_CONFIG[metric]
   const legend = showInterconnections ? null : cfg
-  const panelOpen = selectedZone !== null || selectedBorder !== null
+  const panelOpen = selectedZone !== null || selectedBorder !== null || showZoneTable
   const isGenMetric = !isPriceMetric(metric)
 
   return (
@@ -274,6 +276,18 @@ function MapDashboard() {
             </div>
           )}
         </div>
+
+        {/* Zone table toggle */}
+        <button
+          onClick={() => { setShowZoneTable((v) => !v); setSelectedZone(null); setSelectedBorder(null) }}
+          className={`px-2.5 py-1.5 rounded text-xs border transition-colors backdrop-blur shadow ${
+            showZoneTable
+              ? 'bg-sky-900 border-sky-600 text-sky-200'
+              : 'bg-card/90 border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Zone table
+        </button>
 
         {/* Date picker (gen metrics) */}
         {isGenMetric && (minDate || maxDate) && (
@@ -423,6 +437,14 @@ function MapDashboard() {
               />
             )
           })()}
+          {showZoneTable && !selectedZone && !selectedBorder && (
+            <ZoneTable
+              power={powerData?.rows ?? []}
+              gen={genData?.zones ?? []}
+              onSelect={(zone) => { setShowZoneTable(false); setSelectedZone(zone) }}
+              onClose={() => setShowZoneTable(false)}
+            />
+          )}
         </div>
       )}
     </div>
@@ -457,3 +479,111 @@ function StatChip({ label, value }: { label: string; value: string }) {
 
 // Expose zoneColor for use in legend previews (keeps import clean)
 export { zoneColor }
+
+type ZoneSortKey = 'base_eur' | 'vs_30d_pct' | 'pct_rank_2yr' | 'neg_hours' | 'renewable_pct'
+
+function ZoneTable({
+  power,
+  gen,
+  onSelect,
+  onClose,
+}: {
+  power: PowerLatestRow[]
+  gen: GenMapItem[]
+  onSelect: (zone: string) => void
+  onClose: () => void
+}) {
+  const [sortKey, setSortKey] = useState<ZoneSortKey>('base_eur')
+  const [sortAsc, setSortAsc] = useState(false)
+
+  const reByZone = useMemo(() => {
+    const m: Record<string, number | null> = {}
+    gen.forEach((g) => { m[g.zone] = g.renewable_pct })
+    return m
+  }, [gen])
+
+  const rows = useMemo(() => {
+    return [...power]
+      .map((r) => ({ ...r, renewable_pct: reByZone[r.zone] ?? null }))
+      .sort((a, b) => {
+        const av = (a as Record<string, number | null | string>)[sortKey] as number | null
+        const bv = (b as Record<string, number | null | string>)[sortKey] as number | null
+        const diff = (av ?? (sortAsc ? Infinity : -Infinity)) - (bv ?? (sortAsc ? Infinity : -Infinity))
+        return sortAsc ? diff : -diff
+      })
+  }, [power, reByZone, sortKey, sortAsc])
+
+  const toggleSort = (key: ZoneSortKey) => {
+    if (sortKey === key) setSortAsc((v) => !v)
+    else { setSortKey(key); setSortAsc(false) }
+  }
+
+  const sortArrow = (key: ZoneSortKey) => sortKey === key ? (sortAsc ? ' ▲' : ' ▼') : ''
+
+  const fmtPrice = (v: number | null) => v != null ? `${v.toFixed(0)}` : '--'
+  const fmtDelta = (v: number | null) => {
+    if (v == null) return '--'
+    return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`
+  }
+  const fmtRank = (v: number | null) => v != null ? `${v.toFixed(0)}th` : '--'
+  const fmtPct = (v: number | null) => v != null ? `${v.toFixed(0)}%` : '--'
+
+  const headerBtn = (key: ZoneSortKey, label: string) => (
+    <th
+      className="px-2 py-1.5 text-right font-normal text-muted-foreground cursor-pointer select-none hover:text-foreground whitespace-nowrap"
+      onClick={() => toggleSort(key)}
+    >
+      {label}{sortArrow(key)}
+    </th>
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="font-medium text-sm">All zones - today</span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-card border-b border-border">
+            <tr>
+              <th className="text-left px-4 py-1.5 font-normal text-muted-foreground">Zone</th>
+              {headerBtn('base_eur', '€/MWh')}
+              {headerBtn('vs_30d_pct', 'vs 30d')}
+              {headerBtn('pct_rank_2yr', '2yr %')}
+              {headerBtn('neg_hours', 'Neg')}
+              {headerBtn('renewable_pct', 'RE%')}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              const vsColor = r.vs_30d_pct == null ? '#64748b' : r.vs_30d_pct >= 0 ? '#f87171' : '#4ade80'
+              const reColor = r.renewable_pct == null ? '#64748b' : r.renewable_pct >= 60 ? '#4ade80' : r.renewable_pct >= 30 ? '#fbbf24' : '#f87171'
+              return (
+                <tr
+                  key={r.zone}
+                  className="border-b border-border/40 hover:bg-secondary/50 cursor-pointer"
+                  onClick={() => onSelect(r.zone)}
+                >
+                  <td className="px-4 py-1.5 font-mono text-foreground">{r.zone}</td>
+                  <td className="px-2 py-1.5 text-right font-medium text-foreground">{fmtPrice(r.base_eur)}</td>
+                  <td className="px-2 py-1.5 text-right" style={{ color: vsColor }}>{fmtDelta(r.vs_30d_pct)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{fmtRank(r.pct_rank_2yr)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{r.neg_hours ?? 0}h</td>
+                  <td className="px-2 py-1.5 text-right" style={{ color: reColor }}>{fmtPct(r.renewable_pct)}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
+        Click a row to open zone detail - click column headers to sort
+      </div>
+    </div>
+  )
+}
