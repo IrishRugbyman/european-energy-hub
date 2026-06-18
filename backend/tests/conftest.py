@@ -367,6 +367,20 @@ def _seed_db(path: str) -> None:
         [latest_ts, 95.0, 88.0, 60.0, 140.0],
     )
 
+    conn.execute("""
+        CREATE TABLE imbalance_hourly_profile (
+            hour TINYINT, avg_eur REAL, p25_eur REAL, p75_eur REAL, neg_pct REAL
+        )
+    """)
+    for h in range(24):
+        # U-shaped profile: high at night/evening, low midday
+        avg = 150.0 - 130.0 * (1 - abs(h - 12) / 12.0) ** 2
+        neg = 40.0 if 10 <= h <= 14 else 2.0
+        conn.execute(
+            "INSERT INTO imbalance_hourly_profile VALUES (?, ?, ?, ?, ?)",
+            [h, round(avg, 2), round(avg - 20, 2), round(avg + 20, 2), neg],
+        )
+
     # divergence tables (Phase 14)
     conn.execute("""
         CREATE TABLE divergence_latest (

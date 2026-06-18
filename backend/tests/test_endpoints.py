@@ -406,6 +406,22 @@ def test_imbalance_dispatch_summary(client):
     assert s["trailing_days"] == 30
 
 
+def test_imbalance_profile(client):
+    r = client.get("/api/imbalance/profile")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["days"] == 90
+    assert len(data["rows"]) == 24
+    hours = [row["hour"] for row in data["rows"]]
+    assert hours == list(range(24))
+    for row in data["rows"]:
+        assert row["avg_eur"] is not None
+        assert row["p25_eur"] is not None
+        assert row["p75_eur"] is not None
+        assert row["neg_pct"] is not None
+        assert 0 <= row["neg_pct"] <= 100
+
+
 def test_spreads_zones(client):
     r = client.get("/api/spreads/zones")
     assert r.status_code == 200
