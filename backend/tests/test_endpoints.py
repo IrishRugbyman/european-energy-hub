@@ -56,6 +56,19 @@ def test_gas_country_unknown(client):
     assert r.status_code == 404
 
 
+def test_gas_country_pace(client):
+    r = client.get("/api/gas/country/DE")
+    assert r.status_code == 200
+    data = r.json()
+    pace = data.get("pace")
+    assert pace is not None, "pace field missing from gas_country response"
+    assert pace["country"] == "DE"
+    assert pace["target_pct"] == 90.0
+    assert pace["days_to_target"] > 0
+    assert pace["current_rate_gwh_per_day"] is not None
+    assert isinstance(pace["on_track"], bool)
+
+
 def test_power_map(client):
     r = client.get("/api/power/map")
     assert r.status_code == 200
