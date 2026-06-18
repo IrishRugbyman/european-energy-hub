@@ -1,5 +1,24 @@
 # Energy Hub Changelog
 
+## 2026-06-18 - Post-roadmap features: LNG spread, YoY gas chart, price regime, RE trends heatmap
+
+**Tried:** Four high-value analytics features after the roadmap was exhausted:
+1. Gas storage year-on-year spaghetti chart (2019-2026) on the country panel
+2. Rolling TTF/EUA volatility (30d std of daily changes x sqrt(252)) and TTF-EUA 90d Pearson correlation chart on /prices
+3. Annual renewable % heatmap (34 zones x 6 years) as a new `/generation` page replacing the redirect
+4. TTF-HH LNG arbitrage spread chart on /prices (hh_eur_mwh computed from HH USD/MMBtu x EUR/USD / 0.293)
+
+**Found:**
+- YoY spaghetti chart reveals 2026 storage is tracking well below all prior years at the same DOY. 2022 (highlighted amber as the energy crisis year) reached 90%+ by Nov 1 because of an emergency EU fill directive.
+- TTF realized vol peaked at 352 EUR/MWh annualized during the 2022 crisis; current vol is 25.8 EUR/MWh. TTF-EUA 90d correlation hit -0.84 at worst (decoupled during crisis); currently -0.11.
+- RE trends heatmap: BE doubled from 20% to 43% renewable in 5 years; DE-LU 36->53%; PL 15->34%; ES 47->57%. Norway/Sweden zones already 99%+. SK/CZ remain below 20%.
+
+**Decision:** Four commits (03e1fb4, e8c2f79, 0c86cac, 072f8fd). All 49 backend tests pass. Features use existing DuckDB data with one new refresh step for hh_eur_mwh. Navigation updated to include "RE Trends" link.
+
+**Artifacts:** `GET /api/gas/country/{cc}` extended with `yearly_tracks`; `GET /api/prices/regime`; `GET /api/generation/trends`; `hh_eur_mwh` column in prices_daily; `StorageYoyChart`, `PriceRegimeCharts`, `GenerationTrends`, `TtfHhSpread` frontend components.
+
+---
+
 ## 2026-06-18 - Phases 21-23: Gas pace widget, TTF seasonality boxplot, power price calendar
 
 **Tried:** Three analytics features using existing DB tables without new ingest steps:
