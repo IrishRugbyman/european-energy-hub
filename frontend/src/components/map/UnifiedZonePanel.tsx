@@ -390,6 +390,14 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           </div>
         )}
 
+        {/* Calendar heatmap - 52 weeks of daily base price */}
+        {allDaily.length >= 14 && (
+          <div className="p-3 pt-1">
+            <p className="text-xs text-muted-foreground mb-2">Daily price calendar (€/MWh)</p>
+            <PriceCalendarHeatmap daily={allDaily.slice(-365)} />
+          </div>
+        )}
+
         {/* Daily price range */}
         <div className="p-3">
           <div className="flex items-center justify-between mb-2">
@@ -638,6 +646,114 @@ function buildCapacityFactorChart(daily: CapacityFactorPoint[], windowDays = 30)
   }
   // Skip the initial warm-up period (< 15 days of data)
   return result.filter((_, i) => i >= 14)
+}
+
+function PriceCalendarHeatmap({ daily }: { daily: { price_date: string; base_eur: number | null }[] }) {
+  // Build quantile-based color mapping
+  const prices = daily.map((d) => d.base_eur).filter((v): v is number => v != null)
+  if (prices.length === 0) return null
+  const sorted = [...prices].sort((a, b) => a - b)
+  const q = (p: number) => sorted[Math.max(0, Math.floor(p * sorted.length) - 1)]
+  const q0 = q(0), q20 = q(0.2), q40 = q(0.4), q60 = q(0.6), q80 = q(0.8), q100 = q(1)
+
+  const cellColor = (price: number | null): string => {
+    if (price == null) return '#1e293b'
+    if (price < 0) return '#7c3aed'     // negative price: purple
+    if (price <= q20) return '#166534'  // very cheap: dark green
+    if (price <= q40) return '#15803d'  // cheap: green
+    if (price <= q60) return '#78350f'  // mid: dark amber
+    if (price <= q80) return '#b45309'  // expensive: amber
+    return '#b91c1c'                     // very expensive: red
+  }
+
+  // Group by week (Mon-Sun). Align to Monday of the first week.
+  const byDate = new Map(daily.map((d) => [d.price_date, d.base_eur]))
+  // Start from Monday of the week containing the earliest date
+  const firstDate = new Date(daily[0].price_date)
+  const dayOfWeek = firstDate.getDay() // 0=Sun, 1=Mon...
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
+  const startDate = new Date(firstDate)
+  startDate.setDate(startDate.getDate() + mondayOffset)
+
+  const endDate = new Date(daily[daily.length - 1].price_date)
+
+  const weeks: { date: string; price: number | null; dayOfWeek: number; monthLabel?: string }[][] = []
+  let cur = new Date(startDate)
+  let currentWeek: typeof weeks[0] = []
+  let prevMonth = -1
+
+  while (cur <= endDate) {
+    const iso = cur.toISOString().slice(0, 10)
+    const month = cur.getMonth()
+    const dayIdx = cur.getDay() === 0 ? 6 : cur.getDay() - 1 // 0=Mon, 6=Sun
+    const monthLabel = month !== prevMonth ? cur.toLocaleString('en', { month: 'short' }) : undefined
+    prevMonth = month
+    currentWeek.push({ date: iso, price: byDate.get(iso) ?? null, dayOfWeek: dayIdx, monthLabel })
+    if (dayIdx === 6) {
+      weeks.push(currentWeek)
+      currentWeek = []
+    }
+    cur.setDate(cur.getDate() + 1)
+  }
+  if (currentWeek.length > 0) weeks.push(currentWeek)
+
+  const DAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  const CELL = 9
+  const GAP = 1
+
+  return (
+    <div className="overflow-x-auto">
+      <div style={{ display: 'grid', gridTemplateColumns: `18px repeat(${weeks.length}, ${CELL}px)`, gap: 0 }}>
+        {/* Day labels column */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: GAP }}>
+          <div style={{ height: 12 }} />
+          {DAYS.map((d, i) => (
+            <div key={i} style={{ height: CELL, fontSize: 7, color: '#475569', display: 'flex', alignItems: 'center' }}>{d}</div>
+          ))}
+        </div>
+        {/* Week columns */}
+        {weeks.map((week, wi) => {
+          const monthLabelCell = week.find((d) => d.monthLabel)
+          return (
+            <div key={wi} style={{ display: 'flex', flexDirection: 'column', gap: GAP }}>
+              <div style={{ height: 12, fontSize: 7, color: '#64748b', whiteSpace: 'nowrap', overflow: 'visible', lineHeight: '12px' }}>
+                {monthLabelCell?.monthLabel ?? ''}
+              </div>
+              {Array.from({ length: 7 }, (_, di) => {
+                const cell = week.find((d) => d.dayOfWeek === di)
+                const price = cell?.price ?? null
+                return (
+                  <div
+                    key={di}
+                    title={cell ? `${cell.date}: ${price != null ? `${price.toFixed(0)} €/MWh` : 'no data'}` : ''}
+                    style={{
+                      width: CELL,
+                      height: CELL,
+                      backgroundColor: cell ? cellColor(price) : 'transparent',
+                      borderRadius: 1.5,
+                    }}
+                  />
+                )
+              })}
+            </div>
+          )
+        })}
+      </div>
+      {/* Legend */}
+      <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
+        <span style={{ fontSize: 8 }}>Cheap</span>
+        {[q0, q20, q40, q60, q80, q100].map((v, i) => (
+          <div key={i} title={`${v?.toFixed(0)} €/MWh`} style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: cellColor(v) }} />
+        ))}
+        <span style={{ fontSize: 8 }}>Expensive</span>
+        <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#7c3aed', marginLeft: 6 }} />
+        <span style={{ fontSize: 8 }}>Negative</span>
+        <span className="ml-auto" style={{ fontSize: 8 }}>
+          range {q0 < 0 ? q0.toFixed(0) : q0.toFixed(0)} - {q100.toFixed(0)} €/MWh
+        </span>
+      </div>
+    </div>
+  )
 }
 
 function buildDailyBandData(
