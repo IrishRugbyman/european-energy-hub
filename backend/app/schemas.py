@@ -212,6 +212,17 @@ class TtfCurveResponse(BaseModel):
     rows: list[TtfCurvePoint]
 
 
+class PriceRegimePoint(BaseModel):
+    price_date: str
+    ttf_vol_30d: float | None
+    eua_vol_30d: float | None
+    ttf_eua_corr_90d: float | None
+
+
+class PriceRegimeResponse(BaseModel):
+    rows: list[PriceRegimePoint]
+
+
 class TtfSeasonalMonth(BaseModel):
     month: int
     label: str

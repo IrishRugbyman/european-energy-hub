@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint, type TtfCurvePoint, type TtfSeasonalMonth } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -534,6 +534,134 @@ function TtfForwardCurve({ rows }: { rows: TtfCurvePoint[] }) {
   )
 }
 
+function PriceRegimeCharts({ rows }: { rows: PriceRegimePoint[] }) {
+  const [win, setWin] = useState<Window>('2Y')
+
+  const filtered = useMemo(() => {
+    const cut = cutoffDate(win)
+    return cut ? rows.filter((r) => r.price_date >= cut) : rows
+  }, [rows, win])
+
+  const currentVol = rows.at(-1)?.ttf_vol_30d ?? null
+  const currentCorr = rows.at(-1)?.ttf_eua_corr_90d ?? null
+  const maxVol = useMemo(() => {
+    let m = 0
+    for (const r of rows) if (r.ttf_vol_30d != null && r.ttf_vol_30d > m) m = r.ttf_vol_30d
+    return m > 0 ? m : null
+  }, [rows])
+
+  const fmt = (v: number | null, d = 1) => (v != null ? v.toFixed(d) : '--')
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Price Regime</h2>
+        <div className="flex items-center gap-1">
+          {(['1Y', '2Y', '5Y', 'ALL'] as Window[]).map((w) => (
+            <button
+              key={w}
+              onClick={() => setWin(w)}
+              className={`px-2 py-0.5 rounded text-xs ${
+                w === win
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {w}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Stat strip */}
+      <div className="flex flex-wrap gap-6 mb-4">
+        <div>
+          <p className="text-xs text-muted-foreground">TTF 30d vol (now)</p>
+          <p className="text-sm font-semibold text-sky-400">{fmt(currentVol)} EUR/MWh ann.</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">TTF 30d vol (peak 2022)</p>
+          <p className="text-sm font-semibold text-amber-400">{fmt(maxVol)} EUR/MWh ann.</p>
+        </div>
+        <div>
+          <p className="text-xs text-muted-foreground">TTF-EUA 90d corr (now)</p>
+          <p
+            className="text-sm font-semibold"
+            style={{ color: currentCorr != null && currentCorr >= 0 ? '#34d399' : '#f87171' }}
+          >
+            {currentCorr != null ? fmt(currentCorr, 2) : '--'}
+          </p>
+        </div>
+      </div>
+
+      {/* Vol chart */}
+      <p className="text-xs text-muted-foreground mb-1">TTF realized volatility (30d, EUR/MWh ann.)</p>
+      <ResponsiveContainer width="100%" height={130}>
+        <LineChart data={filtered} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="price_date"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(v: string) => v.slice(0, 7)}
+            minTickGap={60}
+          />
+          <YAxis tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} width={36} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v) => {
+              const n = typeof v === 'number' ? v : null
+              return n != null ? [`${n.toFixed(1)} EUR/MWh`, 'TTF vol'] : null
+            }}
+            labelFormatter={(l) => String(l).slice(0, 10)}
+          />
+          <Line type="monotone" dataKey="ttf_vol_30d" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="TTF vol" />
+          <Line type="monotone" dataKey="eua_vol_30d" stroke="#34d399" strokeWidth={1} dot={false} strokeDasharray="3 2" name="EUA vol" />
+        </LineChart>
+      </ResponsiveContainer>
+
+      {/* Correlation chart */}
+      <p className="text-xs text-muted-foreground mt-3 mb-1">TTF-EUA 90d rolling Pearson correlation</p>
+      <ResponsiveContainer width="100%" height={120}>
+        <LineChart data={filtered} margin={{ top: 2, right: 4, bottom: 2, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="price_date"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(v: string) => v.slice(0, 7)}
+            minTickGap={60}
+          />
+          <YAxis domain={[-1, 1]} tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} width={36} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v) => {
+              const n = typeof v === 'number' ? v : null
+              return n != null ? [n.toFixed(2), 'TTF-EUA corr'] : null
+            }}
+            labelFormatter={(l) => String(l).slice(0, 10)}
+          />
+          <ReferenceLine y={0} stroke="#334155" strokeWidth={1} />
+          <Line
+            type="monotone"
+            dataKey="ttf_eua_corr_90d"
+            stroke="#a78bfa"
+            strokeWidth={1.5}
+            dot={false}
+            name="TTF-EUA corr"
+          />
+        </LineChart>
+      </ResponsiveContainer>
+
+      <div className="flex gap-4 mt-2 text-xs text-muted-foreground">
+        <span><span className="inline-block w-3 h-0.5 bg-sky-400 mr-1 align-middle" />TTF vol (solid)</span>
+        <span><span className="inline-block w-3 h-0.5 bg-emerald-400 mr-1 align-middle" />EUA vol (dashed)</span>
+        <span><span className="inline-block w-3 h-0.5 bg-violet-400 mr-1 align-middle" />TTF-EUA corr (90d)</span>
+      </div>
+    </div>
+  )
+}
+
 function PricesDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [indexed, setIndexed] = useState(false)
@@ -554,6 +682,12 @@ function PricesDashboard() {
     queryKey: ['prices-seasonality'],
     queryFn: api.pricesSeasonality,
     staleTime: 24 * 60 * 60 * 1000,
+  })
+
+  const { data: regimeData } = useQuery({
+    queryKey: ['prices-regime'],
+    queryFn: api.pricesRegime,
+    staleTime: 60 * 60 * 1000,
   })
 
   const rows = data?.rows ?? []
@@ -620,6 +754,7 @@ function PricesDashboard() {
 
           {curveRows.length > 0 && <TtfForwardCurve rows={curveRows} />}
           <CorrelationMatrix rows={rows} />
+          {(regimeData?.rows?.length ?? 0) > 0 && <PriceRegimeCharts rows={regimeData!.rows} />}
           <TtfNbpSpread rows={rows} />
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />

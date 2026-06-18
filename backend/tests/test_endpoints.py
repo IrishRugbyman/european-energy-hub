@@ -406,3 +406,22 @@ def test_prices_seasonality(client):
             assert m["p25"] <= m["p75"]
         if m["min"] is not None and m["median"] is not None:
             assert m["min"] <= m["median"]
+
+
+def test_prices_regime(client):
+    r = client.get("/api/prices/regime")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    rows = data["rows"]
+    assert len(rows) >= 30
+
+    # Once enough history, vol and corr should be non-null
+    late = [r for r in rows if r["ttf_vol_30d"] is not None]
+    assert len(late) > 0, "No rows with ttf_vol_30d populated"
+
+    for r in late:
+        assert r["ttf_vol_30d"] >= 0
+        assert r["eua_vol_30d"] is None or r["eua_vol_30d"] >= 0
+        if r["ttf_eua_corr_90d"] is not None:
+            assert -1.0 <= r["ttf_eua_corr_90d"] <= 1.0

@@ -317,6 +317,17 @@ export interface TtfSeasonalityResponse {
   months: TtfSeasonalMonth[]
 }
 
+export interface PriceRegimePoint {
+  price_date: string
+  ttf_vol_30d: number | null
+  eua_vol_30d: number | null
+  ttf_eua_corr_90d: number | null
+}
+
+export interface PriceRegimeResponse {
+  rows: PriceRegimePoint[]
+}
+
 export interface BorderFlowRow {
   from_zone: string
   to_zone: string
@@ -453,6 +464,7 @@ export const api = {
   prices: () => get<PricesResponse>('/prices'),
   pricesCurve: () => get<TtfCurveResponse>('/prices/curve'),
   pricesSeasonality: () => get<TtfSeasonalityResponse>('/prices/seasonality'),
+  pricesRegime: () => get<PriceRegimeResponse>('/prices/regime'),
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),

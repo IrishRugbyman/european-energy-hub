@@ -66,6 +66,8 @@ from .schemas import (
     StorageLatestRow,
     MultiZoneSpreadRow,
     MultiZoneSpreadsResponse,
+    PriceRegimePoint,
+    PriceRegimeResponse,
     TtfCurvePoint,
     TtfCurveResponse,
     TtfSeasonalMonth,
@@ -916,6 +918,51 @@ def prices_seasonality():
         current_month=current_month or 0,
         months=months,
     )
+
+
+@app.get("/api/prices/regime", response_model=PriceRegimeResponse)
+def prices_regime():
+    """Rolling 30d TTF/EUA realized volatility and 90d TTF-EUA Pearson correlation.
+
+    Volatility = rolling std of absolute daily price changes * sqrt(252), in native units
+    (EUR/MWh for TTF, EUR/tCO2 for EUA). Correlation uses a 90-day rolling window.
+    """
+    df = db.query("""
+        WITH diffs AS (
+            SELECT price_date,
+                   ttf_eur_mwh,
+                   eua_eur_t,
+                   ttf_eur_mwh - LAG(ttf_eur_mwh) OVER (ORDER BY price_date) AS dtf,
+                   eua_eur_t   - LAG(eua_eur_t)   OVER (ORDER BY price_date) AS deua
+            FROM prices_daily
+            WHERE ttf_eur_mwh IS NOT NULL
+              AND eua_eur_t IS NOT NULL
+        )
+        SELECT
+            price_date::VARCHAR AS price_date,
+            STDDEV(dtf)  OVER (ORDER BY price_date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)
+                * SQRT(252.0)    AS ttf_vol_30d,
+            STDDEV(deua) OVER (ORDER BY price_date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)
+                * SQRT(252.0)    AS eua_vol_30d,
+            CORR(ttf_eur_mwh, eua_eur_t) OVER (ORDER BY price_date ROWS BETWEEN 89 PRECEDING AND CURRENT ROW)
+                                 AS ttf_eua_corr_90d
+        FROM diffs
+        WHERE dtf IS NOT NULL
+        ORDER BY price_date
+    """)
+    if df is None or df.empty:
+        return PriceRegimeResponse(rows=[])
+
+    rows = [
+        PriceRegimePoint(
+            price_date=str(r.price_date),
+            ttf_vol_30d=_float(r.ttf_vol_30d),
+            eua_vol_30d=_float(r.eua_vol_30d),
+            ttf_eua_corr_90d=_float(r.ttf_eua_corr_90d),
+        )
+        for r in df.itertuples()
+    ]
+    return PriceRegimeResponse(rows=rows)
 
 
 @app.get("/api/generation/map", response_model=GenMapResponse)
