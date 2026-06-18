@@ -422,6 +422,22 @@ def test_imbalance_profile(client):
         assert 0 <= row["neg_pct"] <= 100
 
 
+def test_generation_eu_annual(client):
+    r = client.get("/api/generation/eu/annual")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) >= 2
+    for row in data["rows"]:
+        assert "year" in row and row["year"] >= 2021
+        assert "solar_mw" in row and row["solar_mw"] is not None
+        assert "wind_mw" in row and row["wind_mw"] is not None
+        assert "coal_mw" in row and row["coal_mw"] is not None
+        assert "zones" in row and row["zones"] >= 1
+    years = [row["year"] for row in data["rows"]]
+    assert years == sorted(set(years))
+
+
 def test_spreads_zones(client):
     r = client.get("/api/spreads/zones")
     assert r.status_code == 200
