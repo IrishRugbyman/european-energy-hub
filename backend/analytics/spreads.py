@@ -82,7 +82,7 @@ def _build_prices(start: date, end: date) -> pd.DataFrame:
     from loaders.fx import load_eur_usd_daily
 
     empty = pd.DataFrame(columns=[
-        "price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh",
+        "price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh", "hh_eur_mwh",
     ])
 
     series: dict[str, pd.Series] = {}
@@ -120,15 +120,21 @@ def _build_prices(start: date, end: date) -> pd.DataFrame:
     except Exception:
         pass
 
-    # NBP: nbp_prices in USD/MMBtu, convert to EUR/MWh via fx_rates
+    # NBP + HH: load EUR/USD once, use for both conversions
     try:
+        eur_usd = load_eur_usd_daily(start, end)
+
         nbp_raw = load_nbp_daily(start, end)
         if nbp_raw is not None and not nbp_raw.empty:
-            eur_usd = load_eur_usd_daily(start, end)
             nbp_aligned = nbp_raw.reindex(eur_usd.index).ffill()
             # price_eur_mwh = price_usd_mmbtu * eur_usd / mwh_per_mmbtu
             nbp_eur = (nbp_aligned * eur_usd / _NBP_MWH_PER_MMBTU).rename("nbp_eur_mwh")
             series["nbp_eur_mwh"] = nbp_eur.dropna()
+
+        if "hh_usd_mmbtu" in series:
+            hh_aligned = series["hh_usd_mmbtu"].reindex(eur_usd.index).ffill()
+            hh_eur = (hh_aligned * eur_usd / _NBP_MWH_PER_MMBTU).rename("hh_eur_mwh")
+            series["hh_eur_mwh"] = hh_eur.dropna()
     except Exception:
         pass
 
@@ -138,10 +144,10 @@ def _build_prices(start: date, end: date) -> pd.DataFrame:
     df = pd.DataFrame(series).ffill().dropna(how="all")
     df.index = pd.to_datetime(df.index)
     out = df.reset_index().rename(columns={"index": "price_date"})
-    for col in ["ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh"]:
+    for col in ["ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh", "hh_eur_mwh"]:
         if col not in out.columns:
             out[col] = None
-    return out[["price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh"]].copy()
+    return out[["price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh", "hh_eur_mwh"]].copy()
 
 
 def _build_multi_zone_spreads(start: date, end: date) -> pd.DataFrame:

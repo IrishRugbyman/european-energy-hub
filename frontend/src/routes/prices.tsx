@@ -451,6 +451,63 @@ function TtfNbpSpread({ rows }: { rows: PricesDailyPoint[] }) {
   )
 }
 
+// TTF minus HH (converted to EUR/MWh) - the LNG arbitrage spread
+function TtfHhSpread({ rows }: { rows: PricesDailyPoint[] }) {
+  const data = useMemo(() => {
+    const cutStr = cutoffDate('2Y')
+    return rows
+      .filter((r) => (cutStr == null || r.price_date >= cutStr) && r.ttf_eur_mwh != null && r.hh_eur_mwh != null)
+      .map((r) => ({
+        label: r.price_date.slice(0, 10),
+        spread: parseFloat(((r.ttf_eur_mwh as number) - (r.hh_eur_mwh as number)).toFixed(2)),
+      }))
+  }, [rows])
+
+  if (data.length === 0) return null
+
+  const avg = data.reduce((a, b) => a + b.spread, 0) / data.length
+  const latestSpread = data[data.length - 1]?.spread ?? null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">TTF minus Henry Hub LNG spread (€/MWh, trailing 2Y)</h2>
+        <span className="text-xs text-muted-foreground ml-auto">
+          Latest: <span className="font-semibold text-foreground">{latestSpread != null ? `${latestSpread > 0 ? '+' : ''}${latestSpread.toFixed(2)}` : '--'}</span>
+          {' '}&bull;{' '}2Y avg: <span className="font-semibold text-foreground">{`${avg > 0 ? '+' : ''}${avg.toFixed(2)}`}</span>
+        </span>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            interval="preserveStartEnd"
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v) => [`${(v as number).toFixed(2)} €/MWh`, 'TTF - HH (EUR equiv.)']}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+          <ReferenceLine y={avg} stroke="#a78bfa" strokeDasharray="3 3" strokeOpacity={0.6} label={{ value: 'avg', position: 'right', fontSize: 9, fill: '#a78bfa' }} />
+          <Line dataKey="spread" name="TTF - HH" stroke="#fb923c" dot={false} strokeWidth={1.5} connectNulls />
+        </LineChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">
+        HH converted to EUR/MWh (1 MMBtu = 0.293 MWh). Positive = European gas more expensive than US; drives LNG exports to Europe.
+      </p>
+    </div>
+  )
+}
+
 const TENOR_COLORS: Record<string, string> = {
   Q1: '#818cf8',
   Q2: '#818cf8',
@@ -756,6 +813,7 @@ function PricesDashboard() {
           <CorrelationMatrix rows={rows} />
           {(regimeData?.rows?.length ?? 0) > 0 && <PriceRegimeCharts rows={regimeData!.rows} />}
           <TtfNbpSpread rows={rows} />
+          <TtfHhSpread rows={rows} />
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />
         </div>

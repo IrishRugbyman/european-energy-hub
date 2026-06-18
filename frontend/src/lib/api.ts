@@ -282,6 +282,7 @@ export interface PricesDailyPoint {
   coal_usd_t: number | null
   hh_usd_mmbtu: number | null
   nbp_eur_mwh: number | null
+  hh_eur_mwh: number | null
 }
 
 export interface PricesResponse {

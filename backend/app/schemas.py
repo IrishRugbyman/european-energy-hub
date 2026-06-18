@@ -194,6 +194,7 @@ class PricesDailyPoint(BaseModel):
     coal_usd_t: float | None
     hh_usd_mmbtu: float | None
     nbp_eur_mwh: float | None
+    hh_eur_mwh: float | None = None
 
 
 class PricesResponse(BaseModel):
