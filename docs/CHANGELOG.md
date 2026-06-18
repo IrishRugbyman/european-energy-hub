@@ -1,5 +1,27 @@
 # Energy Hub Changelog
 
+## 2026-06-18 - Post-roadmap round 4: EU fuel mix, borders table, percentile ranks, refresh fixes
+
+**Tried:** Six improvements plus three critical infrastructure fixes:
+1. EU aggregate fuel mix chart on /generation page showing annual solar/wind/coal/gas/nuclear trend 2021-present (34 zones)
+2. Borders table panel on /map (sortable by spread EUR/MWh or NTC utilization %, click-through to border panel)
+3. 2yr percentile rank badges on spreads zone snapshot chart (BE CSS 87th%, NL CSS 83rd%)
+4. Three critical refresh script bugs: eua_carbon/coal_api2 used underscore vs hyphen; nbp and eia-natgas missing from refresh fetcher list; DuckDB write-lock conflict during concurrent API + rebuild
+5. Increased entso-e-gen-full timeout from 30min to 2h
+6. Manual rebuild to bring power prices current (June 17 data now live)
+
+**Found:**
+- Solar EU-34 capacity grew 120% from 2021 to 2025; coal down 38%
+- EUA/coal prices were not refreshing for unknown duration due to underscore vs hyphen typo
+- NBP/HH prices going stale since initial deployment (missing from fetcher list)
+- DuckDB 1.5.3 requires write-lock retry when API threads are active
+
+**Decision:** Six commits (3d64c96 to 98bd62d). 55 tests pass.
+
+**Artifacts:** `GET /api/generation/eu/annual`; `EuFuelMixChart`; `BordersTable`; percentile rank badges; DuckDB lock retry.
+
+---
+
 ## 2026-06-18 - Post-roadmap round 3: pace charts, YoY prices, perf, reBAP profile
 
 **Tried:** Eight more improvements, focusing on gas pace analytics, performance, and imbalance depth:
