@@ -101,7 +101,19 @@ def rebuild(skip_ingest: bool = False) -> None:
     battery_tables = build_battery_tables()
 
     ENERGY_DB.parent.mkdir(exist_ok=True)
-    conn = duckdb.connect(str(ENERGY_DB))
+    conn = None
+    for _attempt in range(6):
+        try:
+            conn = duckdb.connect(str(ENERGY_DB))
+            break
+        except Exception as e:
+            if "lock" in str(e).lower() and _attempt < 5:
+                import time
+                logger.warning(f"DuckDB lock conflict, retry {_attempt + 1}/6 in 15s...")
+                time.sleep(15)
+            else:
+                raise
+    assert conn is not None
     try:
         conn.execute("BEGIN TRANSACTION")
 
