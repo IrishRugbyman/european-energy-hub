@@ -768,6 +768,25 @@ function PricesDashboard() {
   const rows = data?.rows ?? []
   const curveRows = curveData?.rows ?? []
 
+  // Compute 2yr percentile ranks for each series
+  const pctRanks = useMemo(() => {
+    const cutoff = new Date()
+    cutoff.setFullYear(cutoff.getFullYear() - 2)
+    const cutoffStr = cutoff.toISOString().slice(0, 10)
+    const recent = rows.filter((r) => r.price_date >= cutoffStr)
+    const out: Partial<Record<string, number>> = {}
+    for (const { key } of SERIES) {
+      const k = key as keyof PricesDailyPoint
+      const vals = recent.map((r) => r[k] as number | null).filter((v): v is number => v != null)
+      const cur = latest(rows, k)
+      if (cur == null || vals.length < 10) continue
+      const sorted = [...vals].sort((a, b) => a - b)
+      const pos = sorted.filter((v) => v <= cur).length
+      out[key] = Math.round((pos / sorted.length) * 100)
+    }
+    return out
+  }, [rows])
+
   return (
     <div className="p-4 h-full overflow-y-auto">
       {/* Stat strip */}
@@ -776,6 +795,8 @@ function PricesDashboard() {
           const v = latest(rows, key as keyof PricesDailyPoint)
           const ya = yearAgo(rows, key as keyof PricesDailyPoint)
           const yoyPct = v != null && ya != null && ya !== 0 ? ((v - ya) / Math.abs(ya)) * 100 : null
+          const rank = pctRanks[key]
+          const rankColor = rank != null ? (rank >= 80 ? '#f87171' : rank >= 50 ? '#fbbf24' : '#4ade80') : undefined
           return (
             <div key={key} className="flex flex-col">
               <span className="text-xs text-muted-foreground">{label}</span>
@@ -785,6 +806,11 @@ function PricesDashboard() {
               {yoyPct != null && (
                 <span className={`text-xs font-medium ${yoyPct >= 0 ? 'text-red-400' : 'text-green-400'}`}>
                   {yoyPct >= 0 ? '+' : ''}{yoyPct.toFixed(1)}% YoY
+                </span>
+              )}
+              {rank != null && (
+                <span className="text-xs" style={{ color: rankColor }}>
+                  {rank}th% (2yr)
                 </span>
               )}
             </div>
