@@ -1,5 +1,35 @@
 # Energy Hub Changelog
 
+## 2026-06-18 - Phases 21-23: Gas pace widget, TTF seasonality boxplot, power price calendar
+
+**Tried:** Three analytics features using existing DB tables without new ingest steps:
+- Phase 21: EU gas storage pace-to-target (AGSI storage_history + storage_seasonal)
+- Phase 22: TTF monthly seasonality distribution upgrade (prices_daily, 2019-present)
+- Phase 23: Power price calendar heatmap (power_daily, zone-level, trailing 365d)
+
+**Found:**
+- EU gas storage at 40.5% on 2026-06-16, needing 5174 GWh/d to reach 90% by Nov 1 but injecting only 3847 GWh/d. At current pace: 186 days needed, 138 days available. Clearly behind (worst pace since 2021 crisis year). The pace widget makes this immediately visible.
+- TTF seasonality: the 2019-present distribution reveals wide multi-year ranges. Aug/Sep 2022 crisis produced max values of 339/243 EUR/MWh; axis is capped at 150 to protect IQR readability. Jun 2026 at 42.5 EUR/MWh sits above the 8yr median (34.2) but within the IQR (31.5-35.4).
+- Calendar heatmap: all 13 zones rendered correctly. DE-LU shows clearly visible negative-price days (purple cells) on Sundays in spring/autumn due to solar + wind surpluses. FR shows cold-snap pricing (2024 winter spike). No new API needed; reuses existing power_daily data already fetched by the panel.
+
+**Decision:** All three phases complete. Phase 22 replaces the previous simple 5yr-avg bar chart with a proper boxplot (p25/median/p75 IQR box + whiskers + current month marker). Phase 21 `GET /api/gas/pace` endpoint computes in real-time from DuckDB without a new precomputed table. Phase 23 is pure frontend using existing data. 47 backend tests pass.
+
+**Artifacts:** `GET /api/gas/pace`, `GasPaceResponse` schema, `PaceWidget` gas.tsx component, `GET /api/prices/seasonality`, `TtfSeasonalityResponse` schema, upgraded `TtfSeasonality` component in prices.tsx, `PriceCalendarHeatmap` in UnifiedZonePanel.tsx.
+
+---
+
+## 2026-06-17 - Phase 19: Wind/solar capacity factor trend
+
+**Tried:** Fetch ENTSO-E annual installed generation capacity (A68 report) for all 34 bidding zones via `query_installed_generation_capacity`, join against existing daily generation averages to compute CF = avg_mw / installed_mw. Forward-fill annual snapshots to daily grain using `merge_asof(..., direction="backward")`.
+
+**Found:** 30 of 34 zones returned data (IT-NORD and SE-1..4 had no ENTSO-E capacity records). 2019-2026 snapshots stored - 8 annual rows per zone. Resulting `capacity_factors_daily` table: 53,758 rows. Sanity checks: DE-LU wind avg CF 22.4%, DK-1 wind 33.4%, ES solar 22.9% - all physically plausible. The 2026 snapshot shows DE-LU solar installed capacity grew from 77 GW (2024) to 104 GW (2026), visibly reflected in falling per-unit CF despite higher absolute output.
+
+**Decision:** Phase 19 complete. New `GET /api/generation/zone/{zone}/capacity` endpoint returns 2Y daily wind_cf + solar_cf with installed GW context. UnifiedZonePanel shows 30-day rolling avg wind (sky-blue) and solar (amber) CF line chart for any zone with data. Zones without ENTSO-E capacity records (IT-NORD, SE-*) simply show no chart - graceful fallback. 45 backend tests pass. `entso-e-capacity` ingest command added to market-data; runs annually (data only updates once per year).
+
+**Artifacts:** `installed_generation_capacity` PostgreSQL table, `fetchers/entso_e.py::fetch_installed_capacity`, `loaders/power.py::load_installed_capacity`, `analytics/generation.py::_build_capacity_factors`, `capacity_factors_daily` DuckDB table, `GET /api/generation/zone/{zone}/capacity`.
+
+---
+
 ## 2026-06-17 - TTF forward curve panel + stale price data fix
 
 **TTF forward curve** added to `/prices` as a color-coded bar chart below the main price history.
