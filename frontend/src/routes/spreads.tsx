@@ -270,41 +270,76 @@ function LatestSnapshotChart({
   zones: string[]
   spreadKey: SpreadKey
 }) {
-  const data = useMemo(() => {
+  const { data, ranks } = useMemo(() => {
+    // Build latest value and percentile rank for each zone
     const latest = new Map<string, number | null>()
+    const allByZone = new Map<string, number[]>()
     for (const r of rows) {
-      if (r[spreadKey] != null) latest.set(r.zone, r[spreadKey])
+      const v = r[spreadKey]
+      if (v != null) {
+        latest.set(r.zone, v)
+        if (!allByZone.has(r.zone)) allByZone.set(r.zone, [])
+        allByZone.get(r.zone)!.push(v)
+      }
     }
-    return zones
-      .filter((z) => latest.has(z))
-      .map((z) => ({ zone: ZONE_LABELS[z] ?? z, value: latest.get(z) ?? null, fill: ZONE_COLORS[z] ?? '#94a3b8' }))
+    const rankMap = new Map<string, number>()
+    for (const [z, vals] of allByZone) {
+      const cur = latest.get(z) ?? null
+      if (cur == null) continue
+      const sorted = [...vals].sort((a, b) => a - b)
+      const pos = sorted.filter((v) => v <= cur).length
+      rankMap.set(z, Math.round((pos / sorted.length) * 100))
+    }
+    return {
+      data: zones
+        .filter((z) => latest.has(z))
+        .map((z) => ({ zone: ZONE_LABELS[z] ?? z, rawZone: z, value: latest.get(z) ?? null, fill: ZONE_COLORS[z] ?? '#94a3b8' })),
+      ranks: rankMap,
+    }
   }, [rows, zones, spreadKey])
 
   if (!data.length) return null
   return (
-    <ResponsiveContainer width="100%" height={160}>
-      <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-        <XAxis dataKey="zone" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
-        <YAxis
-          tick={{ fontSize: 10, fill: '#64748b' }}
-          tickLine={false}
-          axisLine={false}
-          tickFormatter={(v) => `${v.toFixed(0)}`}
-          unit=" €"
-        />
-        <Tooltip
-          formatter={(v) => [v != null ? `${Number(v).toFixed(1)} €/MWh` : '-', 'value']}
-          contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 4, fontSize: 11 }}
-        />
-        <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
-        <Bar dataKey="value" isAnimationActive={false}>
-          {data.map((d, i) => (
-            <Cell key={i} fill={d.fill} />
-          ))}
-        </Bar>
-      </BarChart>
-    </ResponsiveContainer>
+    <>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="zone" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `${v.toFixed(0)}`}
+            unit=" €"
+          />
+          <Tooltip
+            formatter={(v) => [v != null ? `${Number(v).toFixed(1)} €/MWh` : '-', 'value']}
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 4, fontSize: 11 }}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+          <Bar dataKey="value" isAnimationActive={false}>
+            {data.map((d, i) => (
+              <Cell key={i} fill={d.fill} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      {/* Percentile rank badges */}
+      <div className="flex flex-wrap gap-2 mt-2">
+        {data.map((d) => {
+          const rank = ranks.get(d.rawZone)
+          if (rank == null) return null
+          const color = rank >= 80 ? '#4ade80' : rank >= 50 ? '#fbbf24' : '#f87171'
+          return (
+            <span key={d.rawZone} className="flex items-center gap-1 text-xs">
+              <span className="font-mono text-muted-foreground">{d.zone}</span>
+              <span className="font-semibold" style={{ color }}>{rank}th%</span>
+            </span>
+          )
+        })}
+        <span className="text-xs text-muted-foreground ml-1">vs 2yr history</span>
+      </div>
+    </>
   )
 }
 
