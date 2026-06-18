@@ -1,5 +1,27 @@
 # Energy Hub Changelog
 
+## 2026-06-18 - Post-roadmap round 2: zone panel overhaul, hourly profile, seasonality, rankings charts
+
+**Tried:** Seven more high-value improvements after the first post-roadmap batch:
+1. Sortable gas storage rankings panel with table/chart toggle (vs-5yr-avg bar chart, NL -29pp, DE -21pp most deficit)
+2. 24h average price profile chart per zone (90d window, CET, avg/IQR/neg-hour pct) - reveals duck curve: DE-LU H12 avg 16 EUR/MWh, 45% neg hours
+3. Power price seasonality (day-of-week and month-of-year bar charts per zone, 2yr history) - Mon-Wed 100 EUR/MWh vs Sun 65, winter 112 vs June 73 in DE-LU
+4. Power zone profile precomputed in DuckDB (power_hourly_profiles, 816 rows)
+5. Tabbed zone panel: Price tab (stat strip, 48h, heatmap, profile, seasonality, calendar, daily range) vs Generation tab (fuel mix, hourly gen, RE trend, capacity factors)
+6. Sortable zone price table on /map (all 34 zones, sortable by price/vs30d/2yr rank/neg hrs/RE%)
+7. Gas storage vs-5yr-avg bar chart in Rankings panel
+
+**Found:**
+- Solar cannibalization is extreme in DE-LU summer: midday prices near zero with ~45% negative-hour rate
+- Weekend prices 35% below weekday average; summer fill 40.5% (vs 5yr avg -10.6pp) - Europe significantly undersupplied heading into H2 2026
+- Zone panel had grown to 11 stacked sections; tabbing immediately reduces scroll fatigue
+
+**Decision:** Seven commits. 51 backend tests pass. All data from existing DuckDB tables/PostgreSQL with one new precomputed table (power_hourly_profiles). No new PostgreSQL queries at request time.
+
+**Artifacts:** `GET /api/power/zone/{zone}/profile`; `GET /api/power/zone/{zone}/seasonality`; `power_hourly_profiles` DuckDB table; `HourlyProfileChart`, `SeasonalityCharts`, `StorageRankings` chart view, `ZoneTable` frontend components.
+
+---
+
 ## 2026-06-18 - Post-roadmap features: LNG spread, YoY gas chart, price regime, RE trends heatmap
 
 **Tried:** Four high-value analytics features after the roadmap was exhausted:
