@@ -1,5 +1,28 @@
 # Energy Hub Changelog
 
+## 2026-06-18 - Post-roadmap round 3: pace charts, YoY prices, perf, reBAP profile
+
+**Tried:** Eight more improvements, focusing on gas pace analytics, performance, and imbalance depth:
+1. Per-country gas pace stats in /gas/country/{cc} endpoint (current rate vs required rate to hit 90% by Nov 1)
+2. CountryPaceBar widget in CountryPanel: on-track chip, current/required rates, progress bar
+3. Batch /gas/pace/countries endpoint + "Pace" tab in rankings panel with grouped bar chart (grey=required, green/red=current)
+4. Year-on-year % change for all commodities in /prices stat strip (TTF+9.9% YoY, HH -18.4% YoY)
+5. DuckDB thread-local connections: eliminated 200-300ms cold I/O overhead per request (power/zone: 260ms -> 61ms)
+6. Multi-zone spreads payload trimmed from 5yr to 2yr (276ms -> 80ms hot path)
+7. 90-day reBAP hourly profile (imbalance_hourly_profile, 24 rows) + chart on /imbalance showing duck curve in balancing prices (H12 avg 16 EUR/MWh / 44% neg, H20 avg 165 EUR/MWh)
+8. Test suite expanded from 52 to 54 tests
+
+**Found:**
+- Belgium is withdrawing gas (-2 GWh/d) while at only 22% fill - the most extreme pace deficit in EU
+- DuckDB opens a new file connection per query by default; thread-local connections give 4x speedup with no code change in endpoints
+- reBAP duck curve closely mirrors DE-LU day-ahead (solar cannibalization is visible in both)
+
+**Decision:** Eight commits (be93616 to d6b7713). All 54 backend tests pass. All features from existing data - no new PostgreSQL fetchers needed.
+
+**Artifacts:** `GET /api/gas/pace/countries`; `GET /api/imbalance/profile`; `imbalance_hourly_profile` DuckDB table; `CountryPaceBar`, `PaceComparisonChart`, `RebalancingHourlyProfile` frontend components; `db.py` thread-local optimization.
+
+---
+
 ## 2026-06-18 - Post-roadmap round 2: zone panel overhaul, hourly profile, seasonality, rankings charts
 
 **Tried:** Seven more high-value improvements after the first post-roadmap batch:
