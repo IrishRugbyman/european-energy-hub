@@ -1,6 +1,6 @@
 import { X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -632,16 +632,26 @@ function buildGenDailyChart(
 
 function buildCapacityFactorChart(daily: CapacityFactorPoint[], windowDays = 30) {
   if (daily.length === 0) return []
-  // Compute rolling average over windowDays for both wind_cf and solar_cf
+  // O(n) sliding-window rolling average - maintain running sums instead of re-slicing each step.
   const result: { gen_date: string; wind_cf30: number | null; solar_cf30: number | null }[] = []
+  let windSum = 0, windCount = 0, solarSum = 0, solarCount = 0
   for (let i = 0; i < daily.length; i++) {
-    const slice = daily.slice(Math.max(0, i - windowDays + 1), i + 1)
-    const windVals = slice.map((p) => p.wind_cf).filter((v): v is number => v != null)
-    const solarVals = slice.map((p) => p.solar_cf).filter((v): v is number => v != null)
+    // Add incoming value
+    const wIn = daily[i].wind_cf
+    const sIn = daily[i].solar_cf
+    if (wIn != null) { windSum += wIn; windCount++ }
+    if (sIn != null) { solarSum += sIn; solarCount++ }
+    // Drop outgoing value when window is full
+    if (i >= windowDays) {
+      const wOut = daily[i - windowDays].wind_cf
+      const sOut = daily[i - windowDays].solar_cf
+      if (wOut != null) { windSum -= wOut; windCount-- }
+      if (sOut != null) { solarSum -= sOut; solarCount-- }
+    }
     result.push({
       gen_date: daily[i].gen_date,
-      wind_cf30: windVals.length > 0 ? windVals.reduce((s, v) => s + v, 0) / windVals.length : null,
-      solar_cf30: solarVals.length > 0 ? solarVals.reduce((s, v) => s + v, 0) / solarVals.length : null,
+      wind_cf30: windCount > 0 ? windSum / windCount : null,
+      solar_cf30: solarCount > 0 ? solarSum / solarCount : null,
     })
   }
   // Skip the initial warm-up period (< 15 days of data)
@@ -649,12 +659,16 @@ function buildCapacityFactorChart(daily: CapacityFactorPoint[], windowDays = 30)
 }
 
 function PriceCalendarHeatmap({ daily }: { daily: { price_date: string; base_eur: number | null }[] }) {
-  // Build quantile-based color mapping
-  const prices = daily.map((d) => d.base_eur).filter((v): v is number => v != null)
-  if (prices.length === 0) return null
-  const sorted = [...prices].sort((a, b) => a - b)
-  const q = (p: number) => sorted[Math.max(0, Math.floor(p * sorted.length) - 1)]
-  const q0 = q(0), q20 = q(0.2), q40 = q(0.4), q60 = q(0.6), q80 = q(0.8), q100 = q(1)
+  // Build quantile-based color mapping - memoized so sort only re-runs when daily data changes.
+  const quantiles = useMemo(() => {
+    const prices = daily.map((d) => d.base_eur).filter((v): v is number => v != null)
+    if (prices.length === 0) return null
+    const sorted = [...prices].sort((a, b) => a - b)
+    const q = (p: number) => sorted[Math.max(0, Math.floor(p * sorted.length) - 1)]
+    return { q0: q(0), q20: q(0.2), q40: q(0.4), q60: q(0.6), q80: q(0.8), q100: q(1) }
+  }, [daily])
+  if (quantiles == null) return null
+  const { q0, q20, q40, q60, q80, q100 } = quantiles
 
   const cellColor = (price: number | null): string => {
     if (price == null) return '#1e293b'
@@ -682,8 +696,11 @@ function PriceCalendarHeatmap({ daily }: { daily: { price_date: string; base_eur
   let currentWeek: typeof weeks[0] = []
   let prevMonth = -1
 
+  const toLocalIso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
   while (cur <= endDate) {
-    const iso = cur.toISOString().slice(0, 10)
+    const iso = toLocalIso(cur)
     const month = cur.getMonth()
     const dayIdx = cur.getDay() === 0 ? 6 : cur.getDay() - 1 // 0=Mon, 6=Sun
     const monthLabel = month !== prevMonth ? cur.toLocaleString('en', { month: 'short' }) : undefined
@@ -742,14 +759,14 @@ function PriceCalendarHeatmap({ daily }: { daily: { price_date: string; base_eur
       {/* Legend */}
       <div className="flex items-center gap-2 mt-1.5 text-xs text-muted-foreground">
         <span style={{ fontSize: 8 }}>Cheap</span>
-        {[q0, q20, q40, q60, q80, q100].map((v, i) => (
-          <div key={i} title={`${v?.toFixed(0)} €/MWh`} style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: cellColor(v) }} />
+        {(['#166534', '#15803d', '#78350f', '#b45309', '#b91c1c'] as const).map((color, i) => (
+          <div key={i} style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: color }} />
         ))}
         <span style={{ fontSize: 8 }}>Expensive</span>
         <div style={{ width: 10, height: 10, borderRadius: 2, backgroundColor: '#7c3aed', marginLeft: 6 }} />
         <span style={{ fontSize: 8 }}>Negative</span>
         <span className="ml-auto" style={{ fontSize: 8 }}>
-          range {q0 < 0 ? q0.toFixed(0) : q0.toFixed(0)} - {q100.toFixed(0)} €/MWh
+          range {q0.toFixed(0)} - {q100.toFixed(0)} €/MWh
         </span>
       </div>
     </div>

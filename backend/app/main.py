@@ -350,9 +350,7 @@ def gas_pace_to_target():
     days_at_current = (
         required_total_gwh / current_rate if current_rate > 0 else None
     )
-    on_track = (
-        days_at_current is not None and days_at_current <= days_to_target
-    ) if days_at_current is not None else None
+    on_track = (days_at_current <= days_to_target) if days_at_current is not None else None
 
     # Build history list (actual fill + seasonal avg5)
     history: list[GasPacePoint] = []
@@ -367,14 +365,9 @@ def gas_pace_to_target():
     # Append projected trajectory from current date to Nov 1 at current rate
     wgv_gwh = wgv_twh * 1000
     for d_offset in range(1, days_to_target + 1):
-        proj_day = date(
-            current_date_obj.year,
-            current_date_obj.month,
-            current_date_obj.day,
-        )
         proj_day = date.fromordinal(current_date_obj.toordinal() + d_offset)
         projected_gwh_stored = (current_pct / 100 * wgv_gwh) + current_rate * d_offset
-        projected_pct = min(projected_gwh_stored / wgv_gwh * 100, 100.0)
+        projected_pct = max(0.0, min(projected_gwh_stored / wgv_gwh * 100, 100.0))
         history.append(GasPacePoint(
             gas_day=proj_day.isoformat(),
             full_pct=None,
@@ -389,7 +382,7 @@ def gas_pace_to_target():
         target_date=nov1.isoformat(),
         target_pct=_GAS_FILL_TARGET_PCT,
         days_to_target=days_to_target,
-        pct_gap=round(pct_gap, 2) if pct_gap else None,
+        pct_gap=round(pct_gap, 2) if pct_gap is not None else None,
         required_gwh_per_day=round(required_rate, 1) if required_rate is not None else None,
         current_rate_gwh_per_day=round(current_rate, 1),
         days_at_current_rate=round(days_at_current, 0) if days_at_current is not None and not math.isinf(days_at_current) else None,
@@ -830,30 +823,33 @@ def prices_seasonality():
     Current-month value is added from the most recent TTF price.
     """
     df = db.query("""
+        WITH latest AS (
+            SELECT MONTH(price_date) AS month, ttf_eur_mwh
+            FROM prices_daily
+            WHERE ttf_eur_mwh IS NOT NULL
+            ORDER BY price_date DESC
+            LIMIT 1
+        )
         SELECT
-            MONTH(price_date)                                   AS month,
-            YEAR(price_date)                                    AS year,
-            PERCENTILE_CONT(0.0) WITHIN GROUP (ORDER BY ttf_eur_mwh)  AS p0,
-            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ttf_eur_mwh) AS p25,
-            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ttf_eur_mwh)  AS p50,
-            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY ttf_eur_mwh) AS p75,
-            PERCENTILE_CONT(1.0) WITHIN GROUP (ORDER BY ttf_eur_mwh)  AS p100,
-            COUNT(*) AS n
-        FROM prices_daily
-        WHERE ttf_eur_mwh IS NOT NULL
+            MONTH(p.price_date)                                        AS month,
+            YEAR(p.price_date)                                         AS year,
+            PERCENTILE_CONT(0.0) WITHIN GROUP (ORDER BY p.ttf_eur_mwh)  AS p0,
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY p.ttf_eur_mwh) AS p25,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY p.ttf_eur_mwh)  AS p50,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY p.ttf_eur_mwh) AS p75,
+            PERCENTILE_CONT(1.0) WITHIN GROUP (ORDER BY p.ttf_eur_mwh)  AS p100,
+            COUNT(*) AS n,
+            ANY_VALUE(l.month) AS latest_month,
+            ANY_VALUE(l.ttf_eur_mwh) AS latest_price
+        FROM prices_daily p
+        LEFT JOIN latest l ON TRUE
+        WHERE p.ttf_eur_mwh IS NOT NULL
         GROUP BY 1, 2
         HAVING COUNT(*) >= 10
         ORDER BY 1, 2
     """)
-    latest_row = db.query("""
-        SELECT MONTH(price_date) AS month, ttf_eur_mwh
-        FROM prices_daily
-        WHERE ttf_eur_mwh IS NOT NULL
-        ORDER BY price_date DESC
-        LIMIT 1
-    """)
-    current_month = int(latest_row.iloc[0]["month"]) if not latest_row.empty else None
-    current_price = float(latest_row.iloc[0]["ttf_eur_mwh"]) if not latest_row.empty else None
+    current_month = int(df.iloc[0]["latest_month"]) if not df.empty and df.iloc[0]["latest_month"] is not None else None
+    current_price = float(df.iloc[0]["latest_price"]) if not df.empty and df.iloc[0]["latest_price"] is not None else None
 
     # Aggregate across years: min of p0s, max of p100s, percentile of medians
     agg: dict[int, dict] = {}

@@ -18,35 +18,22 @@ import {
 } from 'recharts'
 import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
+import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
 export const Route = createFileRoute('/spreads')({
   component: SpreadsDashboard,
 })
 
-type Window = '1Y' | '2Y' | '5Y' | 'ALL'
+type Window = DateWindow
 
 const WINDOWS: Window[] = ['1Y', '2Y', '5Y', 'ALL']
-
-function cutoffDate(w: Window): string | null {
-  const now = new Date()
-  if (w === 'ALL') return null
-  const years = w === '1Y' ? 1 : w === '2Y' ? 2 : 5
-  now.setFullYear(now.getFullYear() - years)
-  return now.toISOString().slice(0, 10)
-}
 
 function fmt(v: number | null | undefined, digits = 1): string {
   if (v == null) return '-'
   return `${v.toFixed(digits)} €/MWh`
 }
 
-function latest(rows: SpreadsDailyPoint[], key: keyof SpreadsDailyPoint): number | null {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const v = rows[i][key]
-    if (v != null) return v as number
-  }
-  return null
-}
+const latest = (rows: SpreadsDailyPoint[], key: keyof SpreadsDailyPoint) => latestNonNull(rows, key)
 
 interface RegimeSpan {
   x1: string

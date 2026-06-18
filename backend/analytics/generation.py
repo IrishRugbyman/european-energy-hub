@@ -14,6 +14,7 @@ are included. renewable_pct = (solar + wind + hydro + biomass) / total_mw.
 from __future__ import annotations
 
 import pandas as pd
+from loguru import logger
 
 from loaders._base import _query, get_read_conn
 from loaders.power import load_installed_capacity
@@ -109,6 +110,7 @@ def _build_generation_daily() -> pd.DataFrame:
         )
         conn.close()
     except Exception:
+        logger.exception("_build_generation_daily failed")
         return _empty_daily()
 
     if df.empty:
@@ -134,6 +136,7 @@ def _build_generation_hourly_recent() -> pd.DataFrame:
         )
         conn.close()
     except Exception:
+        logger.exception("_build_generation_hourly_recent failed")
         return _empty_hourly()
 
     if df.empty:
@@ -171,6 +174,7 @@ def _build_capacity_factors(daily: pd.DataFrame) -> pd.DataFrame:
     try:
         cap = load_installed_capacity()
     except Exception:
+        logger.exception("_build_capacity_factors: load_installed_capacity failed")
         return _empty
 
     if cap.empty:

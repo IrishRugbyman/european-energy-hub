@@ -204,8 +204,7 @@ def _contract_sort_key(contract: str) -> int:
     except ValueError:
         return 999999
     month = _TENOR_MONTH.get(tenor, 6)
-    # Calendar contracts sort before their seasonals (Jan of that year)
-    # but after the prior year's WIN, so shift CAL by +0 months at year start
+    # CAL maps to month 1 (January start), placing it after WIN of the prior year (month 10).
     return year * 100 + month
 
 

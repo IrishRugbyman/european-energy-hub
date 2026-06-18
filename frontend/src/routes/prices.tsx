@@ -20,30 +20,16 @@ import {
 } from 'recharts'
 import { api, type PricesDailyPoint, type TtfCurvePoint, type TtfSeasonalMonth } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
+import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
 export const Route = createFileRoute('/prices')({
   component: PricesDashboard,
 })
 
-type Window = '1Y' | '2Y' | '5Y' | 'ALL'
+type Window = DateWindow
 const WINDOWS: Window[] = ['1Y', '2Y', '5Y', 'ALL']
 
-
-function cutoffDate(w: Window): string | null {
-  const now = new Date()
-  if (w === 'ALL') return null
-  const years = w === '1Y' ? 1 : w === '2Y' ? 2 : 5
-  now.setFullYear(now.getFullYear() - years)
-  return now.toISOString().slice(0, 10)
-}
-
-function latest(rows: PricesDailyPoint[], key: keyof PricesDailyPoint): number | null {
-  for (let i = rows.length - 1; i >= 0; i--) {
-    const v = rows[i][key]
-    if (v != null) return v as number
-  }
-  return null
-}
+const latest = (rows: PricesDailyPoint[], key: keyof PricesDailyPoint) => latestNonNull(rows, key)
 
 const SERIES = [
   { key: 'ttf_eur_mwh',  label: 'TTF (€/MWh)',       color: '#60a5fa', unit: '€/MWh'   },
@@ -239,10 +225,8 @@ function CorrelationMatrix({ rows }: { rows: PricesDailyPoint[] }) {
 // TTF vs EUA scatter, last 365 days, colored by year
 function TtfEuaScatter({ rows }: { rows: PricesDailyPoint[] }) {
   const { byYear, years } = useMemo(() => {
-    const cutoff = new Date()
-    cutoff.setFullYear(cutoff.getFullYear() - 1)
-    const cutStr = cutoff.toISOString().slice(0, 10)
-    const valid = rows.filter((r) => r.price_date >= cutStr && r.ttf_eur_mwh != null && r.eua_eur_t != null)
+    const cutStr = cutoffDate('1Y')
+    const valid = rows.filter((r) => (cutStr == null || r.price_date >= cutStr) && r.ttf_eur_mwh != null && r.eua_eur_t != null)
     const yMap = new Map<number, { ttf: number; eua: number }[]>()
     for (const r of valid) {
       const y = parseInt(r.price_date.slice(0, 4))
@@ -320,15 +304,7 @@ function TtfSeasonality({ months }: { months: TtfSeasonalMonth[] }) {
       whigh: m.p75 != null && m.max != null ? Math.min(m.max, Y_CAP) - m.p75 : null,
       median: m.median,
       current: m.current != null ? Math.min(m.current, Y_CAP) : null,
-      // Raw values for tooltip
-      _min: m.min,
-      _max: m.max,
-      _p25: m.p25,
-      _p75: m.p75,
-      _median: m.median,
-      _current: m.current,
-      _capped: m.max != null && m.max > Y_CAP,
-      n_years: m.n_years,
+      _raw: m,
     }))
   }, [months])
 
@@ -361,15 +337,16 @@ function TtfSeasonality({ months }: { months: TtfSeasonalMonth[] }) {
             content={({ active, payload, label }) => {
               if (!active || !payload?.length) return null
               const d = payload[0]?.payload as (typeof data)[0]
+              const r = d._raw
               return (
                 <div className="bg-card border border-border rounded p-2 text-xs space-y-0.5">
-                  <p className="font-medium text-foreground mb-1">{label} ({d.n_years}yr)</p>
-                  {d._current != null && (
-                    <p className="text-sky-400">Current: {f(d._current)}</p>
+                  <p className="font-medium text-foreground mb-1">{label} ({r.n_years}yr)</p>
+                  {r.current != null && (
+                    <p className="text-sky-400">Current: {f(r.current)}</p>
                   )}
-                  <p className="text-amber-400">Median: {f(d._median)}</p>
-                  <p className="text-muted-foreground">IQR: {f(d._p25)} - {f(d._p75)}</p>
-                  <p className="text-muted-foreground">Range: {f(d._min)} - {f(d._max)}{d._capped ? ' (capped)' : ''}</p>
+                  <p className="text-amber-400">Median: {f(r.median)}</p>
+                  <p className="text-muted-foreground">IQR: {f(r.p25)} - {f(r.p75)}</p>
+                  <p className="text-muted-foreground">Range: {f(r.min)} - {f(r.max)}{r.max != null && r.max > Y_CAP ? ' (capped)' : ''}</p>
                 </div>
               )
             }}
@@ -422,11 +399,9 @@ function TtfSeasonality({ months }: { months: TtfSeasonalMonth[] }) {
 // TTF minus NBP spread - the UK/EU gas basis
 function TtfNbpSpread({ rows }: { rows: PricesDailyPoint[] }) {
   const data = useMemo(() => {
-    const cutoff = new Date()
-    cutoff.setFullYear(cutoff.getFullYear() - 2)
-    const cutStr = cutoff.toISOString().slice(0, 10)
+    const cutStr = cutoffDate('2Y')
     return rows
-      .filter((r) => r.price_date >= cutStr && r.ttf_eur_mwh != null && r.nbp_eur_mwh != null)
+      .filter((r) => (cutStr == null || r.price_date >= cutStr) && r.ttf_eur_mwh != null && r.nbp_eur_mwh != null)
       .map((r) => ({
         label: r.price_date.slice(0, 10),
         spread: parseFloat(((r.ttf_eur_mwh as number) - (r.nbp_eur_mwh as number)).toFixed(2)),
@@ -486,9 +461,6 @@ const TENOR_COLORS: Record<string, string> = {
   CAL: '#6ee7b7',
 }
 
-function tenorColor(tenorType: string): string {
-  return TENOR_COLORS[tenorType] ?? '#94a3b8'
-}
 
 function TtfForwardCurve({ rows }: { rows: TtfCurvePoint[] }) {
   if (rows.length === 0) return null
@@ -550,7 +522,7 @@ function TtfForwardCurve({ rows }: { rows: TtfCurvePoint[] }) {
           )}
           <Bar dataKey="settlement" name="Settlement" radius={[2, 2, 0, 0]}>
             {rows.map((r, i) => (
-              <Cell key={i} fill={tenorColor(r.tenor_type)} />
+              <Cell key={i} fill={TENOR_COLORS[r.tenor_type] ?? '#94a3b8'} />
             ))}
           </Bar>
         </BarChart>
