@@ -7,6 +7,7 @@ Port :8004. Read-only against energy_hub.duckdb (rebuilt by scripts/refresh.py).
 from __future__ import annotations
 
 import math
+import statistics
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -65,6 +66,8 @@ from .schemas import (
     MultiZoneSpreadsResponse,
     TtfCurvePoint,
     TtfCurveResponse,
+    TtfSeasonalMonth,
+    TtfSeasonalityResponse,
     CapacityFactorPoint,
     GenCapacityResponse,
     GasPacePoint,
@@ -813,6 +816,83 @@ def prices_curve():
         for r in df.itertuples()
     ]
     return TtfCurveResponse(as_of=as_of, rows=rows)
+
+
+_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+@app.get("/api/prices/seasonality", response_model=TtfSeasonalityResponse)
+def prices_seasonality():
+    """TTF monthly seasonality: historical distribution (min/p25/median/p75/max) per calendar month.
+
+    Excludes years with fewer than 10 trading days in a given month (thin data).
+    Current-month value is added from the most recent TTF price.
+    """
+    df = db.query("""
+        SELECT
+            MONTH(price_date)                                   AS month,
+            YEAR(price_date)                                    AS year,
+            PERCENTILE_CONT(0.0) WITHIN GROUP (ORDER BY ttf_eur_mwh)  AS p0,
+            PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY ttf_eur_mwh) AS p25,
+            PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ttf_eur_mwh)  AS p50,
+            PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY ttf_eur_mwh) AS p75,
+            PERCENTILE_CONT(1.0) WITHIN GROUP (ORDER BY ttf_eur_mwh)  AS p100,
+            COUNT(*) AS n
+        FROM prices_daily
+        WHERE ttf_eur_mwh IS NOT NULL
+        GROUP BY 1, 2
+        HAVING COUNT(*) >= 10
+        ORDER BY 1, 2
+    """)
+    latest_row = db.query("""
+        SELECT MONTH(price_date) AS month, ttf_eur_mwh
+        FROM prices_daily
+        WHERE ttf_eur_mwh IS NOT NULL
+        ORDER BY price_date DESC
+        LIMIT 1
+    """)
+    current_month = int(latest_row.iloc[0]["month"]) if not latest_row.empty else None
+    current_price = float(latest_row.iloc[0]["ttf_eur_mwh"]) if not latest_row.empty else None
+
+    # Aggregate across years: min of p0s, max of p100s, percentile of medians
+    agg: dict[int, dict] = {}
+    for r in df.itertuples():
+        m = int(r.month)
+        if m not in agg:
+            agg[m] = {"p0_vals": [], "p25_vals": [], "p50_vals": [], "p75_vals": [], "p100_vals": [], "n_years": 0}
+        agg[m]["p0_vals"].append(float(r.p0))
+        agg[m]["p25_vals"].append(float(r.p25))
+        agg[m]["p50_vals"].append(float(r.p50))
+        agg[m]["p75_vals"].append(float(r.p75))
+        agg[m]["p100_vals"].append(float(r.p100))
+        agg[m]["n_years"] += 1
+
+    months: list[TtfSeasonalMonth] = []
+    for m in range(1, 13):
+        if m not in agg:
+            months.append(TtfSeasonalMonth(
+                month=m, label=_MONTH_LABELS[m - 1], n_years=0,
+                current=current_price if m == current_month else None,
+            ))
+            continue
+        a = agg[m]
+        months.append(TtfSeasonalMonth(
+            month=m,
+            label=_MONTH_LABELS[m - 1],
+            min=round(min(a["p0_vals"]), 2),
+            p25=round(statistics.median(a["p25_vals"]), 2),
+            median=round(statistics.median(a["p50_vals"]), 2),
+            p75=round(statistics.median(a["p75_vals"]), 2),
+            max=round(max(a["p100_vals"]), 2),
+            current=round(current_price, 2) if m == current_month and current_price is not None else None,
+            n_years=a["n_years"],
+        ))
+
+    return TtfSeasonalityResponse(
+        current_month=current_month or 0,
+        months=months,
+    )
 
 
 @app.get("/api/generation/map", response_model=GenMapResponse)

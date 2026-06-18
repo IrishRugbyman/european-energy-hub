@@ -289,6 +289,23 @@ export interface TtfCurveResponse {
   rows: TtfCurvePoint[]
 }
 
+export interface TtfSeasonalMonth {
+  month: number
+  label: string
+  min: number | null
+  p25: number | null
+  median: number | null
+  p75: number | null
+  max: number | null
+  current: number | null
+  n_years: number
+}
+
+export interface TtfSeasonalityResponse {
+  current_month: number
+  months: TtfSeasonalMonth[]
+}
+
 export interface BorderFlowRow {
   from_zone: string
   to_zone: string
@@ -424,6 +441,7 @@ export const api = {
   spreadsZones: () => get<MultiZoneSpreadsResponse>('/spreads/zones'),
   prices: () => get<PricesResponse>('/prices'),
   pricesCurve: () => get<TtfCurveResponse>('/prices/curve'),
+  pricesSeasonality: () => get<TtfSeasonalityResponse>('/prices/seasonality'),
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),

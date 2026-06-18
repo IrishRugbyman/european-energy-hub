@@ -217,7 +217,7 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 18 - NBP / UK gas price on /prices page [COMPLETE 2026-06-16]
 - Phase 19 - Wind/solar capacity factor trend on /generation [COMPLETE 2026-06-17]
 - Phase 20 - Interconnector utilization % coloring on /map flow arrows [COMPLETE - already implemented in Phase 11/14]
-- Phase 21 - Gas storage pace-to-target widget on /gas
+- Phase 21 - Gas storage pace-to-target widget on /gas [COMPLETE 2026-06-17]
 - Phase 22 - TTF seasonality strip on /prices (monthly boxplot vs 5yr range)
 - Phase 23 - Power price heatmap calendar on zone drill-down panel
 

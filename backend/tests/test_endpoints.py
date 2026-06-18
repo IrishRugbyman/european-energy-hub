@@ -388,3 +388,21 @@ def test_gas_pace(client):
     projected = [h for h in eu["history"] if h["projected"] is not None]
     assert len(actual) > 0
     assert len(projected) > 0
+
+
+def test_prices_seasonality(client):
+    r = client.get("/api/prices/seasonality")
+    assert r.status_code == 200
+    data = r.json()
+    assert "months" in data
+    assert len(data["months"]) == 12
+    assert data["current_month"] in range(1, 13)
+    for m in data["months"]:
+        assert "month" in m
+        assert "label" in m
+        assert "n_years" in m
+        # If data available, percentiles should be ordered
+        if m["p25"] is not None and m["p75"] is not None:
+            assert m["p25"] <= m["p75"]
+        if m["min"] is not None and m["median"] is not None:
+            assert m["min"] <= m["median"]

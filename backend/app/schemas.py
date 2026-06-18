@@ -201,6 +201,23 @@ class TtfCurveResponse(BaseModel):
     rows: list[TtfCurvePoint]
 
 
+class TtfSeasonalMonth(BaseModel):
+    month: int
+    label: str
+    min: float | None = None
+    p25: float | None = None
+    median: float | None = None
+    p75: float | None = None
+    max: float | None = None
+    current: float | None = None
+    n_years: int
+
+
+class TtfSeasonalityResponse(BaseModel):
+    current_month: int
+    months: list[TtfSeasonalMonth]
+
+
 # Flows
 
 class BorderFlowRow(BaseModel):

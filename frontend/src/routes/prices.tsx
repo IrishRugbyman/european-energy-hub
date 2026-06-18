@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import {
   BarChart,
   Bar,
+  ComposedChart,
   LineChart,
   Line,
   ScatterChart,
@@ -17,7 +18,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint, type TtfCurvePoint } from '@/lib/api'
+import { api, type PricesDailyPoint, type TtfCurvePoint, type TtfSeasonalMonth } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/prices')({
@@ -27,7 +28,6 @@ export const Route = createFileRoute('/prices')({
 type Window = '1Y' | '2Y' | '5Y' | 'ALL'
 const WINDOWS: Window[] = ['1Y', '2Y', '5Y', 'ALL']
 
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function cutoffDate(w: Window): string | null {
   const now = new Date()
@@ -303,78 +303,117 @@ function TtfEuaScatter({ rows }: { rows: PricesDailyPoint[] }) {
 }
 
 // TTF monthly seasonality: 5yr avg vs current year
-function TtfSeasonality({ rows }: { rows: PricesDailyPoint[] }) {
+const Y_CAP = 150 // cap axis at 150 to prevent 2022 crisis spikes from distorting IQR
+
+function TtfSeasonality({ months }: { months: TtfSeasonalMonth[] }) {
   const data = useMemo(() => {
-    const valid = rows.filter((r) => r.ttf_eur_mwh != null)
-    const currentYear = new Date().getFullYear()
-    const fiveYrCutoff = String(currentYear - 5) + '-01-01'
+    return months.map((m) => ({
+      label: m.label,
+      // Stacked bar approach for IQR box: invisible base (0 to p25) + amber box (p25 to p75)
+      base: m.p25 ?? 0,
+      iqr: m.p25 != null && m.p75 != null ? Math.min(m.p75, Y_CAP) - m.p25 : null,
+      // Thin whisker bars: (0 to min) transparent + (min to p25) gray lower whisker
+      wbase: m.min ?? 0,
+      wlow: m.p25 != null && m.min != null ? m.p25 - Math.max(m.min, 0) : null,
+      // Upper whisker above p75
+      wtop: m.p75 ?? 0,
+      whigh: m.p75 != null && m.max != null ? Math.min(m.max, Y_CAP) - m.p75 : null,
+      median: m.median,
+      current: m.current != null ? Math.min(m.current, Y_CAP) : null,
+      // Raw values for tooltip
+      _min: m.min,
+      _max: m.max,
+      _p25: m.p25,
+      _p75: m.p75,
+      _median: m.median,
+      _current: m.current,
+      _capped: m.max != null && m.max > Y_CAP,
+      n_years: m.n_years,
+    }))
+  }, [months])
 
-    // Group by (year, month)
-    const byYearMonth = new Map<string, number[]>()
-    for (const r of valid) {
-      if (r.price_date < fiveYrCutoff) continue
-      const [yr, mo] = r.price_date.split('-').map(Number)
-      const k = `${yr}-${mo}`
-      if (!byYearMonth.has(k)) byYearMonth.set(k, [])
-      byYearMonth.get(k)!.push(r.ttf_eur_mwh as number)
-    }
+  if (!months.some((m) => m.n_years > 0)) return null
 
-    const avg = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length
-
-    return Array.from({ length: 12 }, (_, i) => {
-      const month = i + 1
-      // 5yr avg across all prior complete years (exclude current)
-      const hist: number[] = []
-      for (let y = currentYear - 5; y < currentYear; y++) {
-        const vals = byYearMonth.get(`${y}-${month}`)
-        if (vals && vals.length > 0) hist.push(avg(vals))
-      }
-      const currVals = byYearMonth.get(`${currentYear}-${month}`)
-      return {
-        month: MONTHS[i],
-        avg5: hist.length > 0 ? parseFloat(avg(hist).toFixed(2)) : null,
-        current: currVals && currVals.length > 0 ? parseFloat(avg(currVals).toFixed(2)) : null,
-      }
-    })
-  }, [rows])
-
-  const hasData = data.some((d) => d.avg5 != null || d.current != null)
-  if (!hasData) return null
+  const f = (v: number | null | undefined) =>
+    v != null ? `${v.toFixed(1)} €/MWh` : '--'
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">
-        TTF monthly seasonality (€/MWh)
-      </h2>
-      <ResponsiveContainer width="100%" height={240}>
-        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          TTF monthly seasonality - IQR box (€/MWh, historical 2019-present)
+        </h2>
+        <span className="text-xs text-muted-foreground">axis capped at {Y_CAP}</span>
+      </div>
+      <ResponsiveContainer width="100%" height={260}>
+        <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
           <YAxis
             tick={{ fontSize: 10, fill: '#64748b' }}
             tickLine={false}
             axisLine={false}
             width={34}
+            domain={[0, Y_CAP]}
           />
           <Tooltip
             contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
-            formatter={(v, name) => {
-              const num = typeof v === 'number' ? v : null
-              return num != null ? [`${num.toFixed(2)} €/MWh`, String(name)] : ['--', String(name)]
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null
+              const d = payload[0]?.payload as (typeof data)[0]
+              return (
+                <div className="bg-card border border-border rounded p-2 text-xs space-y-0.5">
+                  <p className="font-medium text-foreground mb-1">{label} ({d.n_years}yr)</p>
+                  {d._current != null && (
+                    <p className="text-sky-400">Current: {f(d._current)}</p>
+                  )}
+                  <p className="text-amber-400">Median: {f(d._median)}</p>
+                  <p className="text-muted-foreground">IQR: {f(d._p25)} - {f(d._p75)}</p>
+                  <p className="text-muted-foreground">Range: {f(d._min)} - {f(d._max)}{d._capped ? ' (capped)' : ''}</p>
+                </div>
+              )
             }}
           />
-          <Legend wrapperStyle={{ fontSize: 11, paddingTop: 4 }} />
-          <Bar dataKey="avg5" name="5yr avg" fill="#60a5fa" opacity={0.6} radius={[2, 2, 0, 0]}>
-            {data.map((_, idx) => (
-              <Cell key={idx} fill="#60a5fa" opacity={0.55} />
-            ))}
-          </Bar>
-          <Bar dataKey="current" name={`${new Date().getFullYear()}`} fill="#34d399" radius={[2, 2, 0, 0]}>
-            {data.map((_, idx) => (
-              <Cell key={idx} fill="#34d399" opacity={0.85} />
-            ))}
-          </Bar>
-        </BarChart>
+          {/* Lower whisker: transparent base + thin gray bar from min to p25 */}
+          <Bar dataKey="wbase" stackId="wsk" fill="transparent" isAnimationActive={false} legendType="none" />
+          <Bar dataKey="wlow" stackId="wsk" fill="#475569" fillOpacity={0.7} barSize={3} isAnimationActive={false} legendType="none" />
+          {/* IQR box: transparent base from 0 to p25, amber box from p25 to p75 */}
+          <Bar dataKey="base" stackId="iqr" fill="transparent" isAnimationActive={false} legendType="none" />
+          <Bar dataKey="iqr" stackId="iqr" fill="#f59e0b" fillOpacity={0.35} radius={[2, 2, 0, 0]} isAnimationActive={false} name="IQR (p25-p75)" />
+          {/* Upper whisker: transparent base at p75 + thin gray bar to max */}
+          <Bar dataKey="wtop" stackId="upr" fill="transparent" isAnimationActive={false} legendType="none" />
+          <Bar dataKey="whigh" stackId="upr" fill="#475569" fillOpacity={0.7} barSize={3} isAnimationActive={false} legendType="none" />
+          {/* Median as dots floating at the right height */}
+          <Line
+            dataKey="median"
+            stroke="#f59e0b"
+            strokeWidth={0}
+            dot={{ r: 3, fill: '#f59e0b', strokeWidth: 0 }}
+            activeDot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+            name="Median"
+          />
+          {/* Current month spot price as highlighted blue dot */}
+          <Line
+            dataKey="current"
+            stroke="#38bdf8"
+            strokeWidth={0}
+            dot={{ r: 5, fill: '#38bdf8', stroke: '#0f1117', strokeWidth: 1.5 }}
+            activeDot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+            name="Current"
+          />
+          <Legend
+            wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
+            formatter={(value) =>
+              value === 'IQR (p25-p75)' ? 'IQR p25-p75' :
+              value === 'Median' ? 'Median' :
+              value === 'Current' ? 'Current spot' : value
+            }
+          />
+        </ComposedChart>
       </ResponsiveContainer>
     </div>
   )
@@ -539,6 +578,12 @@ function PricesDashboard() {
     staleTime: 15 * 60 * 1000,
   })
 
+  const { data: seasonalityData } = useQuery({
+    queryKey: ['prices-seasonality'],
+    queryFn: api.pricesSeasonality,
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+
   const rows = data?.rows ?? []
   const curveRows = curveData?.rows ?? []
 
@@ -605,7 +650,7 @@ function PricesDashboard() {
           <CorrelationMatrix rows={rows} />
           <TtfNbpSpread rows={rows} />
           <TtfEuaScatter rows={rows} />
-          <TtfSeasonality rows={rows} />
+          <TtfSeasonality months={seasonalityData?.months ?? []} />
         </div>
       )}
 
