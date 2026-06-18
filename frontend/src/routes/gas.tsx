@@ -1,6 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   ComposedChart,
   Line,
@@ -10,6 +10,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { X } from 'lucide-react'
 import { api, type StorageLatestRow, type GasPaceStats } from '@/lib/api'
 import { GasMap } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
@@ -46,6 +47,7 @@ function GasDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
   const [showFlows, setShowFlows] = useState(false)
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
+  const [showRankings, setShowRankings] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['gas-map'],
@@ -108,8 +110,18 @@ function GasDashboard() {
         </div>
       )}
 
-      {/* Physical flows toggle (top-right) */}
-      <div className="absolute top-3 right-3 z-[1000]">
+      {/* Physical flows + Rankings toggles (top-right) */}
+      <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2">
+        <button
+          onClick={() => { setShowRankings((v) => !v); setSelected(null) }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
+            showRankings
+              ? 'bg-amber-700 border-amber-600 text-white'
+              : 'bg-card/90 backdrop-blur border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Rankings
+        </button>
         <button
           onClick={() => { setShowFlows((v) => !v); setSelectedFlow(null) }}
           className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
@@ -149,7 +161,7 @@ function GasDashboard() {
       <StaleBanner datasetKey="gas" />
 
       {/* Side panel: bottom sheet on mobile, right-side on sm+ */}
-      {(selected || (showFlows && selectedFlow)) && (() => {
+      {(selected || (showFlows && selectedFlow) || showRankings) && (() => {
         const isFlowPanel = showFlows && selectedFlow != null
         const flowRow = isFlowPanel
           ? (flowsData?.rows ?? []).find((r) => r.country === selectedFlow) ?? null
@@ -167,6 +179,12 @@ function GasDashboard() {
                 latestExit={flowRow?.exit_gwh_d ?? null}
                 latestDate={flowRow?.period_date ?? null}
                 onClose={() => setSelectedFlow(null)}
+              />
+            ) : showRankings ? (
+              <StorageRankings
+                rows={data?.rows ?? []}
+                onSelect={(cc) => { setShowRankings(false); setSelected(cc) }}
+                onClose={() => setShowRankings(false)}
               />
             ) : selected ? (
               <CountryPanel
@@ -282,6 +300,111 @@ function StatChip({
       >
         {value}
       </span>
+    </div>
+  )
+}
+
+function StorageRankings({
+  rows,
+  onSelect,
+  onClose,
+}: {
+  rows: StorageLatestRow[]
+  onSelect: (cc: string) => void
+  onClose: () => void
+}) {
+  const [sortKey, setSortKey] = useState<'full_pct' | 'yoy_pct' | 'vs_avg5_pct'>('full_pct')
+
+  const sorted = useMemo(() => {
+    return [...rows]
+      .filter((r) => r.country !== 'EU')
+      .sort((a, b) => {
+        const av = a[sortKey] ?? -999
+        const bv = b[sortKey] ?? -999
+        return bv - av
+      })
+  }, [rows, sortKey])
+
+  const fmtPct = (v: number | null | undefined, d = 1) =>
+    v != null ? `${v.toFixed(d)}%` : '--'
+
+  const fmtDelta = (v: number | null | undefined) => {
+    if (v == null) return '--'
+    return `${v >= 0 ? '+' : ''}${v.toFixed(1)}pp`
+  }
+
+  const colBtn = (key: typeof sortKey, label: string) => (
+    <button
+      onClick={() => setSortKey(key)}
+      className={`px-1.5 py-0.5 rounded text-xs ${
+        sortKey === key
+          ? 'bg-primary/20 text-primary'
+          : 'text-muted-foreground hover:text-foreground'
+      }`}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+        <span className="font-medium text-sm">Storage rankings</span>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Sort controls */}
+      <div className="flex items-center gap-1 px-4 py-2 border-b border-border">
+        <span className="text-xs text-muted-foreground mr-1">Sort:</span>
+        {colBtn('full_pct', 'Fill %')}
+        {colBtn('yoy_pct', 'YoY')}
+        {colBtn('vs_avg5_pct', 'vs 5yr')}
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-card border-b border-border">
+            <tr>
+              <th className="text-left px-4 py-1.5 font-normal text-muted-foreground">Country</th>
+              <th className="text-right px-2 py-1.5 font-normal text-muted-foreground">Fill</th>
+              <th className="text-right px-2 py-1.5 font-normal text-muted-foreground">YoY</th>
+              <th className="text-right px-4 py-1.5 font-normal text-muted-foreground">vs avg</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((r) => (
+              <tr
+                key={r.country}
+                className="border-b border-border/40 hover:bg-secondary/50 cursor-pointer"
+                onClick={() => onSelect(r.country)}
+              >
+                <td className="px-4 py-1.5 font-mono">{r.country}</td>
+                <td className="px-2 py-1.5 text-right font-medium text-foreground">
+                  {fmtPct(r.full_pct)}
+                </td>
+                <td
+                  className="px-2 py-1.5 text-right"
+                  style={{ color: r.yoy_pct == null ? '#64748b' : r.yoy_pct >= 0 ? '#4ade80' : '#f87171' }}
+                >
+                  {fmtDelta(r.yoy_pct)}
+                </td>
+                <td
+                  className="px-4 py-1.5 text-right"
+                  style={{ color: r.vs_avg5_pct == null ? '#64748b' : r.vs_avg5_pct >= 0 ? '#4ade80' : '#f87171' }}
+                >
+                  {fmtDelta(r.vs_avg5_pct)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="px-4 py-2 border-t border-border text-xs text-muted-foreground">
+        Click a row to open country detail
+      </div>
     </div>
   )
 }
