@@ -425,6 +425,23 @@ export interface GenTrendsResponse {
   rows: GenAnnualRow[]
 }
 
+export interface EuAnnualFuelRow {
+  year: number
+  solar_mw: number | null
+  wind_mw: number | null
+  nuclear_mw: number | null
+  hydro_mw: number | null
+  gas_mw: number | null
+  coal_mw: number | null
+  biomass_mw: number | null
+  other_mw: number | null
+  zones: number
+}
+
+export interface EuAnnualFuelResponse {
+  rows: EuAnnualFuelRow[]
+}
+
 export interface DowPoint {
   dow: number
   label: string
@@ -545,6 +562,7 @@ export const api = {
   flows: () => get<FlowsResponse>('/flows'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genTrends: () => get<GenTrendsResponse>('/generation/trends'),
+  genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

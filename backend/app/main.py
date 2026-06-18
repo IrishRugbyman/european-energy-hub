@@ -88,6 +88,8 @@ from .schemas import (
     GasPaceCountriesResponse,
     ImbalanceHourlyPoint,
     ImbalanceProfileResponse,
+    EuAnnualFuelRow,
+    EuAnnualFuelResponse,
 )
 
 
@@ -1396,6 +1398,68 @@ def generation_trends():
     ]
 
     return GenTrendsResponse(zones=zones_sorted, years=years_set, rows=rows)
+
+
+@app.get("/api/generation/eu/annual", response_model=EuAnnualFuelResponse)
+def generation_eu_annual():
+    """EU-aggregate annual average generation mix by fuel type (2021-present).
+
+    Uses AVG(daily_mw) per zone per year then sums across all zones, so mixed
+    15-min and hourly resolution in the source data does not inflate totals.
+    Excludes 2020 (only 1 day of data for most zones).
+    """
+    df = db.query("""
+        WITH zone_year AS (
+            SELECT zone,
+                   YEAR(gen_date) AS year,
+                   AVG(solar)    AS solar_mw,
+                   AVG(wind)     AS wind_mw,
+                   AVG(nuclear)  AS nuclear_mw,
+                   AVG(hydro)    AS hydro_mw,
+                   AVG(gas)      AS gas_mw,
+                   AVG(coal)     AS coal_mw,
+                   AVG(biomass)  AS biomass_mw,
+                   AVG(other)    AS other_mw,
+                   COUNT(*)      AS n
+            FROM generation_daily
+            WHERE YEAR(gen_date) >= 2021
+            GROUP BY zone, YEAR(gen_date)
+            HAVING COUNT(*) >= 30
+        )
+        SELECT year,
+               SUM(solar_mw)    AS solar_mw,
+               SUM(wind_mw)     AS wind_mw,
+               SUM(nuclear_mw)  AS nuclear_mw,
+               SUM(hydro_mw)    AS hydro_mw,
+               SUM(gas_mw)      AS gas_mw,
+               SUM(coal_mw)     AS coal_mw,
+               SUM(biomass_mw)  AS biomass_mw,
+               SUM(other_mw)    AS other_mw,
+               COUNT(DISTINCT zone) AS zones
+        FROM zone_year
+        GROUP BY year
+        ORDER BY year
+    """)
+
+    if df is None or df.empty:
+        return EuAnnualFuelResponse(rows=[])
+
+    rows = [
+        EuAnnualFuelRow(
+            year=int(r.year),
+            solar_mw=round(_float(r.solar_mw) or 0.0, 0),
+            wind_mw=round(_float(r.wind_mw) or 0.0, 0),
+            nuclear_mw=round(_float(r.nuclear_mw) or 0.0, 0),
+            hydro_mw=round(_float(r.hydro_mw) or 0.0, 0),
+            gas_mw=round(_float(r.gas_mw) or 0.0, 0),
+            coal_mw=round(_float(r.coal_mw) or 0.0, 0),
+            biomass_mw=round(_float(r.biomass_mw) or 0.0, 0),
+            other_mw=round(_float(r.other_mw) or 0.0, 0),
+            zones=int(r.zones),
+        )
+        for r in df.itertuples()
+    ]
+    return EuAnnualFuelResponse(rows=rows)
 
 
 @app.get("/api/imbalance", response_model=ImbalanceResponse)

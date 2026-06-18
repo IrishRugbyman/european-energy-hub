@@ -1,7 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { api } from '@/lib/api'
+import { api, type EuAnnualFuelRow } from '@/lib/api'
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+} from 'recharts'
 
 export const Route = createFileRoute('/generation')({
   component: GenerationTrends,
@@ -29,10 +32,77 @@ function textColor(pct: number | null): string {
   return pct > 45 ? '#000000' : '#ffffff'
 }
 
+const FUEL_COLORS: Record<string, string> = {
+  solar: '#fbbf24',
+  wind: '#06b6d4',
+  hydro: '#3b82f6',
+  nuclear: '#7c3aed',
+  gas: '#f97316',
+  coal: '#78716c',
+  biomass: '#4ade80',
+  other: '#475569',
+}
+
+function EuFuelMixChart({ rows }: { rows: EuAnnualFuelRow[] }) {
+  const currentYear = new Date().getFullYear()
+  const chartData = rows
+    .filter((r) => r.year < currentYear)
+    .map((r) => ({
+      year: String(r.year),
+      solar: Math.round(r.solar_mw ?? 0),
+      wind: Math.round(r.wind_mw ?? 0),
+      hydro: Math.round(r.hydro_mw ?? 0),
+      nuclear: Math.round(r.nuclear_mw ?? 0),
+      gas: Math.round(r.gas_mw ?? 0),
+      coal: Math.round(r.coal_mw ?? 0),
+      biomass: Math.round(r.biomass_mw ?? 0),
+      other: Math.round(r.other_mw ?? 0),
+    }))
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-1">EU-34 Energy Mix - Annual Average Generation (MW)</h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Average of daily average MW per zone, summed across 34 bidding zones.
+        Solar +{Math.round(((rows.find(r => r.year === currentYear - 1)?.solar_mw ?? 0) / (rows.find(r => r.year === 2021)?.solar_mw ?? 1) - 1) * 100)}% from 2021.
+        Coal {Math.round(((rows.find(r => r.year === currentYear - 1)?.coal_mw ?? 0) / (rows.find(r => r.year === 2021)?.coal_mw ?? 1) - 1) * 100)}% from 2021.
+      </p>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={chartData} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="year" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={52} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => [`${(v as number).toLocaleString()} MW`, String(name)]}
+          />
+          {(['nuclear', 'hydro', 'wind', 'solar', 'gas', 'coal', 'biomass', 'other'] as const).map((f) => (
+            <Bar key={f} dataKey={f} stackId="a" fill={FUEL_COLORS[f]} isAnimationActive={false} name={f} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-2 mt-2">
+        {(['solar', 'wind', 'hydro', 'nuclear', 'gas', 'coal', 'biomass'] as const).map((f) => (
+          <span key={f} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: FUEL_COLORS[f] }} />
+            {f}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
     queryFn: api.genTrends,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: euFuelData } = useQuery({
+    queryKey: ['gen-eu-annual'],
+    queryFn: api.genEuAnnual,
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -78,6 +148,8 @@ function GenerationTrends() {
 
   return (
     <div className="p-4 h-full overflow-y-auto">
+      {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
+
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>
         <p className="text-xs text-muted-foreground mt-0.5">

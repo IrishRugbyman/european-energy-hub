@@ -531,6 +531,23 @@ class ImbalanceResponse(BaseModel):
     daily: list[ImbalanceDailyPoint]
 
 
+class EuAnnualFuelRow(BaseModel):
+    year: int
+    solar_mw: float | None
+    wind_mw: float | None
+    nuclear_mw: float | None
+    hydro_mw: float | None
+    gas_mw: float | None
+    coal_mw: float | None
+    biomass_mw: float | None
+    other_mw: float | None
+    zones: int
+
+
+class EuAnnualFuelResponse(BaseModel):
+    rows: list[EuAnnualFuelRow]
+
+
 class MultiZoneSpreadRow(BaseModel):
     price_date: str
     zone: str
