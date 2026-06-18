@@ -5,6 +5,7 @@ import {
   Area,
   AreaChart,
   Bar,
+  BarChart,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -15,7 +16,15 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type PowerLatestRow, type GenMapItem, type CapacityFactorPoint, type HourlyProfilePoint } from '@/lib/api'
+import {
+  api,
+  type PowerLatestRow,
+  type GenMapItem,
+  type CapacityFactorPoint,
+  type HourlyProfilePoint,
+  type DowPoint,
+  type MonthPoint,
+} from '@/lib/api'
 import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
@@ -58,6 +67,13 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
   const { data: profileData } = useQuery({
     queryKey: ['power-zone-profile', zone],
     queryFn: () => api.powerZoneProfile(zone),
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  })
+
+  const { data: seasonalityData } = useQuery({
+    queryKey: ['power-zone-seasonality', zone],
+    queryFn: () => api.powerZoneSeasonality(zone),
     staleTime: 60 * 60 * 1000,
     retry: false,
   })
@@ -175,6 +191,14 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
               Avg. hourly profile - 90 days (CET)
             </p>
             <HourlyProfileChart rows={profileData.rows} />
+          </div>
+        )}
+
+        {/* Seasonal price patterns */}
+        {seasonalityData && (
+          <div className="p-3 border-b border-border">
+            <p className="text-xs text-muted-foreground mb-2">Price seasonality - 2yr avg (€/MWh)</p>
+            <SeasonalityCharts dow={seasonalityData.dow} monthly={seasonalityData.monthly} />
           </div>
         )}
 
@@ -552,6 +576,63 @@ function Placeholder() {
 
 function NoData() {
   return <div className="flex items-center justify-center h-16 text-muted-foreground text-xs">No data</div>
+}
+
+function SeasonalityCharts({ dow, monthly }: { dow: DowPoint[]; monthly: MonthPoint[] }) {
+  const WEEKDAY_COLOR = '#60a5fa'
+  const WEEKEND_COLOR = '#94a3b8'
+  const DOW_ORDER = [1, 2, 3, 4, 5, 6, 0] // Mon-Sun
+  const sortedDow = DOW_ORDER.map((d) => dow.find((r) => r.dow === d)).filter(Boolean) as DowPoint[]
+
+  const isWeekend = (d: DowPoint) => d.dow === 0 || d.dow === 6
+
+  return (
+    <div className="space-y-3">
+      {/* Day of week */}
+      <div>
+        <p className="text-[10px] text-muted-foreground mb-1">Day of week</p>
+        <ResponsiveContainer width="100%" height={70}>
+          <BarChart data={sortedDow} margin={{ top: 2, right: 2, bottom: 0, left: 0 }} barCategoryGap="10%">
+            <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} axisLine={false} />
+            <YAxis hide domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+              formatter={(v: unknown) => [typeof v === 'number' ? `${v.toFixed(1)} €/MWh` : '--', 'Avg']}
+            />
+            <Bar dataKey="avg_eur" radius={[2, 2, 0, 0]}>
+              {sortedDow.map((d) => (
+                <rect key={d.dow} fill={isWeekend(d) ? WEEKEND_COLOR : WEEKDAY_COLOR} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+        <div className="flex gap-3 text-[10px] text-muted-foreground mt-0.5">
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-sky-400 inline-block" />Weekday</span>
+          <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-slate-400 inline-block" />Weekend</span>
+        </div>
+      </div>
+      {/* Month of year */}
+      <div>
+        <p className="text-[10px] text-muted-foreground mb-1">Month of year</p>
+        <ResponsiveContainer width="100%" height={70}>
+          <BarChart data={monthly} margin={{ top: 2, right: 2, bottom: 0, left: 0 }} barCategoryGap="10%">
+            <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} axisLine={false} />
+            <YAxis hide domain={['auto', 'auto']} />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+              formatter={(v: unknown, name: unknown) => {
+                const n = typeof v === 'number' ? v : null
+                return name === 'avg_neg_hrs'
+                  ? [n != null ? `${n.toFixed(1)}h` : '--', 'Neg hrs']
+                  : [n != null ? `${n.toFixed(1)} €/MWh` : '--', 'Avg price']
+              }}
+            />
+            <Bar dataKey="avg_eur" fill="#60a5fa" radius={[2, 2, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
 }
 
 function HourlyProfileChart({ rows }: { rows: HourlyProfilePoint[] }) {

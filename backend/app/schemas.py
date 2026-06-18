@@ -180,6 +180,25 @@ class PowerZoneProfileResponse(BaseModel):
     rows: list[HourlyProfilePoint]
 
 
+class DowPoint(BaseModel):
+    dow: int
+    label: str
+    avg_eur: float | None
+
+
+class MonthPoint(BaseModel):
+    month: int
+    label: str
+    avg_eur: float | None
+    avg_neg_hrs: float | None
+
+
+class PowerSeasonalityResponse(BaseModel):
+    zone: str
+    dow: list[DowPoint]
+    monthly: list[MonthPoint]
+
+
 # Spreads
 
 class SpreadsDailyPoint(BaseModel):

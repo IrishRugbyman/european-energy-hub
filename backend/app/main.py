@@ -50,8 +50,11 @@ from .schemas import (
     GenerationMixRow,
     HealthResponse,
     MetaResponse,
+    DowPoint,
     HourlyProfilePoint,
+    MonthPoint,
     PowerDailyPoint,
+    PowerSeasonalityResponse,
     PowerHourlyPoint,
     PowerLatestRow,
     PowerMapResponse,
@@ -694,6 +697,46 @@ def power_zone(zone_id: str):
         generation_mix=gen_mix,
         generation_hourly=gen_hourly,
     )
+
+
+@app.get("/api/power/zone/{zone_id}/seasonality", response_model=PowerSeasonalityResponse)
+def power_zone_seasonality(zone_id: str):
+    """Day-of-week and month-of-year avg price for a zone (2-year history)."""
+    zone_id = zone_id.upper()
+    DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    MONTH_LABELS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    dow_df = db.query(
+        """
+        SELECT DAYOFWEEK(price_date) AS dow, AVG(base_eur) AS avg_eur
+        FROM power_daily WHERE zone = ? AND base_eur IS NOT NULL
+        GROUP BY dow ORDER BY dow
+        """,
+        [zone_id],
+    )
+    month_df = db.query(
+        """
+        SELECT MONTH(price_date) AS month, AVG(base_eur) AS avg_eur, AVG(neg_hours) AS avg_neg_hrs
+        FROM power_daily WHERE zone = ? AND base_eur IS NOT NULL
+        GROUP BY month ORDER BY month
+        """,
+        [zone_id],
+    )
+
+    dow_rows = [
+        DowPoint(dow=int(r.dow), label=DOW_LABELS[int(r.dow)], avg_eur=_float(r.avg_eur))
+        for r in dow_df.itertuples()
+    ]
+    month_rows = [
+        MonthPoint(
+            month=int(r.month),
+            label=MONTH_LABELS[int(r.month)],
+            avg_eur=_float(r.avg_eur),
+            avg_neg_hrs=_float(r.avg_neg_hrs),
+        )
+        for r in month_df.itertuples()
+    ]
+    return PowerSeasonalityResponse(zone=zone_id, dow=dow_rows, monthly=month_rows)
 
 
 @app.get("/api/power/zone/{zone_id}/profile", response_model=PowerZoneProfileResponse)

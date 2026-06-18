@@ -82,6 +82,22 @@ def test_power_zone_delu(client):
     assert data["generation_mix"]["wind"] == 12000.0
 
 
+def test_power_zone_seasonality(client):
+    r = client.get("/api/power/zone/DE-LU/seasonality")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert len(data["dow"]) == 7
+    assert len(data["monthly"]) == 12
+    dow_labels = [d["label"] for d in data["dow"]]
+    assert "Mon" in dow_labels and "Sun" in dow_labels
+    for d in data["dow"]:
+        assert d["avg_eur"] is not None
+    for m in data["monthly"]:
+        assert m["avg_eur"] is not None
+        assert m["avg_neg_hrs"] is not None
+
+
 def test_power_zone_profile(client):
     r = client.get("/api/power/zone/DE-LU/profile")
     assert r.status_code == 200

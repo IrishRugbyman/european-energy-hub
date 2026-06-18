@@ -397,6 +397,25 @@ export interface GenTrendsResponse {
   rows: GenAnnualRow[]
 }
 
+export interface DowPoint {
+  dow: number
+  label: string
+  avg_eur: number | null
+}
+
+export interface MonthPoint {
+  month: number
+  label: string
+  avg_eur: number | null
+  avg_neg_hrs: number | null
+}
+
+export interface PowerSeasonalityResponse {
+  zone: string
+  dow: DowPoint[]
+  monthly: MonthPoint[]
+}
+
 export interface HourlyProfilePoint {
   hour: number
   avg_eur: number | null
@@ -487,6 +506,7 @@ export const api = {
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
+  powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
   spreads: () => get<SpreadsResponse>('/spreads'),
   spreadsZones: () => get<MultiZoneSpreadsResponse>('/spreads/zones'),
   prices: () => get<PricesResponse>('/prices'),
