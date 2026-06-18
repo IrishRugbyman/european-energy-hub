@@ -545,3 +545,53 @@ def test_prices_regime(client):
         assert r["eua_vol_30d"] is None or r["eua_vol_30d"] >= 0
         if r["ttf_eua_corr_90d"] is not None:
             assert -1.0 <= r["ttf_eua_corr_90d"] <= 1.0
+
+
+def test_generation_zone(client):
+    r = client.get("/api/generation/zone/DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["gen_date"] is not None
+    assert data["renewable_pct"] is not None
+    assert data["dominant_fuel"] is not None
+    assert isinstance(data["hourly"], list)
+    assert isinstance(data["daily"], list)
+    assert len(data["daily"]) > 0
+    for row in data["daily"][:3]:
+        assert "gen_date" in row
+        assert "renewable_pct" in row
+        assert "total_mw" in row
+
+
+def test_generation_zone_not_found(client):
+    r = client.get("/api/generation/zone/XX-FAKE")
+    assert r.status_code == 404
+
+
+def test_generation_zone_lowercase(client):
+    r = client.get("/api/generation/zone/de-lu")
+    assert r.status_code == 200
+    assert r.json()["zone"] == "DE-LU"
+
+
+def test_generation_zone_capacity(client):
+    r = client.get("/api/generation/zone/DE-LU/capacity")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert isinstance(data["daily"], list)
+    assert len(data["daily"]) > 0
+    for row in data["daily"][:3]:
+        assert "gen_date" in row
+        assert "wind_cf" in row
+        assert "solar_cf" in row
+        if row["wind_cf"] is not None:
+            assert 0.0 <= row["wind_cf"] <= 1.0
+        if row["solar_cf"] is not None:
+            assert 0.0 <= row["solar_cf"] <= 1.0
+
+
+def test_generation_zone_capacity_not_found(client):
+    r = client.get("/api/generation/zone/XX-FAKE/capacity")
+    assert r.status_code == 404
