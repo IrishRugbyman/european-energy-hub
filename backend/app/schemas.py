@@ -101,12 +101,23 @@ class SeasonalBandPoint(BaseModel):
     max5: float | None
 
 
+class GasDoyPoint(BaseModel):
+    doy: int
+    full_pct: float | None
+
+
+class GasYearTrack(BaseModel):
+    year: int
+    data: list[GasDoyPoint]
+
+
 class GasCountryResponse(BaseModel):
     country: str
     latest: StorageLatestRow | None
     current_year: list[SeasonalPoint]
     prior_year: list[SeasonalPoint]
     seasonal_band: list[SeasonalBandPoint]
+    yearly_tracks: list[GasYearTrack] = []
 
 
 # Power map

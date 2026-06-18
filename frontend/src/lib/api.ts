@@ -63,12 +63,23 @@ export interface SeasonalBandPoint {
   max5: number | null
 }
 
+export interface GasDoyPoint {
+  doy: number
+  full_pct: number | null
+}
+
+export interface GasYearTrack {
+  year: number
+  data: GasDoyPoint[]
+}
+
 export interface GasCountryResponse {
   country: string
   latest: StorageLatestRow | null
   current_year: SeasonalPoint[]
   prior_year: SeasonalPoint[]
   seasonal_band: SeasonalBandPoint[]
+  yearly_tracks: GasYearTrack[]
 }
 
 export interface MetaResponse {

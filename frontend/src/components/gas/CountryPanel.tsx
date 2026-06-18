@@ -1,17 +1,19 @@
 import { X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
+import { useMemo } from 'react'
 import {
   Area,
   AreaChart,
   CartesianGrid,
   Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type StorageLatestRow } from '@/lib/api'
+import { api, type GasYearTrack, type StorageLatestRow } from '@/lib/api'
 import { countryName, gasFillColor } from '@/lib/scales'
 import { fmtDelta, fmtPct } from '@/lib/utils'
 
@@ -230,6 +232,14 @@ export function CountryPanel({ country, latest, onClose }: Props) {
             </div>
           </div>
         )}
+
+        {/* Year-on-year spaghetti chart */}
+        {(data?.yearly_tracks?.length ?? 0) > 0 && (
+          <div className="mt-5">
+            <p className="text-xs text-muted-foreground mb-2">Fill % - year on year</p>
+            <StorageYoyChart tracks={data!.yearly_tracks} />
+          </div>
+        )}
       </div>
     </div>
   )
@@ -336,4 +346,110 @@ function doyToMonthLabel(doy: number): string {
     }
   }
   return ''
+}
+
+// Colors for each historical year. 2022 is highlighted (energy crisis).
+const YOY_COLORS: Record<number, { stroke: string; width: number }> = {
+  2019: { stroke: '#1e3a5f', width: 1 },
+  2020: { stroke: '#1e3a5f', width: 1 },
+  2021: { stroke: '#1e3a5f', width: 1 },
+  2022: { stroke: '#f59e0b', width: 1.5 },
+  2023: { stroke: '#334155', width: 1 },
+  2024: { stroke: '#64748b', width: 1.5 },
+  2025: { stroke: '#94a3b8', width: 1.5 },
+  2026: { stroke: '#38bdf8', width: 2.5 },
+}
+
+type YoyPoint = { doy: number; label: string; [k: string]: number | string | null }
+
+function buildYoyChart(tracks: GasYearTrack[]): { rows: YoyPoint[]; years: number[] } {
+  if (!tracks.length) return { rows: [], years: [] }
+  const years = tracks.map((t) => t.year)
+
+  // Index each track by DOY
+  const byYear: Record<number, Record<number, number | null>> = {}
+  for (const track of tracks) {
+    const m: Record<number, number | null> = {}
+    for (const pt of track.data) m[pt.doy] = pt.full_pct
+    byYear[track.year] = m
+  }
+
+  const rows: YoyPoint[] = []
+  for (let doy = 1; doy <= 366; doy++) {
+    const row: YoyPoint = { doy, label: doyToMonthLabel(doy) }
+    for (const yr of years) row[`y${yr}`] = byYear[yr]?.[doy] ?? null
+    rows.push(row)
+  }
+  return { rows, years }
+}
+
+function StorageYoyChart({ tracks }: { tracks: GasYearTrack[] }) {
+  const { rows, years } = useMemo(() => buildYoyChart(tracks), [tracks])
+
+  if (!rows.length) return null
+
+  const currentYear = new Date().getFullYear()
+
+  return (
+    <>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={rows} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            interval={0}
+          />
+          <YAxis
+            domain={[0, 100]}
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(v) => `${v}%`}
+            width={32}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v, name) => {
+              const num = typeof v === 'number' ? v : null
+              return num != null ? [`${num.toFixed(1)}%`, String(name).replace('y', '')] : null
+            }}
+            labelFormatter={(label) => label || ''}
+          />
+          <ReferenceLine y={90} stroke="#16a34a" strokeDasharray="4 2" strokeWidth={1} strokeOpacity={0.6} />
+          {years.map((yr) => {
+            const style = YOY_COLORS[yr] ?? { stroke: '#334155', width: 1 }
+            return (
+              <Line
+                key={yr}
+                type="monotone"
+                dataKey={`y${yr}`}
+                stroke={style.stroke}
+                strokeWidth={style.width}
+                dot={false}
+                connectNulls={false}
+                name={`y${yr}`}
+                isAnimationActive={false}
+              />
+            )
+          })}
+        </LineChart>
+      </ResponsiveContainer>
+      {/* Legend */}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+        {years.map((yr) => {
+          const style = YOY_COLORS[yr] ?? { stroke: '#334155', width: 1 }
+          return (
+            <div key={yr} className="flex items-center gap-1">
+              <div className="w-4 h-0.5 rounded" style={{ backgroundColor: style.stroke }} />
+              <span className="text-xs" style={{ color: yr === currentYear ? '#38bdf8' : '#64748b' }}>
+                {yr}
+                {yr === 2022 ? ' ⚡' : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </>
+  )
 }

@@ -34,6 +34,8 @@ from .schemas import (
     DivergenceResponse,
     FlowsResponse,
     GasCountryResponse,
+    GasDoyPoint,
+    GasYearTrack,
     GasFlowCountryResponse,
     GasFlowItem,
     GasFlowResponse,
@@ -229,12 +231,37 @@ def gas_country(cc: str):
         for row in band_df.itertuples()
     ] if not band_df.empty else []
 
+    # Year-on-year tracks: daily fill% per calendar year, aligned to day-of-year
+    tracks_df = db.query(
+        """
+        SELECT YEAR(gas_day) AS year,
+               DAYOFYEAR(gas_day) AS doy,
+               full_pct
+        FROM storage_history
+        WHERE country = ?
+          AND YEAR(gas_day) >= 2019
+        ORDER BY year, doy
+        """,
+        [cc],
+    )
+    yearly_tracks: list[GasYearTrack] = []
+    if not tracks_df.empty:
+        from itertools import groupby
+        rows_iter = (
+            (int(r.year), int(r.doy), _float(r.full_pct))
+            for r in tracks_df.itertuples()
+        )
+        for yr, group in groupby(rows_iter, key=lambda x: x[0]):
+            pts = [GasDoyPoint(doy=doy, full_pct=fp) for _, doy, fp in group]
+            yearly_tracks.append(GasYearTrack(year=yr, data=pts))
+
     return GasCountryResponse(
         country=cc,
         latest=latest,
         current_year=current,
         prior_year=prior,
         seasonal_band=band,
+        yearly_tracks=yearly_tracks,
     )
 
 
