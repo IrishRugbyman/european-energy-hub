@@ -166,6 +166,20 @@ class PowerZoneResponse(BaseModel):
     generation_hourly: list["GenHourlyPoint"] = []
 
 
+class HourlyProfilePoint(BaseModel):
+    hour: int
+    avg_eur: float | None
+    p25_eur: float | None
+    p75_eur: float | None
+    neg_pct: float | None
+
+
+class PowerZoneProfileResponse(BaseModel):
+    zone: str
+    days: int
+    rows: list[HourlyProfilePoint]
+
+
 # Spreads
 
 class SpreadsDailyPoint(BaseModel):

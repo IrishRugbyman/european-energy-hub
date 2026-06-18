@@ -397,6 +397,20 @@ export interface GenTrendsResponse {
   rows: GenAnnualRow[]
 }
 
+export interface HourlyProfilePoint {
+  hour: number
+  avg_eur: number | null
+  p25_eur: number | null
+  p75_eur: number | null
+  neg_pct: number | null
+}
+
+export interface PowerZoneProfileResponse {
+  zone: string
+  days: number
+  rows: HourlyProfilePoint[]
+}
+
 export interface DivergenceLatestRow {
   from_zone: string
   to_zone: string
@@ -472,6 +486,7 @@ export const api = {
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
+  powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   spreads: () => get<SpreadsResponse>('/spreads'),
   spreadsZones: () => get<MultiZoneSpreadsResponse>('/spreads/zones'),
   prices: () => get<PricesResponse>('/prices'),

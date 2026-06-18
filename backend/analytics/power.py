@@ -48,11 +48,13 @@ def build_power_tables() -> dict[str, pd.DataFrame]:
     power_daily = _build_daily(raw)
     power_hourly_recent = _build_hourly_recent(raw)
     power_latest = _build_latest(power_daily)
+    power_hourly_profiles = _build_hourly_profiles(raw)
 
     return {
         "power_daily": power_daily,
         "power_hourly_recent": power_hourly_recent,
         "power_latest": power_latest,
+        "power_hourly_profiles": power_hourly_profiles,
     }
 
 
@@ -149,6 +151,35 @@ def _build_latest(daily: pd.DataFrame) -> pd.DataFrame:
             "day_range_eur": round(float(latest_row["day_range_eur"]), 2) if latest_row.get("day_range_eur") is not None else None,
             "neg_hours": int(latest_row["neg_hours"]) if latest_row.get("neg_hours") is not None else 0,
             "pct_rank_2yr": pct_rank_2yr,
+        })
+
+    return pd.DataFrame(rows)
+
+
+def _build_hourly_profiles(df: pd.DataFrame) -> pd.DataFrame:
+    """Compute average 24-hour price profile per zone from last 90 days (CET local time)."""
+    cutoff = df["ts"].max() - pd.Timedelta(days=90)
+    recent = df[df["ts"] >= cutoff].copy()
+    if recent.empty:
+        return pd.DataFrame(columns=["zone", "hour", "avg_eur", "p25_eur", "p75_eur", "neg_pct"])
+
+    # Convert UTC timestamps to CET (Europe/Paris) and extract hour
+    recent["ts_cet"] = recent["ts"].dt.tz_localize("UTC").dt.tz_convert("Europe/Paris")
+    recent["hour"] = recent["ts_cet"].dt.hour
+    recent["is_neg"] = (recent["price_eur_mwh"] < 0).astype(float)
+
+    rows = []
+    for (zone, hour), grp in recent.groupby(["zone", "hour"], sort=True):
+        p = grp["price_eur_mwh"].dropna()
+        if p.empty:
+            continue
+        rows.append({
+            "zone": zone,
+            "hour": int(hour),
+            "avg_eur": round(float(p.mean()), 2),
+            "p25_eur": round(float(p.quantile(0.25)), 2),
+            "p75_eur": round(float(p.quantile(0.75)), 2),
+            "neg_pct": round(float(grp["is_neg"].mean() * 100), 1),
         })
 
     return pd.DataFrame(rows)

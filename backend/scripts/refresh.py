@@ -194,6 +194,7 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     daily = tables["power_daily"]
     hourly = tables["power_hourly_recent"]
     latest = tables["power_latest"]
+    profiles = tables.get("power_hourly_profiles")
 
     conn.execute("""
         CREATE OR REPLACE TABLE power_daily (
@@ -242,8 +243,24 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_pl", latest)
         conn.execute("INSERT INTO power_latest SELECT * FROM _pl")
 
+    conn.execute("""
+        CREATE OR REPLACE TABLE power_hourly_profiles (
+            zone VARCHAR,
+            hour TINYINT,
+            avg_eur REAL,
+            p25_eur REAL,
+            p75_eur REAL,
+            neg_pct REAL
+        )
+    """)
+    if profiles is not None and not profiles.empty:
+        conn.register("_pp", profiles)
+        conn.execute("INSERT INTO power_hourly_profiles SELECT * FROM _pp")
+
+    n_profiles = len(profiles) if profiles is not None else 0
     logger.info(
-        f"power: {len(daily)} daily rows, {len(hourly)} hourly-recent rows, {len(latest)} latest rows"
+        f"power: {len(daily)} daily rows, {len(hourly)} hourly-recent rows, "
+        f"{len(latest)} latest rows, {n_profiles} hourly-profile rows"
     )
 
 

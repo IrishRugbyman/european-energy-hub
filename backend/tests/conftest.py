@@ -116,6 +116,25 @@ def _seed_db(path: str) -> None:
         )
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_power", "2026-06-12T12:00:00+00:00"])
 
+    # Hourly price profiles (avg price by hour-of-day, last 90 days)
+    conn.execute("""
+        CREATE TABLE power_hourly_profiles (
+            zone VARCHAR, hour TINYINT,
+            avg_eur REAL, p25_eur REAL, p75_eur REAL, neg_pct REAL
+        )
+    """)
+    for zone, base in [("DE-LU", 80.0), ("FR", 65.0)]:
+        for h in range(24):
+            # U-shape: low midday, high evening (simplified solar cannibalization pattern)
+            avg = round(base + (abs(h - 18) - 8) * 2.5, 2)
+            p25 = round(avg - 15.0, 2)
+            p75 = round(avg + 20.0, 2)
+            neg_pct = round(max(0.0, (10 - h) * 2.0) if 6 <= h <= 12 else 0.0, 1)
+            conn.execute(
+                "INSERT INTO power_hourly_profiles VALUES (?, ?, ?, ?, ?, ?)",
+                [zone, h, avg, p25, p75, neg_pct],
+            )
+
     # Spreads tables
     conn.execute("""
         CREATE TABLE spreads_daily (

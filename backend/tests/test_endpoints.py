@@ -82,6 +82,24 @@ def test_power_zone_delu(client):
     assert data["generation_mix"]["wind"] == 12000.0
 
 
+def test_power_zone_profile(client):
+    r = client.get("/api/power/zone/DE-LU/profile")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["days"] == 90
+    rows = data["rows"]
+    assert len(rows) == 24
+    hours = [r["hour"] for r in rows]
+    assert hours == list(range(24))
+    for row in rows:
+        assert row["avg_eur"] is not None
+        assert row["p25_eur"] is not None
+        assert row["p75_eur"] is not None
+        assert row["neg_pct"] is not None
+        assert 0.0 <= row["neg_pct"] <= 100.0
+
+
 def test_power_zone_unknown(client):
     r = client.get("/api/power/zone/XX-1")
     assert r.status_code == 404

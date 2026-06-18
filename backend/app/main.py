@@ -50,10 +50,12 @@ from .schemas import (
     GenerationMixRow,
     HealthResponse,
     MetaResponse,
+    HourlyProfilePoint,
     PowerDailyPoint,
     PowerHourlyPoint,
     PowerLatestRow,
     PowerMapResponse,
+    PowerZoneProfileResponse,
     PowerZoneResponse,
     ImbalanceDailyPoint,
     ImbalanceLatest,
@@ -692,6 +694,27 @@ def power_zone(zone_id: str):
         generation_mix=gen_mix,
         generation_hourly=gen_hourly,
     )
+
+
+@app.get("/api/power/zone/{zone_id}/profile", response_model=PowerZoneProfileResponse)
+def power_zone_profile(zone_id: str):
+    """24-hour average price profile for a zone (90-day window, CET local time)."""
+    zone_id = zone_id.upper()
+    df = db.query(
+        "SELECT hour, avg_eur, p25_eur, p75_eur, neg_pct FROM power_hourly_profiles WHERE zone = ? ORDER BY hour",
+        [zone_id],
+    )
+    rows = [
+        HourlyProfilePoint(
+            hour=int(r.hour),
+            avg_eur=_float(r.avg_eur),
+            p25_eur=_float(r.p25_eur),
+            p75_eur=_float(r.p75_eur),
+            neg_pct=_float(r.neg_pct),
+        )
+        for r in df.itertuples()
+    ]
+    return PowerZoneProfileResponse(zone=zone_id, days=90, rows=rows)
 
 
 @app.get("/api/flows", response_model=FlowsResponse)

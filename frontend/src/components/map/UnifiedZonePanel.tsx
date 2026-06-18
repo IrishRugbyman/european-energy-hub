@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
+  Bar,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -14,7 +15,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type PowerLatestRow, type GenMapItem, type CapacityFactorPoint } from '@/lib/api'
+import { api, type PowerLatestRow, type GenMapItem, type CapacityFactorPoint, type HourlyProfilePoint } from '@/lib/api'
 import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
@@ -50,6 +51,13 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
   const { data: capacityData } = useQuery({
     queryKey: ['gen-capacity', zone],
     queryFn: () => api.genCapacity(zone),
+    staleTime: 60 * 60 * 1000,
+    retry: false,
+  })
+
+  const { data: profileData } = useQuery({
+    queryKey: ['power-zone-profile', zone],
+    queryFn: () => api.powerZoneProfile(zone),
     staleTime: 60 * 60 * 1000,
     retry: false,
   })
@@ -157,6 +165,16 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           <div className="p-3 border-b border-border">
             <p className="text-xs text-muted-foreground mb-2">Price heatmap - last 8 days (hover for exact price)</p>
             <PriceHeatmap rows={priceHeatmapRows} />
+          </div>
+        )}
+
+        {/* 24h price profile: avg by hour-of-day over 90 days */}
+        {profileData && profileData.rows.length > 0 && (
+          <div className="p-3 border-b border-border">
+            <p className="text-xs text-muted-foreground mb-2">
+              Avg. hourly profile - 90 days (CET)
+            </p>
+            <HourlyProfileChart rows={profileData.rows} />
           </div>
         )}
 
@@ -534,6 +552,51 @@ function Placeholder() {
 
 function NoData() {
   return <div className="flex items-center justify-center h-16 text-muted-foreground text-xs">No data</div>
+}
+
+function HourlyProfileChart({ rows }: { rows: HourlyProfilePoint[] }) {
+  const data = rows.map((r) => ({
+    h: `${r.hour.toString().padStart(2, '0')}`,
+    avg: r.avg_eur,
+    p25: r.p25_eur,
+    p75: r.p75_eur,
+    neg_pct: r.neg_pct,
+  }))
+
+  return (
+    <div>
+      <ResponsiveContainer width="100%" height={120}>
+        <ComposedChart data={data} margin={{ top: 2, right: 2, bottom: 2, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="h" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} interval={3} />
+          <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={36} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => {
+              const n = typeof v === 'number' ? v : null
+              if (name === 'avg') return [n != null ? `${n.toFixed(1)} €/MWh` : '--', 'Avg']
+              if (name === 'p25') return [n != null ? `${n.toFixed(1)} €/MWh` : '--', 'P25']
+              if (name === 'p75') return [n != null ? `${n.toFixed(1)} €/MWh` : '--', 'P75']
+              return [n != null ? `${n.toFixed(1)}%` : '--', 'Neg %']
+            }}
+          />
+          {/* IQR band as faint area between p25 and p75 */}
+          <Area type="monotone" dataKey="p75" stroke="none" fill="#38bdf8" fillOpacity={0.12} legendType="none" />
+          <Area type="monotone" dataKey="p25" stroke="none" fill="#0f1117" fillOpacity={1} legendType="none" />
+          {/* Negative hours as faint red bars */}
+          <Bar dataKey="neg_pct" yAxisId="neg" fill="#f87171" opacity={0.35} legendType="none" />
+          <YAxis yAxisId="neg" orientation="right" tick={{ fontSize: 8, fill: '#f8717160' }} tickLine={false} width={28} tickFormatter={(v) => `${v}%`} />
+          <Line type="monotone" dataKey="avg" stroke="#38bdf8" strokeWidth={1.5} dot={false} name="avg" />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="2 2" strokeWidth={1} />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-sky-400" /><span>Avg price</span></div>
+        <div className="flex items-center gap-1"><div className="w-3 h-2 bg-sky-400/15 rounded-sm" /><span>IQR band</span></div>
+        <div className="flex items-center gap-1"><div className="w-3 h-2 bg-red-400/35 rounded-sm" /><span>Neg. hour %</span></div>
+      </div>
+    </div>
+  )
 }
 
 function buildFuelBreakdown(item: GenMapItem | null): { fuel: string; mw: number; pct: number }[] {
