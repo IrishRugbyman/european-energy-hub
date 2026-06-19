@@ -570,6 +570,22 @@ export interface TtfCurveSnapshotsResponse {
   rows: TtfCurveSnapshotRow[]
 }
 
+export interface GenMonthlyRow {
+  year: number
+  month: number
+  renewable_pct: number | null
+  solar_pct: number | null
+  wind_pct: number | null
+  nuclear_pct: number | null
+  gas_pct: number | null
+  coal_pct: number | null
+  n_zones: number
+}
+
+export interface GenMonthlyResponse {
+  rows: GenMonthlyRow[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -610,6 +626,7 @@ export const api = {
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genTrends: () => get<GenTrendsResponse>('/generation/trends'),
   genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),
+  genEuMonthly: () => get<GenMonthlyResponse>('/generation/eu/monthly'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

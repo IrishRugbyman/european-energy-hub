@@ -62,6 +62,8 @@ from .schemas import (
     PowerZoneResponse,
     ImbalanceDailyPoint,
     ImbalanceLatest,
+    GenMonthlyRow,
+    GenMonthlyResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -1589,6 +1591,79 @@ def generation_eu_annual():
         for r in df.itertuples()
     ]
     return EuAnnualFuelResponse(rows=rows)
+
+
+@app.get("/api/generation/eu/monthly", response_model=GenMonthlyResponse)
+def generation_eu_monthly():
+    """EU-aggregate monthly renewable % and fuel breakdown (Jan 2021 to present).
+
+    Uses zone-average daily MW then sums across zones, then expresses each fuel
+    as a share of total generation. Includes months with >=20 zone-days of data.
+    """
+    df = db.query("""
+        WITH zone_month AS (
+            SELECT zone,
+                   YEAR(gen_date)  AS year,
+                   MONTH(gen_date) AS month,
+                   AVG(solar)     AS solar_mw,
+                   AVG(wind)      AS wind_mw,
+                   AVG(nuclear)   AS nuclear_mw,
+                   AVG(hydro)     AS hydro_mw,
+                   AVG(gas)       AS gas_mw,
+                   AVG(coal)      AS coal_mw,
+                   AVG(biomass)   AS biomass_mw,
+                   AVG(other)     AS other_mw,
+                   COUNT(*)       AS n_days
+            FROM generation_daily
+            WHERE YEAR(gen_date) >= 2021 AND total_mw > 0
+            GROUP BY zone, YEAR(gen_date), MONTH(gen_date)
+            HAVING COUNT(*) >= 15
+        ),
+        monthly_agg AS (
+            SELECT year, month,
+                   SUM(solar_mw)   AS solar,
+                   SUM(wind_mw)    AS wind,
+                   SUM(nuclear_mw) AS nuclear,
+                   SUM(hydro_mw)   AS hydro,
+                   SUM(gas_mw)     AS gas,
+                   SUM(coal_mw)    AS coal,
+                   SUM(biomass_mw) AS biomass,
+                   SUM(other_mw)   AS other,
+                   COUNT(DISTINCT zone) AS n_zones
+            FROM zone_month
+            GROUP BY year, month
+            HAVING COUNT(DISTINCT zone) >= 5
+        )
+        SELECT year, month, n_zones,
+               solar + wind + hydro + biomass AS renewables,
+               solar, wind, nuclear, gas, coal,
+               solar + wind + nuclear + hydro + gas + coal + biomass + other AS total
+        FROM monthly_agg
+        ORDER BY year, month
+    """)
+    if df is None or df.empty:
+        return GenMonthlyResponse(rows=[])
+
+    def pct(num, denom):
+        if num is None or denom is None or denom == 0:
+            return None
+        return round(float(num) / float(denom) * 100, 1)
+
+    rows = [
+        GenMonthlyRow(
+            year=int(r.year),
+            month=int(r.month),
+            renewable_pct=pct(r.renewables, r.total),
+            solar_pct=pct(r.solar, r.total),
+            wind_pct=pct(r.wind, r.total),
+            nuclear_pct=pct(r.nuclear, r.total),
+            gas_pct=pct(r.gas, r.total),
+            coal_pct=pct(r.coal, r.total),
+            n_zones=int(r.n_zones),
+        )
+        for r in df.itertuples()
+    ]
+    return GenMonthlyResponse(rows=rows)
 
 
 @app.get("/api/imbalance", response_model=ImbalanceResponse)

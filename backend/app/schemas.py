@@ -609,3 +609,19 @@ class ImbalanceMonthlyRow(BaseModel):
 
 class ImbalanceMonthlyResponse(BaseModel):
     rows: list[ImbalanceMonthlyRow]
+
+
+class GenMonthlyRow(BaseModel):
+    year: int
+    month: int
+    renewable_pct: float | None
+    solar_pct: float | None
+    wind_pct: float | None
+    nuclear_pct: float | None
+    gas_pct: float | None
+    coal_pct: float | None
+    n_zones: int
+
+
+class GenMonthlyResponse(BaseModel):
+    rows: list[GenMonthlyRow]

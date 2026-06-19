@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { api, type EuAnnualFuelRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow } from '@/lib/api'
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 
 export const Route = createFileRoute('/generation')({
@@ -93,6 +93,94 @@ function EuFuelMixChart({ rows }: { rows: EuAnnualFuelRow[] }) {
   )
 }
 
+const YEAR_COLORS: Record<number, string> = {
+  2021: '#475569',
+  2022: '#64748b',
+  2023: '#f59e0b',
+  2024: '#38bdf8',
+  2025: '#4ade80',
+  2026: '#f87171',
+}
+
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function GenMonthlyChart({ rows }: { rows: GenMonthlyRow[] }) {
+  const years = useMemo(() => [...new Set(rows.map((r) => r.year))].sort(), [rows])
+
+  const byMonth = useMemo(() => {
+    const m: Record<number, Record<number, number | null>> = {}
+    for (const r of rows) {
+      if (!m[r.month]) m[r.month] = {}
+      m[r.month][r.year] = r.renewable_pct
+    }
+    return m
+  }, [rows])
+
+  const chartData = Array.from({ length: 12 }, (_, i) => {
+    const mo = i + 1
+    const entry: Record<string, string | number | null> = { month: MONTH_SHORT[i] }
+    for (const yr of years) {
+      entry[String(yr)] = byMonth[mo]?.[yr] ?? null
+    }
+    return entry
+  })
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Monthly Renewable % - year on year</h2>
+        <div className="flex items-center gap-2 ml-auto text-xs text-muted-foreground">
+          {years.map((yr) => (
+            <span key={yr} className="flex items-center gap-1">
+              <span
+                className="inline-block w-5 rounded"
+                style={{ background: YEAR_COLORS[yr] ?? '#94a3b8', height: 2, display: 'inline-block', width: 18, verticalAlign: 'middle' }}
+              />
+              {yr}
+            </span>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            tickFormatter={(v) => `${v as number}%`}
+            domain={[20, 80]}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => [
+              v != null ? `${(v as number).toFixed(1)}%` : '--',
+              name != null ? String(name) : '',
+            ]}
+          />
+          {years.map((yr) => (
+            <Line
+              key={yr}
+              type="monotone"
+              dataKey={String(yr)}
+              stroke={YEAR_COLORS[yr] ?? '#94a3b8'}
+              strokeWidth={yr === new Date().getFullYear() ? 2 : 1.5}
+              strokeOpacity={yr === new Date().getFullYear() ? 1 : 0.8}
+              dot={{ r: 2, fill: YEAR_COLORS[yr] ?? '#94a3b8' }}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">
+        Capacity-weighted EU average. Clear seasonal pattern: high in summer (solar) and spring (hydro/wind). Current year is partial.
+      </p>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -103,6 +191,12 @@ function GenerationTrends() {
   const { data: euFuelData } = useQuery({
     queryKey: ['gen-eu-annual'],
     queryFn: api.genEuAnnual,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: euMonthlyData } = useQuery({
+    queryKey: ['gen-eu-monthly'],
+    queryFn: api.genEuMonthly,
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -149,6 +243,7 @@ function GenerationTrends() {
   return (
     <div className="p-4 h-full overflow-y-auto">
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
+      {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>
