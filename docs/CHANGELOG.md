@@ -1,5 +1,21 @@
 # Energy Hub Changelog
 
+## 2026-06-19 - Post-roadmap round 5: lock fix, correlation matrix, deficit mode, EUA widget
+
+**Problems fixed:**
+1. DuckDB lock conflict: refresh.py now writes to `energy_hub_new.duckdb` then atomic-renames over the live file. db.py thread-local connections detect the swap via a `.ts` sidecar file and reconnect. Eliminates the 6-attempt/90s retry loop that was still failing as of 22:22 UTC.
+2. test_spreads fixture: added `disruption_bcm` column to conftest.py spreads_daily DDL. All 60 tests pass.
+3. Disk cleanup: removed ~2.5GB of stale /tmp artifacts (pytest cache, research libs) to recover root disk from 100%.
+
+**New features:**
+1. Gas deficit mode choropleth (`/gas`): "vs 5yr avg" toggle button switches the map from fill% coloring to a diverging scale (red = large deficit, green = surplus). The tooltip now also shows vs_avg5_pct for all hover events.
+2. EUA fuel-switch threshold widget (`/spreads`): shows the EUA carbon price at which coal/gas merit order flips. At current prices (TTF=42.5, coal=12.3 EUR/MWh) the threshold is 88.4 EUR/t vs. current EUA=76.1 EUR/t, gap=+12.3 EUR/t. Includes a visual gauge. Pure client-side calculation.
+3. 30d power zone correlation matrix (`/map`): `build_power_correlations()` computes pairwise Pearson correlation across 34 zones from power_daily (30-day window, 561 pairs). New endpoint `GET /api/power/correlations`. Zone panel Price tab now shows a compact bar chart of top-8 most correlated + bottom-3 least correlated peers. Notable: LT-LV 0.9999, ES-PT 0.9989, HR-SI 0.9982, CZ-SK 0.9951.
+
+**Artifacts:** `backend/app/db.py` (sidecar mtime detection), `backend/scripts/refresh.py` (atomic swap, correlations step), `backend/app/main.py` (/api/power/correlations), `backend/app/schemas.py` (ZoneCorrelationRow/PowerCorrelationResponse), `backend/analytics/power.py` (build_power_correlations), `backend/tests/conftest.py`, `frontend/src/lib/scales.ts` (gasDeficitColor), `frontend/src/components/gas/GasMap.tsx`, `frontend/src/routes/gas.tsx`, `frontend/src/routes/spreads.tsx` (FuelSwitchContext), `frontend/src/lib/api.ts`, `frontend/src/components/map/UnifiedZonePanel.tsx` (ZoneCorrelationChart).
+
+---
+
 ## 2026-06-19 - Phase 24: Pipeline disruption context on /spreads and /gas
 
 **Added:** World Monitor pipeline disruption data surfaced on two dashboards.
