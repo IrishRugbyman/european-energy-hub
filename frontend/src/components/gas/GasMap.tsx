@@ -2,7 +2,7 @@ import L, { type Layer, type PathOptions, type LeafletMouseEvent } from 'leaflet
 import { MapContainer, TileLayer, Pane, useMap } from 'react-leaflet'
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { GeoJsonObject, Feature } from 'geojson'
-import { gasFillColor, CHOROPLETH_FILL_OPACITY, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, countryName } from '@/lib/scales'
+import { gasFillColor, gasDeficitColor, CHOROPLETH_FILL_OPACITY, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, countryName } from '@/lib/scales'
 import type { StorageLatestRow, GasFlowItem } from '@/lib/api'
 import { GasFlowsLayer } from './GasFlowsLayer'
 
@@ -12,17 +12,20 @@ const CARTO_NOLABELS = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/
 const CARTO_LABELS   = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 const CARTO_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors'
 
+export type GasColorMode = 'fill' | 'deficit'
+
 interface Props {
   rows: StorageLatestRow[]
   selected: string | null
   onSelect: (cc: string | null) => void
+  colorMode?: GasColorMode
   showFlows?: boolean
   flowRows?: GasFlowItem[]
   selectedFlow?: string | null
   onSelectFlow?: (cc: string | null) => void
 }
 
-export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows = [], selectedFlow, onSelectFlow }: Props) {
+export function GasMap({ rows, selected, onSelect, colorMode = 'fill', showFlows = false, flowRows = [], selectedFlow, onSelectFlow }: Props) {
   const latestByCC: Record<string, StorageLatestRow> = {}
   for (const r of rows) {
     if (r.country !== 'EU') latestByCC[r.country] = r
@@ -40,7 +43,7 @@ export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows =
       <TileLayer url={CARTO_NOLABELS} attribution={CARTO_ATTR} />
       {/* Choropleth fills - GeoJSON is sole source of country borders */}
       {Object.keys(latestByCC).length > 0 && (
-        <GasChoroLayer latestByCC={latestByCC} selected={selected} onSelect={onSelect} />
+        <GasChoroLayer latestByCC={latestByCC} selected={selected} onSelect={onSelect} colorMode={colorMode} />
       )}
       {/* Physical gas flows overlay - colors countries by net GWh/d */}
       {showFlows && flowRows.length > 0 && (
@@ -59,14 +62,21 @@ export function GasMap({ rows, selected, onSelect, showFlows = false, flowRows =
   )
 }
 
+function resolveColor(row: StorageLatestRow | undefined, colorMode: GasColorMode): string {
+  if (!row) return '#374151'
+  return colorMode === 'deficit' ? gasDeficitColor(row.vs_avg5_pct) : gasFillColor(row.full_pct)
+}
+
 function GasChoroLayer({
   latestByCC,
   selected,
   onSelect,
+  colorMode,
 }: {
   latestByCC: Record<string, StorageLatestRow>
   selected: string | null
   onSelect: (cc: string | null) => void
+  colorMode: GasColorMode
 }) {
   const map = useMap()
   const geoRef = useRef<L.GeoJSON | null>(null)
@@ -87,7 +97,7 @@ function GasChoroLayer({
         if (geoRef.current) {
           map.removeLayer(geoRef.current)
         }
-        const layer = createLayer(geo, latestByCC, selectedRef, onSelect)
+        const layer = createLayer(geo, latestByCC, selectedRef, onSelect, colorMode)
         layer.addTo(map)
         geoRef.current = layer
       })
@@ -98,7 +108,7 @@ function GasChoroLayer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update styles when data or selection changes
+  // Update styles when data, selection, or color mode changes
   useEffect(() => {
     if (!geoRef.current) return
     geoRef.current.eachLayer((layer: Layer) => {
@@ -109,14 +119,14 @@ function GasChoroLayer({
       const row = latestByCC[cc]
       const isSelected = cc === selected
       const style: PathOptions = {
-        fillColor: gasFillColor(row?.full_pct),
+        fillColor: resolveColor(row, colorMode),
         fillOpacity: isSelected ? 0.9 : CHOROPLETH_FILL_OPACITY,
         color: isSelected ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: isSelected ? 2 : CHOROPLETH_STROKE_WIDTH,
       }
       ;(layer as L.Path).setStyle(style)
     })
-  }, [latestByCC, selected])
+  }, [latestByCC, selected, colorMode])
 
   return null
 }
@@ -126,6 +136,7 @@ function createLayer(
   latestByCC: Record<string, StorageLatestRow>,
   selectedRef: MutableRefObject<string | null>,
   onSelect: (cc: string | null) => void,
+  colorMode: GasColorMode,
 ): L.GeoJSON {
   return L.geoJSON(geo, {
     style: (feature: Feature | undefined): PathOptions => {
@@ -133,7 +144,7 @@ function createLayer(
       const row = latestByCC[cc]
       const sel = selectedRef.current
       return {
-        fillColor: gasFillColor(row?.full_pct),
+        fillColor: resolveColor(row, colorMode),
         fillOpacity: cc === sel ? 0.9 : CHOROPLETH_FILL_OPACITY,
         color: cc === sel ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: cc === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
@@ -177,9 +188,11 @@ function createLayer(
 function tooltipContent(cc: string, row: StorageLatestRow): string {
   const fill = row.full_pct != null ? `${row.full_pct.toFixed(1)}%` : '--'
   const d7 = row.d7_pct != null ? `${row.d7_pct >= 0 ? '+' : ''}${row.d7_pct.toFixed(1)}pp` : '--'
+  const vs5yr = row.vs_avg5_pct != null ? `${row.vs_avg5_pct >= 0 ? '+' : ''}${row.vs_avg5_pct.toFixed(1)}pp` : '--'
   return `<div style="font-size:12px;line-height:1.5">
     <strong>${countryName(cc)}</strong><br/>
     Fill: ${fill}<br/>
-    7d: ${d7}
+    7d: ${d7}<br/>
+    vs 5yr: ${vs5yr}
   </div>`
 }

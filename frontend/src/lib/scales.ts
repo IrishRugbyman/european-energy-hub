@@ -52,6 +52,20 @@ export function countryName(cc: string): string {
   return COUNTRY_NAMES[cc] ?? cc
 }
 
+// Gas storage vs-5yr-avg (deficit/surplus pp) -> hex color. Diverging scale:
+// deep red (large deficit) -> grey (normal) -> deep green (large surplus).
+export function gasDeficitColor(vsAvg5pct: number | null | undefined): string {
+  if (vsAvg5pct == null) return '#374151'  // grey - no data
+  if (vsAvg5pct <= -15) return '#7f1d1d'  // red-900 - severe deficit
+  if (vsAvg5pct <= -10) return '#b91c1c'  // red-700
+  if (vsAvg5pct <= -5)  return '#d97706'  // amber-600
+  if (vsAvg5pct <= -2)  return '#ca8a04'  // yellow-600 - mild deficit
+  if (vsAvg5pct <   2)  return '#4b5563'  // grey-600   - normal range
+  if (vsAvg5pct <   5)  return '#4d7c0f'  // lime-700   - mild surplus
+  if (vsAvg5pct <  10)  return '#16a34a'  // green-600
+  return '#15803d'                         // green-700  - large surplus
+}
+
 // Power price -> color. Sequential warm scale; null/undefined = grey.
 // Domain: 0-300 EUR/MWh (covers typical European range including spike scenarios)
 export function powerPriceColor(eur: number | null | undefined): string {

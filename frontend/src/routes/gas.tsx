@@ -15,7 +15,7 @@ import {
 } from 'recharts'
 import { X } from 'lucide-react'
 import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow } from '@/lib/api'
-import { GasMap } from '@/components/gas/GasMap'
+import { GasMap, type GasColorMode } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
 import { StaleBanner } from '@/components/StaleBanner'
@@ -35,6 +35,17 @@ const FILL_LEGEND = [
   { label: 'no data', color: '#374151' },
 ]
 
+const DEFICIT_LEGEND = [
+  { label: '<= -15 pp', color: '#7f1d1d' },
+  { label: '-10 to -15', color: '#b91c1c' },
+  { label: '-5 to -10', color: '#d97706' },
+  { label: '-2 to -5', color: '#ca8a04' },
+  { label: '-2 to +2', color: '#4b5563' },
+  { label: '+2 to +5', color: '#4d7c0f' },
+  { label: '+5 to +10', color: '#16a34a' },
+  { label: '> +10 pp', color: '#15803d' },
+]
+
 const FLOW_LEGEND = [
   { label: '> 80 import',   color: '#1d4ed8' },
   { label: '30-80 import',  color: '#3b82f6' },
@@ -51,6 +62,7 @@ function GasDashboard() {
   const [showFlows, setShowFlows] = useState(false)
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
   const [showRankings, setShowRankings] = useState(false)
+  const [colorMode, setColorMode] = useState<GasColorMode>('fill')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['gas-map'],
@@ -75,8 +87,8 @@ function GasDashboard() {
   }
 
   const euRow = latestByCountry['EU']
-  const legend = showFlows ? FLOW_LEGEND : FILL_LEGEND
-  const legendTitle = showFlows ? 'Net flow GWh/d' : 'Fill %'
+  const legend = showFlows ? FLOW_LEGEND : colorMode === 'deficit' ? DEFICIT_LEGEND : FILL_LEGEND
+  const legendTitle = showFlows ? 'Net flow GWh/d' : colorMode === 'deficit' ? 'vs 5yr avg (pp)' : 'Fill %'
 
   return (
     <div className="relative h-full flex">
@@ -122,7 +134,7 @@ function GasDashboard() {
         </div>
       )}
 
-      {/* Physical flows + Rankings toggles (top-right) */}
+      {/* Physical flows + Rankings + color mode toggles (top-right) */}
       <div className="absolute top-3 right-3 z-[1000] flex items-center gap-2">
         <button
           onClick={() => { setShowRankings((v) => !v); setSelected(null) }}
@@ -133,6 +145,17 @@ function GasDashboard() {
           }`}
         >
           Rankings
+        </button>
+        <button
+          onClick={() => setColorMode((m) => m === 'fill' ? 'deficit' : 'fill')}
+          title="Toggle between fill % and vs 5yr average coloring"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
+            colorMode === 'deficit'
+              ? 'bg-red-800 border-red-700 text-white'
+              : 'bg-card/90 backdrop-blur border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          vs 5yr avg
         </button>
         <button
           onClick={() => { setShowFlows((v) => !v); setSelectedFlow(null) }}
@@ -163,6 +186,7 @@ function GasDashboard() {
           rows={data?.rows ?? []}
           selected={selected}
           onSelect={setSelected}
+          colorMode={colorMode}
           showFlows={showFlows}
           flowRows={flowsData?.rows ?? []}
           selectedFlow={selectedFlow}
