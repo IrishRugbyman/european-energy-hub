@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-19 - Post-roadmap round 6: curve shift, injection seasonality, net trade, YoY imbalance
+
+**New features:**
+1. TTF forward curve shift chart (`/prices`): overlay of today vs -30d/-180d/-365d forward curve snapshots as a line chart. Shows how the market has re-priced forward risk (contango/backwardation shifts). Precomputed via `_build_ttf_curve_snapshots()` in `analytics/spreads.py`; stored in `ttf_curve_snapshots` table; served at `GET /api/prices/curve/snapshots`.
+2. Gas injection rate vs 5yr seasonal norm (`/gas` pace widget): `_build_injection_seasonal()` in `analytics/gas.py` computes p25/avg/p75 injection rate per country/DOY over last 5 complete years. Stored in `storage_injection_seasonal`. Pace endpoint adds `seasonal_inj_avg_gwh_d`, `seasonal_inj_p25_gwh_d`, `seasonal_inj_p75_gwh_d`. PaceWidget now shows "vs 5yr avg: +/-X TWh/d (norm: Y, p25-p75: Z-W)". Today: EU injecting 3.8 TWh/d vs 4.2 TWh/d seasonal avg (below norm).
+3. Net import/export indicator in power zone panel (`/map`): computes zone net trade position from `borders_daily` (7 core zones: AT/BE/CH/DE-LU/FR/IT-NORD/NL). Shown in zone price tab below stats grid. DE-LU currently net importing 4.7 GW (consistent with elevated prices). New fields `net_import_mw`, `net_import_date` in `PowerZoneResponse`.
+4. Year-on-year monthly reBAP comparison chart (`/imbalance`): new `GET /api/imbalance/monthly` endpoint computes monthly avg/p25/p75/neg_pct from `imbalance_daily`. Grouped bar chart (grey=2024, blue=2025, green=2026) shows 2026 running hotter in most months. Notable: Feb 2025 was the most expensive month (128.5 €/MWh avg).
+
+**Artifacts:** `backend/analytics/spreads.py`, `backend/analytics/gas.py`, `backend/scripts/refresh.py`, `backend/app/schemas.py`, `backend/app/main.py`, `frontend/src/lib/api.ts`, `frontend/src/routes/prices.tsx` (TtfCurveShift), `frontend/src/routes/gas.tsx` (PaceWidget seasonal row), `frontend/src/routes/imbalance.tsx` (ImbalanceYoYChart + BarChart), `frontend/src/components/map/UnifiedZonePanel.tsx` (net import row).
+
+---
+
 ## 2026-06-19 - Post-roadmap round 5: lock fix, correlation matrix, deficit mode, EUA widget
 
 **Problems fixed:**
