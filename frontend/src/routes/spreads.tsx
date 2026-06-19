@@ -442,6 +442,74 @@ function MultiZoneSection({ window: w }: { window: Window }) {
   )
 }
 
+// EUA fuel-switch breakeven:
+// FSS = 0 when EUA = (TTF/η_gas - coal/η_coal) / (EF_coal - EF_gas)
+// EF_coal=0.96, EF_gas=0.364, η_gas=0.49, η_coal=0.36
+function euaSwitchThreshold(ttf: number | null, coalEurMwh: number | null): number | null {
+  if (ttf == null || coalEurMwh == null) return null
+  return (ttf / 0.49 - coalEurMwh / 0.36) / (0.96 - 0.364)
+}
+
+function FuelSwitchContext({ rows }: { rows: SpreadsDailyPoint[] }) {
+  const last = rows.length ? rows[rows.length - 1] : null
+  const eua = last?.eua ?? null
+  const threshold = euaSwitchThreshold(last?.ttf ?? null, last?.coal_eur_mwh ?? null)
+  if (eua == null || threshold == null) return null
+  const gap = threshold - eua
+  const regime = (last?.fss ?? 0) >= 0 ? 'gas' : 'coal'
+
+  // Position EUA on a gauge spanning [threshold - 40, threshold + 40]
+  const gaugeMin = threshold - 40
+  const gaugeMax = threshold + 40
+  const euaPct = Math.max(0, Math.min(100, ((eua - gaugeMin) / (gaugeMax - gaugeMin)) * 100))
+  const threshPct = 50  // threshold is always at midpoint
+
+  const gapColor = Math.abs(gap) < 5 ? '#b91c1c' : Math.abs(gap) < 15 ? '#d97706' : '#16a34a'
+
+  return (
+    <div className="bg-card/60 border border-border rounded-lg px-4 py-3 mb-4">
+      <div className="flex flex-wrap items-center gap-6">
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">EUA switch threshold</p>
+          <p className="text-sm font-semibold text-foreground">{threshold.toFixed(1)} EUR/t</p>
+          <p className="text-[10px] text-muted-foreground">EUA at which {regime === 'gas' ? 'coal' : 'gas'} becomes marginal</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mb-0.5">Gap to switch</p>
+          <p className="text-sm font-semibold" style={{ color: gapColor }}>
+            {gap >= 0 ? '+' : ''}{gap.toFixed(1)} EUR/t
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {gap >= 0
+              ? `EUA needs +${gap.toFixed(1)} to switch from ${regime} to ${regime === 'gas' ? 'coal' : 'gas'}`
+              : `EUA ${Math.abs(gap).toFixed(1)} above threshold - regime may flip`}
+          </p>
+        </div>
+        <div className="flex-1 min-w-[120px]">
+          <p className="text-[10px] text-muted-foreground mb-1.5">EUA position vs threshold</p>
+          <div className="relative h-3 rounded-full bg-secondary">
+            {/* Threshold marker */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-muted-foreground/60 rounded"
+              style={{ left: `${threshPct}%` }}
+            />
+            {/* EUA dot */}
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-background"
+              style={{ left: `calc(${euaPct}% - 6px)`, background: gapColor }}
+            />
+          </div>
+          <div className="flex justify-between text-[9px] text-muted-foreground mt-1">
+            <span>{gaugeMin.toFixed(0)}</span>
+            <span className="text-muted-foreground/70">threshold {threshold.toFixed(0)}</span>
+            <span>{gaugeMax.toFixed(0)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function SpreadsDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [showDisruption, setShowDisruption] = useState(false)
@@ -496,6 +564,8 @@ function SpreadsDashboard() {
           ))}
         </div>
       </div>
+
+      {rows.length > 0 && <FuelSwitchContext rows={rows} />}
 
       <StaleBanner datasetKey="spreads" variant="inline" />
 
