@@ -436,6 +436,20 @@ def gas_pace_to_target():
     current_date_obj = date.fromisoformat(current_date_str)
     wgv_twh = _float(latest["working_gas_volume"]) or 1.0
 
+    # Interim EU storage targets (Regulation EU 2022/1369)
+    yr = current_date_obj.year
+    _INTERIM_TARGETS = [
+        (date(yr, 8, 1),  62.5),
+        (date(yr, 9, 1),  75.0),
+        (date(yr, 10, 1), 83.3),
+        (date(yr, 11, 1), 90.0),
+    ]
+    # Find the next upcoming interim target after today
+    next_interim = next(
+        ((d, p) for d, p in _INTERIM_TARGETS if d > current_date_obj),
+        None,
+    )
+
     # Target date: Nov 1 this year (or next if already past)
     nov1 = date(current_date_obj.year, 11, 1)
     if current_date_obj >= nov1:
@@ -479,6 +493,20 @@ def gas_pace_to_target():
             projected=round(projected_pct, 2),
         ))
 
+    # Pace to next interim target
+    next_interim_date_str: str | None = None
+    next_interim_pct_val: float | None = None
+    next_interim_req: float | None = None
+    if next_interim is not None:
+        ni_date, ni_pct = next_interim
+        ni_days = (ni_date - current_date_obj).days
+        ni_gap = ni_pct - current_pct
+        if ni_days > 0 and ni_gap > 0:
+            ni_gwh_needed = (ni_gap / 100) * wgv_twh * 1000
+            next_interim_req = round(ni_gwh_needed / ni_days, 1)
+        next_interim_date_str = ni_date.isoformat()
+        next_interim_pct_val = ni_pct
+
     # Seasonal injection rate for today's DOY (5yr band)
     current_doy = current_date_obj.timetuple().tm_yday
     inj_seas = db.query(
@@ -505,6 +533,9 @@ def gas_pace_to_target():
         seasonal_inj_avg_gwh_d=round(seasonal_inj_avg, 1) if seasonal_inj_avg is not None else None,
         seasonal_inj_p25_gwh_d=round(seasonal_inj_p25, 1) if seasonal_inj_p25 is not None else None,
         seasonal_inj_p75_gwh_d=round(seasonal_inj_p75, 1) if seasonal_inj_p75 is not None else None,
+        next_interim_date=next_interim_date_str,
+        next_interim_pct=next_interim_pct_val,
+        next_interim_required_gwh_d=next_interim_req,
         history=history,
     )
 

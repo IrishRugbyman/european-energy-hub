@@ -46,6 +46,9 @@ export interface GasPaceStats {
   seasonal_inj_avg_gwh_d: number | null
   seasonal_inj_p25_gwh_d: number | null
   seasonal_inj_p75_gwh_d: number | null
+  next_interim_date: string | null
+  next_interim_pct: number | null
+  next_interim_required_gwh_d: number | null
   history: GasPacePoint[]
 }
 

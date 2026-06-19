@@ -254,13 +254,27 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
   const seasAvg = eu.seasonal_inj_avg_gwh_d
   const seasP25 = eu.seasonal_inj_p25_gwh_d
   const seasP75 = eu.seasonal_inj_p75_gwh_d
+  const niDate = eu.next_interim_date
+  const niPct = eu.next_interim_pct
+  const niReq = eu.next_interim_required_gwh_d
 
   // How far above/below seasonal norm is current injection?
   const vsNorm = curRate != null && seasAvg != null ? curRate - seasAvg : null
   const vsNormColor = vsNorm == null ? '#6b7280' : vsNorm >= 0 ? '#22c55e' : '#f87171'
+  // Is the interim target achievable?
+  const niOnTrack = niReq != null && curRate != null ? curRate >= niReq : null
+  const niColor = niOnTrack === true ? '#22c55e' : niOnTrack === false ? '#f87171' : '#6b7280'
 
   return (
     <div className="p-2.5">
+      {niDate && niPct && (
+        <div className="flex items-center justify-between mb-1 text-xs">
+          <span className="text-muted-foreground">Next target: {niPct}% by {niDate.slice(5)}</span>
+          <span className="font-semibold" style={{ color: niColor }}>
+            {niReq != null ? `needs ${(niReq / 1000).toFixed(1)} TWh/d` : ''}
+          </span>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-xs font-medium text-muted-foreground">90% target - Nov 1</span>
         <span className="text-xs font-semibold" style={{ color: statusColor }}>{statusLabel}</span>

@@ -62,6 +62,9 @@ class GasPaceStats(BaseModel):
     seasonal_inj_avg_gwh_d: float | None = None
     seasonal_inj_p25_gwh_d: float | None = None
     seasonal_inj_p75_gwh_d: float | None = None
+    next_interim_date: str | None = None
+    next_interim_pct: float | None = None
+    next_interim_required_gwh_d: float | None = None
     history: list[GasPacePoint]
 
 
