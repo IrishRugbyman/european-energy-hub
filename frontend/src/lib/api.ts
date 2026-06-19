@@ -181,6 +181,8 @@ export interface PowerZoneResponse {
   daily_history: PowerDailyPoint[]
   generation_mix: GenerationMixRow | null
   generation_hourly: GenHourlyPoint[]
+  net_import_mw: number | null
+  net_import_date: string | null
 }
 
 export interface GenMapItem {

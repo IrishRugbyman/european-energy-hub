@@ -834,6 +834,26 @@ def power_zone(zone_id: str):
         for r in (gen_hourly_df.itertuples() if not gen_hourly_df.empty else [])
     ]
 
+    # Net import/export from borders_daily (available for 7 core zones)
+    net_import_mw: float | None = None
+    net_import_date: str | None = None
+    net_df = db.query(
+        """
+        WITH latest_date AS (SELECT MAX(price_date) AS d FROM borders_daily)
+        SELECT
+            SUM(CASE WHEN to_zone = ? THEN net_flow_mw ELSE 0 END) -
+            SUM(CASE WHEN from_zone = ? THEN net_flow_mw ELSE 0 END) AS net_import_mw,
+            MAX(price_date)::VARCHAR AS price_date
+        FROM borders_daily
+        WHERE price_date = (SELECT d FROM latest_date)
+          AND (from_zone = ? OR to_zone = ?)
+        """,
+        [zone_id, zone_id, zone_id, zone_id],
+    )
+    if not net_df.empty and net_df.iloc[0]["net_import_mw"] is not None:
+        net_import_mw = _float(net_df.iloc[0]["net_import_mw"])
+        net_import_date = str(net_df.iloc[0]["price_date"])
+
     return PowerZoneResponse(
         zone=zone_id,
         latest=latest,
@@ -841,6 +861,8 @@ def power_zone(zone_id: str):
         daily_history=daily,
         generation_mix=gen_mix,
         generation_hourly=gen_hourly,
+        net_import_mw=net_import_mw,
+        net_import_date=net_import_date,
     )
 
 

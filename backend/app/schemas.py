@@ -196,6 +196,8 @@ class PowerZoneResponse(BaseModel):
     daily_history: list[PowerDailyPoint]
     generation_mix: GenerationMixRow | None = None
     generation_hourly: list["GenHourlyPoint"] = []
+    net_import_mw: float | None = None
+    net_import_date: str | None = None
 
 
 class HourlyProfilePoint(BaseModel):

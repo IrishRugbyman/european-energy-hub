@@ -177,6 +177,22 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
                 title="Hours with negative DA price today."
               />
             </div>
+            {powerData?.net_import_mw != null && (
+              <div className="mt-1.5 flex items-center gap-1.5 text-xs">
+                <span
+                  className="font-medium"
+                  style={{ color: powerData.net_import_mw > 0 ? '#f87171' : '#4ade80' }}
+                >
+                  {powerData.net_import_mw > 0 ? 'Net import' : 'Net export'}
+                  {' '}{Math.abs(powerData.net_import_mw / 1000).toFixed(1)} GW
+                </span>
+                <span className="text-muted-foreground">
+                  {powerData.net_import_mw > 0
+                    ? '(buying from neighbors - price support)'
+                    : '(selling to neighbors - price suppressed)'}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
