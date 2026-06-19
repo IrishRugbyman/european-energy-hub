@@ -564,3 +564,14 @@ class MultiZoneSpreadsResponse(BaseModel):
     as_of: str | None
     zones: list[str]
     rows: list[MultiZoneSpreadRow]
+
+
+class ZoneCorrelationRow(BaseModel):
+    zone_a: str
+    zone_b: str
+    correlation: float | None
+
+
+class PowerCorrelationResponse(BaseModel):
+    window_days: int
+    rows: list[ZoneCorrelationRow]

@@ -156,6 +156,43 @@ def _build_latest(daily: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_power_correlations(power_daily: pd.DataFrame) -> pd.DataFrame:
+    """Compute 30d pairwise Pearson correlation of daily base prices across all zones.
+
+    Uses the most recent 30 calendar days where all compared zones have data.
+    Returns a long-format DataFrame: (zone_a, zone_b, correlation).
+    """
+    if power_daily.empty:
+        return pd.DataFrame(columns=["zone_a", "zone_b", "correlation"])
+
+    # Use last 30 days of data (by latest date in the dataset)
+    latest_date = power_daily["price_date"].max()
+    cutoff = latest_date - pd.Timedelta(days=30)
+    recent = power_daily[power_daily["price_date"] >= cutoff][["zone", "price_date", "base_eur"]].dropna()
+
+    # Pivot: date x zone
+    pivot = recent.pivot_table(index="price_date", columns="zone", values="base_eur")
+
+    # Keep only zones with >= 20 data points in the window
+    pivot = pivot.loc[:, pivot.count() >= 20]
+
+    if pivot.shape[1] < 2:
+        return pd.DataFrame(columns=["zone_a", "zone_b", "correlation"])
+
+    corr = pivot.corr(method="pearson")
+
+    rows = []
+    zones = list(corr.columns)
+    for i, za in enumerate(zones):
+        for j, zb in enumerate(zones):
+            if i < j:
+                v = corr.loc[za, zb]
+                if not pd.isna(v):
+                    rows.append({"zone_a": za, "zone_b": zb, "correlation": round(float(v), 4)})
+
+    return pd.DataFrame(rows)
+
+
 def _build_hourly_profiles(df: pd.DataFrame) -> pd.DataFrame:
     """Compute average 24-hour price profile per zone from last 90 days (CET local time)."""
     cutoff = df["ts"].max() - pd.Timedelta(days=90)

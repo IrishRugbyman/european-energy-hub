@@ -539,6 +539,17 @@ export interface GasFlowCountryResponse {
   rows: GasFlowItem[]
 }
 
+export interface ZoneCorrelationRow {
+  zone_a: string
+  zone_b: string
+  correlation: number | null
+}
+
+export interface PowerCorrelationResponse {
+  window_days: number
+  rows: ZoneCorrelationRow[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -570,4 +581,5 @@ export const api = {
   imbalance: () => get<ImbalanceResponse>('/imbalance'),
   imbalanceProfile: () => get<ImbalanceProfileResponse>('/imbalance/profile'),
   imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),
+  powerCorrelations: () => get<PowerCorrelationResponse>('/power/correlations'),
 }

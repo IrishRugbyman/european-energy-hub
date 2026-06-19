@@ -37,7 +37,7 @@ from analytics.gas import build_storage_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables
 from analytics.imbalance import build_imbalance_tables
-from analytics.power import build_power_tables
+from analytics.power import build_power_tables, build_power_correlations
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
 
@@ -80,6 +80,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building power tables from market_data (PostgreSQL)...")
     power_tables = build_power_tables()
 
+    logger.info("Building 30d power zone correlation matrix...")
+    power_corr = build_power_correlations(power_tables["power_daily"])
+
     logger.info("Building cross-zone price divergence tables...")
     divergence_tables = build_divergence_tables(power_tables["power_daily"])
 
@@ -116,6 +119,7 @@ def rebuild(skip_ingest: bool = False) -> None:
 
         _write_storage(conn, storage_tables)
         _write_power(conn, power_tables)
+        _write_power_correlations(conn, power_corr)
         _write_divergence(conn, divergence_tables)
         _write_spreads(conn, spreads_tables)
         _write_flows(conn, flows_tables)
@@ -279,6 +283,20 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         f"power: {len(daily)} daily rows, {len(hourly)} hourly-recent rows, "
         f"{len(latest)} latest rows, {n_profiles} hourly-profile rows"
     )
+
+
+def _write_power_correlations(conn: duckdb.DuckDBPyConnection, df: "pd.DataFrame") -> None:
+    conn.execute("""
+        CREATE OR REPLACE TABLE power_correlation_30d (
+            zone_a VARCHAR,
+            zone_b VARCHAR,
+            correlation REAL
+        )
+    """)
+    if not df.empty:
+        conn.register("_pc", df)
+        conn.execute("INSERT INTO power_correlation_30d SELECT * FROM _pc")
+    logger.info(f"power correlations: {len(df)} zone-pair rows")
 
 
 def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

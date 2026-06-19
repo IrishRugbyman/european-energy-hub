@@ -24,6 +24,7 @@ import {
   type HourlyProfilePoint,
   type DowPoint,
   type MonthPoint,
+  type ZoneCorrelationRow,
 } from '@/lib/api'
 import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
@@ -79,6 +80,12 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
     queryFn: () => api.powerZoneSeasonality(zone),
     staleTime: 60 * 60 * 1000,
     retry: false,
+  })
+
+  const { data: corrData } = useQuery({
+    queryKey: ['power-correlations'],
+    queryFn: api.powerCorrelations,
+    staleTime: 60 * 60 * 1000,
   })
 
   const priceColor = powerPriceColor(powerLatest?.base_eur)
@@ -527,8 +534,65 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           )}
         </div>
 
+        {/* 30-day price correlation with other zones */}
+        {corrData && <ZoneCorrelationChart zone={zone} rows={corrData.rows} />}
+
         </> /* end price tab continued */}
       </div>
+    </div>
+  )
+}
+
+function ZoneCorrelationChart({ zone, rows }: { zone: string; rows: ZoneCorrelationRow[] }) {
+  const peers = useMemo(() => {
+    const relevant = rows
+      .filter((r) => r.zone_a === zone || r.zone_b === zone)
+      .map((r) => ({
+        peer: r.zone_a === zone ? r.zone_b : r.zone_a,
+        corr: r.correlation ?? 0,
+      }))
+      .sort((a, b) => b.corr - a.corr)
+    if (!relevant.length) return []
+    // Top 8 most correlated + bottom 3 least correlated, deduped
+    const top = relevant.slice(0, 8)
+    const bottom = relevant.slice(-3).filter((r) => !top.includes(r))
+    return [...top, ...bottom]
+  }, [zone, rows])
+
+  if (!peers.length) return null
+
+  const corrColor = (c: number) => {
+    if (c >= 0.95) return '#16a34a'   // deep green - very tight coupling
+    if (c >= 0.85) return '#4d7c0f'   // lime - strong
+    if (c >= 0.70) return '#ca8a04'   // yellow - moderate
+    if (c >= 0.50) return '#d97706'   // amber - weak
+    if (c >= 0)    return '#78350f'   // brown - poor
+    return '#b91c1c'                   // red - negative / counter-cyclical
+  }
+
+  return (
+    <div className="p-3 pt-1 border-t border-border/50">
+      <p className="text-xs text-muted-foreground mb-2">30d price correlation (vs other zones)</p>
+      <div className="space-y-1">
+        {peers.map(({ peer, corr }) => (
+          <div key={peer} className="flex items-center gap-2">
+            <span className="text-[10px] text-muted-foreground w-14 shrink-0 text-right">{peer}</span>
+            <div className="flex-1 h-3 bg-secondary rounded-sm overflow-hidden">
+              <div
+                className="h-full rounded-sm"
+                style={{
+                  width: `${Math.max(0, Math.min(100, Math.abs(corr) * 100))}%`,
+                  background: corrColor(corr),
+                }}
+              />
+            </div>
+            <span className="text-[10px] font-mono tabular-nums w-10 shrink-0" style={{ color: corrColor(corr) }}>
+              {corr >= 0 ? '+' : ''}{corr.toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <p className="text-[9px] text-muted-foreground/60 mt-2">Green = tightly coupled zone. Red = counter-cyclical.</p>
     </div>
   )
 }

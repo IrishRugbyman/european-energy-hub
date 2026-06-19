@@ -90,6 +90,8 @@ from .schemas import (
     ImbalanceProfileResponse,
     EuAnnualFuelRow,
     EuAnnualFuelResponse,
+    ZoneCorrelationRow,
+    PowerCorrelationResponse,
 )
 
 
@@ -885,6 +887,23 @@ def power_zone_profile(zone_id: str):
         for r in df.itertuples()
     ]
     return PowerZoneProfileResponse(zone=zone_id, days=90, rows=rows)
+
+
+@app.get("/api/power/correlations", response_model=PowerCorrelationResponse)
+def power_correlations():
+    """30-day pairwise Pearson correlation of daily base prices across all zones."""
+    df = db.query(
+        "SELECT zone_a, zone_b, correlation FROM power_correlation_30d ORDER BY zone_a, zone_b"
+    )
+    rows = [
+        ZoneCorrelationRow(
+            zone_a=str(r.zone_a),
+            zone_b=str(r.zone_b),
+            correlation=_float(r.correlation),
+        )
+        for r in df.itertuples()
+    ]
+    return PowerCorrelationResponse(window_days=30, rows=rows)
 
 
 @app.get("/api/flows", response_model=FlowsResponse)
