@@ -12,12 +12,13 @@ from loaders._base import _query, get_read_conn
 
 
 def build_storage_tables() -> dict[str, pd.DataFrame]:
-    """Return three DataFrames ready to write into energy_hub.duckdb.
+    """Return DataFrames ready to write into energy_hub.duckdb.
 
     Returns: {
         'storage_history': long-format daily series per country + EU,
-        'storage_seasonal': 5-year DOY band per country + EU,
+        'storage_seasonal': 5-year DOY fill% band per country + EU,
         'storage_latest': one row per country + EU with derived stats,
+        'storage_injection_seasonal': 5-year DOY injection-rate band per country + EU,
     }
     """
     conn = get_read_conn()
@@ -34,7 +35,12 @@ def build_storage_tables() -> dict[str, pd.DataFrame]:
 
     if raw.empty:
         empty = pd.DataFrame()
-        return {"storage_history": empty, "storage_seasonal": empty, "storage_latest": empty}
+        return {
+            "storage_history": empty,
+            "storage_seasonal": empty,
+            "storage_latest": empty,
+            "storage_injection_seasonal": empty,
+        }
 
     raw["gas_day"] = pd.to_datetime(raw["gas_day"]).dt.date
 
@@ -46,8 +52,14 @@ def build_storage_tables() -> dict[str, pd.DataFrame]:
 
     seasonal = _build_seasonal(combined)
     latest = _build_latest(combined, seasonal)
+    injection_seasonal = _build_injection_seasonal(combined)
 
-    return {"storage_history": history, "storage_seasonal": seasonal, "storage_latest": latest}
+    return {
+        "storage_history": history,
+        "storage_seasonal": seasonal,
+        "storage_latest": latest,
+        "storage_injection_seasonal": injection_seasonal,
+    }
 
 
 def _build_eu_aggregate(df: pd.DataFrame) -> pd.DataFrame:
@@ -99,6 +111,47 @@ def _build_seasonal(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
     seasonal = seasonal.dropna(subset=["avg5"])
+    return seasonal
+
+
+def _build_injection_seasonal(df: pd.DataFrame) -> pd.DataFrame:
+    """5-year DOY injection-rate band per country.
+
+    Uses the 5 most recent complete calendar years (same as _build_seasonal).
+    Only includes days where injection > 0 (i.e., injection season; winter withdrawal is excluded).
+    Returns (country, doy, avg_gwh_d, p25_gwh_d, p75_gwh_d).
+    """
+    df = df.copy()
+    df["gas_day"] = pd.to_datetime(df["gas_day"])
+    df["year"] = df["gas_day"].dt.year
+    df["doy"] = df["gas_day"].dt.dayofyear
+
+    current_year = pd.Timestamp.now().year
+    complete_years = sorted(
+        [y for y in df["year"].unique() if y < current_year],
+        reverse=True,
+    )[:5]
+
+    if not complete_years:
+        return pd.DataFrame(columns=["country", "doy", "avg_gwh_d", "p25_gwh_d", "p75_gwh_d"])
+
+    band_df = df[df["year"].isin(complete_years)].copy()
+    # Include all days (injection=0 during withdrawal season is valid data)
+    band_df = band_df.dropna(subset=["injection"])
+
+    if band_df.empty:
+        return pd.DataFrame(columns=["country", "doy", "avg_gwh_d", "p25_gwh_d", "p75_gwh_d"])
+
+    seasonal = (
+        band_df.groupby(["country", "doy"])["injection"]
+        .agg(
+            avg_gwh_d="mean",
+            p25_gwh_d=lambda x: x.quantile(0.25),
+            p75_gwh_d=lambda x: x.quantile(0.75),
+        )
+        .reset_index()
+    )
+    seasonal = seasonal.dropna(subset=["avg_gwh_d"])
     return seasonal
 
 

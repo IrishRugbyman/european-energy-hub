@@ -161,6 +161,7 @@ def _write_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     history = tables["storage_history"]
     seasonal = tables["storage_seasonal"]
     latest = tables["storage_latest"]
+    injection_seasonal = tables.get("storage_injection_seasonal")
 
     conn.execute("""
         CREATE OR REPLACE TABLE storage_history (
@@ -206,8 +207,24 @@ def _write_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_l", latest)
         conn.execute("INSERT INTO storage_latest SELECT * FROM _l")
 
+    conn.execute("""
+        CREATE OR REPLACE TABLE storage_injection_seasonal (
+            country  VARCHAR,
+            doy      SMALLINT,
+            avg_gwh_d REAL,
+            p25_gwh_d REAL,
+            p75_gwh_d REAL
+        )
+    """)
+    n_inj_seas = 0
+    if injection_seasonal is not None and not injection_seasonal.empty:
+        conn.register("_is", injection_seasonal)
+        conn.execute("INSERT INTO storage_injection_seasonal SELECT * FROM _is")
+        n_inj_seas = len(injection_seasonal)
+
     logger.info(
-        f"storage: {len(history)} history rows, {len(seasonal)} seasonal rows, {len(latest)} latest rows"
+        f"storage: {len(history)} history rows, {len(seasonal)} seasonal rows, "
+        f"{len(latest)} latest rows, {n_inj_seas} injection-seasonal rows"
     )
 
 

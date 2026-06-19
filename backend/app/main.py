@@ -477,6 +477,17 @@ def gas_pace_to_target():
             projected=round(projected_pct, 2),
         ))
 
+    # Seasonal injection rate for today's DOY (5yr band)
+    current_doy = current_date_obj.timetuple().tm_yday
+    inj_seas = db.query(
+        "SELECT avg_gwh_d, p25_gwh_d, p75_gwh_d FROM storage_injection_seasonal "
+        "WHERE country = 'EU' AND doy = ?",
+        [current_doy],
+    )
+    seasonal_inj_avg = _float(inj_seas.iloc[0]["avg_gwh_d"]) if not inj_seas.empty else None
+    seasonal_inj_p25 = _float(inj_seas.iloc[0]["p25_gwh_d"]) if not inj_seas.empty else None
+    seasonal_inj_p75 = _float(inj_seas.iloc[0]["p75_gwh_d"]) if not inj_seas.empty else None
+
     stats = GasPaceStats(
         country="EU",
         current_pct=round(current_pct, 2) if current_pct else None,
@@ -489,6 +500,9 @@ def gas_pace_to_target():
         current_rate_gwh_per_day=round(current_rate, 1),
         days_at_current_rate=round(days_at_current, 0) if days_at_current is not None and not math.isinf(days_at_current) else None,
         on_track=on_track,
+        seasonal_inj_avg_gwh_d=round(seasonal_inj_avg, 1) if seasonal_inj_avg is not None else None,
+        seasonal_inj_p25_gwh_d=round(seasonal_inj_p25, 1) if seasonal_inj_p25 is not None else None,
+        seasonal_inj_p75_gwh_d=round(seasonal_inj_p75, 1) if seasonal_inj_p75 is not None else None,
         history=history,
     )
 

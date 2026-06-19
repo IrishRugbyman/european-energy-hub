@@ -59,6 +59,9 @@ class GasPaceStats(BaseModel):
     current_rate_gwh_per_day: float | None
     days_at_current_rate: float | None
     on_track: bool | None
+    seasonal_inj_avg_gwh_d: float | None = None
+    seasonal_inj_p25_gwh_d: float | None = None
+    seasonal_inj_p75_gwh_d: float | None = None
     history: list[GasPacePoint]
 
 

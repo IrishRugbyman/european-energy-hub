@@ -251,6 +251,13 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
   const reqRate = eu.required_gwh_per_day
   const curRate = eu.current_rate_gwh_per_day
   const daysLeft = eu.days_to_target
+  const seasAvg = eu.seasonal_inj_avg_gwh_d
+  const seasP25 = eu.seasonal_inj_p25_gwh_d
+  const seasP75 = eu.seasonal_inj_p75_gwh_d
+
+  // How far above/below seasonal norm is current injection?
+  const vsNorm = curRate != null && seasAvg != null ? curRate - seasAvg : null
+  const vsNormColor = vsNorm == null ? '#6b7280' : vsNorm >= 0 ? '#22c55e' : '#f87171'
 
   return (
     <div className="p-2.5">
@@ -258,7 +265,7 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
         <span className="text-xs font-medium text-muted-foreground">90% target - Nov 1</span>
         <span className="text-xs font-semibold" style={{ color: statusColor }}>{statusLabel}</span>
       </div>
-      <div className="flex gap-3 mb-2 text-xs">
+      <div className="flex gap-3 mb-1.5 text-xs">
         <div>
           <span className="text-muted-foreground">Need </span>
           <span className="font-medium text-foreground">{reqRate != null ? `${(reqRate / 1000).toFixed(1)} TWh/d` : '--'}</span>
@@ -271,6 +278,17 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
           <span className="text-muted-foreground">{daysLeft}d left</span>
         </div>
       </div>
+      {seasAvg != null && (
+        <div className="flex items-center gap-1.5 mb-1.5 text-xs">
+          <span className="text-muted-foreground">vs 5yr avg</span>
+          <span className="font-medium" style={{ color: vsNormColor }}>
+            {vsNorm != null ? `${vsNorm >= 0 ? '+' : ''}${(vsNorm / 1000).toFixed(1)} TWh/d` : '--'}
+          </span>
+          <span className="text-muted-foreground">
+            (norm: {(seasAvg / 1000).toFixed(1)}, p25-p75: {seasP25 != null ? (seasP25 / 1000).toFixed(1) : '--'}-{seasP75 != null ? (seasP75 / 1000).toFixed(1) : '--'})
+          </span>
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={90}>
         <ComposedChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
           <XAxis
