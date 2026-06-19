@@ -92,6 +92,8 @@ from .schemas import (
     EuAnnualFuelResponse,
     ZoneCorrelationRow,
     PowerCorrelationResponse,
+    TtfCurveSnapshotRow,
+    TtfCurveSnapshotsResponse,
 )
 
 
@@ -1056,6 +1058,32 @@ def prices_curve():
         for r in df.itertuples()
     ]
     return TtfCurveResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/prices/curve/snapshots", response_model=TtfCurveSnapshotsResponse)
+def prices_curve_snapshots():
+    """TTF forward curve at 4 historical dates (today, -30d, -180d, -365d) for shift comparison."""
+    df = db.query(
+        """
+        SELECT snapshot_label, contract, settlement, tenor_type, sort_key
+        FROM ttf_curve_snapshots
+        WHERE tenor_type IN ('Q1','Q2','Q3','Q4','WIN','SUM','CAL')
+        ORDER BY snapshot_label, sort_key
+        """
+    )
+    if df.empty:
+        return TtfCurveSnapshotsResponse(rows=[])
+    rows = [
+        TtfCurveSnapshotRow(
+            snapshot_label=str(r.snapshot_label),
+            contract=str(r.contract),
+            settlement=float(r.settlement),
+            tenor_type=str(r.tenor_type),
+            sort_key=int(r.sort_key),
+        )
+        for r in df.itertuples()
+    ]
+    return TtfCurveSnapshotsResponse(rows=rows)
 
 
 _MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",

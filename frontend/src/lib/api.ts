@@ -550,6 +550,18 @@ export interface PowerCorrelationResponse {
   rows: ZoneCorrelationRow[]
 }
 
+export interface TtfCurveSnapshotRow {
+  snapshot_label: string
+  contract: string
+  settlement: number
+  tenor_type: string
+  sort_key: number
+}
+
+export interface TtfCurveSnapshotsResponse {
+  rows: TtfCurveSnapshotRow[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -582,4 +594,5 @@ export const api = {
   imbalanceProfile: () => get<ImbalanceProfileResponse>('/imbalance/profile'),
   imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),
   powerCorrelations: () => get<PowerCorrelationResponse>('/power/correlations'),
+  pricesCurveSnapshots: () => get<TtfCurveSnapshotsResponse>('/prices/curve/snapshots'),
 }

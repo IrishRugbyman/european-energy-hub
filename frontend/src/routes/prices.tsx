@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -537,6 +537,110 @@ const TENOR_COLORS: Record<string, string> = {
 }
 
 
+const SNAPSHOT_COLORS: Record<string, string> = {
+  'today':  '#60a5fa',
+  '-30d':   '#a78bfa',
+  '-180d':  '#34d399',
+  '-365d':  '#f97316',
+}
+
+const SNAPSHOT_LABELS: Record<string, string> = {
+  'today':  'Today',
+  '-30d':   '30d ago',
+  '-180d':  '6m ago',
+  '-365d':  '1yr ago',
+}
+
+// Order for legend/line rendering (most-recent last so it renders on top)
+const SNAPSHOT_ORDER = ['-365d', '-180d', '-30d', 'today']
+
+function TtfCurveShift({ snapshots }: { snapshots: TtfCurveSnapshotRow[] }) {
+  if (snapshots.length === 0) return null
+
+  // Build a unified set of contracts ordered by sort_key, pivot to [{contract, today, -30d, ...}]
+  const byLabel = new Map<string, Map<string, number>>()
+  for (const r of snapshots) {
+    if (!byLabel.has(r.snapshot_label)) byLabel.set(r.snapshot_label, new Map())
+    byLabel.get(r.snapshot_label)!.set(r.contract, r.settlement)
+  }
+
+  // Contract ordering from the "today" snapshot (most complete)
+  const todayRows = snapshots.filter((r) => r.snapshot_label === 'today')
+    .sort((a, b) => a.sort_key - b.sort_key)
+  const contracts = todayRows.map((r) => r.contract)
+
+  const chartData = contracts.map((contract) => {
+    const row: Record<string, string | number | null> = { contract }
+    for (const label of SNAPSHOT_ORDER) {
+      row[label] = byLabel.get(label)?.get(contract) ?? null
+    }
+    return row
+  })
+
+  const availableLabels = SNAPSHOT_ORDER.filter((l) => byLabel.has(l))
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">TTF curve shift (€/MWh)</h2>
+        <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
+          {availableLabels.map((label) => (
+            <span key={label} className="flex items-center gap-1">
+              <span
+                className="inline-block w-5 h-0.5"
+                style={{ background: SNAPSHOT_COLORS[label], display: 'inline-block', height: 2, width: 18, verticalAlign: 'middle' }}
+              />
+              {SNAPSHOT_LABELS[label]}
+            </span>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={chartData} margin={{ top: 4, right: 16, bottom: 24, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="contract"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            angle={-35}
+            textAnchor="end"
+            interval={0}
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            domain={['auto', 'auto']}
+            width={36}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => [
+              v != null ? `${(v as number).toFixed(2)} €/MWh` : '--',
+              name != null ? (SNAPSHOT_LABELS[String(name)] ?? String(name)) : '',
+            ]}
+          />
+          {availableLabels.map((label) => (
+            <Line
+              key={label}
+              type="monotone"
+              dataKey={label}
+              stroke={SNAPSHOT_COLORS[label]}
+              strokeWidth={label === 'today' ? 2 : 1.5}
+              strokeOpacity={label === 'today' ? 1 : 0.7}
+              dot={false}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">
+        Curve shape evolution: backwardation vs. contango, near-term risk premium shifts.
+      </p>
+    </div>
+  )
+}
+
 function TtfForwardCurve({ rows }: { rows: TtfCurvePoint[] }) {
   if (rows.length === 0) return null
 
@@ -753,6 +857,12 @@ function PricesDashboard() {
     staleTime: 15 * 60 * 1000,
   })
 
+  const { data: curveSnapshotsData } = useQuery({
+    queryKey: ['prices-curve-snapshots'],
+    queryFn: api.pricesCurveSnapshots,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   const { data: seasonalityData } = useQuery({
     queryKey: ['prices-seasonality'],
     queryFn: api.pricesSeasonality,
@@ -861,6 +971,7 @@ function PricesDashboard() {
           </div>
 
           {curveRows.length > 0 && <TtfForwardCurve rows={curveRows} />}
+          <TtfCurveShift snapshots={curveSnapshotsData?.rows ?? []} />
           <CorrelationMatrix rows={rows} />
           {(regimeData?.rows?.length ?? 0) > 0 && <PriceRegimeCharts rows={regimeData!.rows} />}
           <TtfNbpSpread rows={rows} />

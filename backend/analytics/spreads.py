@@ -29,12 +29,14 @@ def build_spreads_tables() -> dict[str, pd.DataFrame]:
     prices_daily = _build_prices(start, end)
     multi_zone_spreads = _build_multi_zone_spreads(start, end)
     ttf_curve = _build_ttf_curve()
+    ttf_curve_snapshots = _build_ttf_curve_snapshots()
 
     return {
         "spreads_daily": spreads_daily,
         "prices_daily": prices_daily,
         "multi_zone_spreads": multi_zone_spreads,
         "ttf_curve": ttf_curve,
+        "ttf_curve_snapshots": ttf_curve_snapshots,
     }
 
 
@@ -252,3 +254,59 @@ def _build_ttf_curve() -> pd.DataFrame:
     )
     df = df.sort_values("sort_key").reset_index(drop=True)
     return df[["contract", "settlement", "tenor_type", "sort_key"]].copy()
+
+
+def _build_ttf_curve_snapshots() -> pd.DataFrame:
+    """Return TTF forward curve at 4 historical dates: today, -30d, -180d, -365d.
+
+    Enables a multi-curve overlay chart showing how the forward curve has shifted.
+    Rows have (snapshot_label, contract, settlement, tenor_type, sort_key).
+    """
+    from datetime import timedelta
+    from loaders._base import _query, get_read_conn
+
+    empty = pd.DataFrame(columns=["snapshot_label", "contract", "settlement", "tenor_type", "sort_key"])
+    today = date.today()
+    snapshots = [
+        ("today", today),
+        ("-30d", today - timedelta(days=30)),
+        ("-180d", today - timedelta(days=180)),
+        ("-365d", today - timedelta(days=365)),
+    ]
+
+    frames = []
+    try:
+        conn = get_read_conn()
+        for label, target in snapshots:
+            df = _query(
+                conn,
+                """
+                SELECT contract, settlement
+                FROM ttf_curve
+                WHERE price_date = (
+                    SELECT MAX(price_date) FROM ttf_curve
+                    WHERE price_date <= %s
+                )
+                ORDER BY contract
+                """,
+                [target],
+            )
+            if df.empty:
+                continue
+            df["snapshot_label"] = label
+            df["sort_key"] = df["contract"].apply(_contract_sort_key)
+            df["tenor_type"] = df["contract"].apply(
+                lambda c: c.split("-")[0] if "-" in c else "OTHER"
+            )
+            # Only keep contracts that currently exist (avoid showing expired fronts)
+            df = df[df["sort_key"] > 0]
+            frames.append(df[["snapshot_label", "contract", "settlement", "tenor_type", "sort_key"]])
+        conn.close()
+    except Exception:
+        return empty
+
+    if not frames:
+        return empty
+
+    out = pd.concat(frames, ignore_index=True)
+    return out.sort_values(["snapshot_label", "sort_key"]).reset_index(drop=True)

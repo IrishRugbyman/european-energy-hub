@@ -575,3 +575,15 @@ class ZoneCorrelationRow(BaseModel):
 class PowerCorrelationResponse(BaseModel):
     window_days: int
     rows: list[ZoneCorrelationRow]
+
+
+class TtfCurveSnapshotRow(BaseModel):
+    snapshot_label: str
+    contract: str
+    settlement: float
+    tenor_type: str
+    sort_key: int
+
+
+class TtfCurveSnapshotsResponse(BaseModel):
+    rows: list[TtfCurveSnapshotRow]

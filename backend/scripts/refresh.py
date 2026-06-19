@@ -304,6 +304,7 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     prices = tables["prices_daily"]
     multi = tables.get("multi_zone_spreads")
     ttf_curve = tables.get("ttf_curve")
+    ttf_snapshots = tables.get("ttf_curve_snapshots")
 
     conn.execute("""
         CREATE OR REPLACE TABLE spreads_daily (
@@ -369,9 +370,24 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.execute("INSERT INTO ttf_curve_latest SELECT * FROM _tc")
         n_curve = len(ttf_curve)
 
+    conn.execute("""
+        CREATE OR REPLACE TABLE ttf_curve_snapshots (
+            snapshot_label VARCHAR,
+            contract       VARCHAR,
+            settlement     REAL,
+            tenor_type     VARCHAR,
+            sort_key       INTEGER
+        )
+    """)
+    n_snaps = 0
+    if ttf_snapshots is not None and not ttf_snapshots.empty:
+        conn.register("_ts", ttf_snapshots)
+        conn.execute("INSERT INTO ttf_curve_snapshots SELECT * FROM _ts")
+        n_snaps = len(ttf_snapshots)
+
     logger.info(
         f"spreads: {len(spreads)} daily rows, prices: {len(prices)} daily rows, "
-        f"multi-zone: {n_multi} rows, ttf-curve: {n_curve} contracts"
+        f"multi-zone: {n_multi} rows, ttf-curve: {n_curve} contracts, ttf-snapshots: {n_snaps} rows"
     )
 
 
