@@ -1,9 +1,11 @@
 """Read-only access to energy_hub.duckdb.
 
-The refresh job (scripts/refresh.py) is the sole writer. The API uses
-thread-local DuckDB connections so each worker thread keeps its own warm
-buffer pool - eliminating the 200-300ms cold-start I/O overhead that
-occurred when opening a new connection per request.
+The refresh job (scripts/refresh.py) is the sole writer. It writes to a
+temp file then atomically renames it over energy_hub.duckdb, then bumps a
+sidecar timestamp file (energy_hub.duckdb.ts).  The API uses thread-local
+DuckDB connections (warm buffer pool, ~4x faster than per-request opens).
+Before each query we check the sidecar mtime; if it changed since this
+thread last connected, we reopen to pick up the new snapshot.
 """
 
 from __future__ import annotations
@@ -20,10 +22,21 @@ from .project_paths import energy_db_path
 _local = threading.local()
 
 
+def _ts_mtime(path: Path) -> float:
+    """Return mtime of the sidecar .ts file, or 0.0 if absent."""
+    ts_path = path.parent / (path.name + ".ts")
+    try:
+        return ts_path.stat().st_mtime
+    except FileNotFoundError:
+        return 0.0
+
+
 def _get_conn(path: Path) -> duckdb.DuckDBPyConnection:
     conn: duckdb.DuckDBPyConnection | None = getattr(_local, "conn", None)
     conn_path: Path | None = getattr(_local, "conn_path", None)
-    if conn is None or conn_path != path:
+    conn_mtime: float = getattr(_local, "conn_mtime", 0.0)
+    current_mtime = _ts_mtime(path)
+    if conn is None or conn_path != path or current_mtime > conn_mtime:
         if conn is not None:
             try:
                 conn.close()
@@ -31,6 +44,7 @@ def _get_conn(path: Path) -> duckdb.DuckDBPyConnection:
                 pass
         _local.conn = duckdb.connect(str(path), read_only=True)
         _local.conn_path = path
+        _local.conn_mtime = current_mtime
     return _local.conn
 
 
@@ -43,6 +57,7 @@ def _reset_local_conn() -> None:
             pass
     _local.conn = None
     _local.conn_path = None
+    _local.conn_mtime = 0.0
 
 
 def query(sql: str, params: list | None = None, retries: int = 20, db: Path | None = None) -> pd.DataFrame:

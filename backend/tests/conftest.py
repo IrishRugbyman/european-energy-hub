@@ -146,7 +146,8 @@ def _seed_db(path: str) -> None:
             css REAL,
             cds REAL,
             fss REAL,
-            regime_threshold VARCHAR
+            regime_threshold VARCHAR,
+            disruption_bcm REAL
         )
     """)
     conn.execute("""
@@ -173,9 +174,10 @@ def _seed_db(path: str) -> None:
         cds = round(power - coal_eur_mwh / 0.36 - eua * 0.96, 4)
         fss = round(css - cds, 4)
         regime = "gas" if fss > 0 else "coal"
+        disruption = 288.0  # constant representative value
         conn.execute(
-            "INSERT INTO spreads_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [day, round(power, 2), round(ttf, 2), eua, coal_eur_mwh, css, cds, fss, regime],
+            "INSERT INTO spreads_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [day, round(power, 2), round(ttf, 2), eua, coal_eur_mwh, css, cds, fss, regime, disruption],
         )
         nbp = round(ttf * 0.88, 2)  # ~12% discount to TTF
         hh_eur_mwh = round(2.5 * 0.86 / 0.293071, 2)  # HH USD/MMBtu -> EUR/MWh

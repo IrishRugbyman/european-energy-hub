@@ -16,11 +16,15 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import os
+
 import duckdb
 from loguru import logger
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 ENERGY_DB = BACKEND_DIR / "data" / "energy_hub.duckdb"
+ENERGY_DB_TMP = BACKEND_DIR / "data" / "energy_hub_new.duckdb"
+ENERGY_DB_TS = BACKEND_DIR / "data" / "energy_hub.duckdb.ts"
 MARKET_DATA_DIR = Path(__file__).resolve().parents[3] / "shared" / "market-data"
 MARKET_DATA_VENV = MARKET_DATA_DIR / ".venv" / "bin" / "python"
 
@@ -100,20 +104,13 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building battery oracle dispatch tables...")
     battery_tables = build_battery_tables()
 
+    # Write to a fresh temp file so we never contend with the API's read-only
+    # thread-local connections on energy_hub.duckdb.  Atomic rename at the end
+    # means the API always serves a fully-consistent snapshot.
     ENERGY_DB.parent.mkdir(exist_ok=True)
-    conn = None
-    for _attempt in range(6):
-        try:
-            conn = duckdb.connect(str(ENERGY_DB))
-            break
-        except Exception as e:
-            if "lock" in str(e).lower() and _attempt < 5:
-                import time
-                logger.warning(f"DuckDB lock conflict, retry {_attempt + 1}/6 in 15s...")
-                time.sleep(15)
-            else:
-                raise
-    assert conn is not None
+    if ENERGY_DB_TMP.exists():
+        ENERGY_DB_TMP.unlink()
+    conn = duckdb.connect(str(ENERGY_DB_TMP))
     try:
         conn.execute("BEGIN TRANSACTION")
 
@@ -140,12 +137,20 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso])
         conn.execute("COMMIT")
-        logger.info(f"energy_hub.duckdb rebuilt at {now_iso}")
     except Exception:
         conn.execute("ROLLBACK")
         conn.close()
+        ENERGY_DB_TMP.unlink(missing_ok=True)
         raise
     conn.close()
+
+    # Atomic swap: replace the live DB with the freshly built temp file.
+    # On Linux this is a single rename(2) syscall - fully atomic.
+    os.replace(ENERGY_DB_TMP, ENERGY_DB)
+    # Write a sidecar timestamp so db.py thread-local connections can detect
+    # the swap and reopen the file on the next request.
+    ENERGY_DB_TS.write_text(now_iso)
+    logger.info(f"energy_hub.duckdb rebuilt at {now_iso}")
 
 
 def _write_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
