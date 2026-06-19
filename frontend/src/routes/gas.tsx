@@ -383,7 +383,7 @@ function StorageRankings({
   onSelect: (cc: string) => void
   onClose: () => void
 }) {
-  const [sortKey, setSortKey] = useState<'full_pct' | 'yoy_pct' | 'vs_avg5_pct'>('full_pct')
+  const [sortKey, setSortKey] = useState<'full_pct' | 'yoy_pct' | 'vs_avg5_pct' | 'd7_pct' | 'injection'>('full_pct')
   const [view, setView] = useState<RankingsView>('table')
 
   const { data: paceData } = useQuery({
@@ -417,19 +417,6 @@ function StorageRankings({
     if (v == null) return '--'
     return `${v >= 0 ? '+' : ''}${v.toFixed(1)}pp`
   }
-
-  const colBtn = (key: typeof sortKey, label: string) => (
-    <button
-      onClick={() => setSortKey(key)}
-      className={`px-1.5 py-0.5 rounded text-xs ${
-        sortKey === key
-          ? 'bg-primary/20 text-primary'
-          : 'text-muted-foreground hover:text-foreground'
-      }`}
-    >
-      {label}
-    </button>
-  )
 
   return (
     <div className="flex flex-col h-full">
@@ -515,22 +502,26 @@ function StorageRankings({
       ) : (
         <>
 
-      {/* Sort controls */}
-      <div className="flex items-center gap-1 px-4 py-2 border-b border-border">
-        <span className="text-xs text-muted-foreground mr-1">Sort:</span>
-        {colBtn('full_pct', 'Fill %')}
-        {colBtn('yoy_pct', 'YoY')}
-        {colBtn('vs_avg5_pct', 'vs 5yr')}
-      </div>
-
       <div className="flex-1 overflow-y-auto">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-card border-b border-border">
             <tr>
               <th className="text-left px-4 py-1.5 font-normal text-muted-foreground">Country</th>
-              <th className="text-right px-2 py-1.5 font-normal text-muted-foreground">Fill</th>
-              <th className="text-right px-2 py-1.5 font-normal text-muted-foreground">YoY</th>
-              <th className="text-right px-4 py-1.5 font-normal text-muted-foreground">vs avg</th>
+              <th className="text-right px-2 py-1.5 font-normal">
+                <button onClick={() => setSortKey('full_pct')} className={sortKey === 'full_pct' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>Fill</button>
+              </th>
+              <th className="text-right px-2 py-1.5 font-normal">
+                <button onClick={() => setSortKey('d7_pct')} className={sortKey === 'd7_pct' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>7d</button>
+              </th>
+              <th className="text-right px-2 py-1.5 font-normal">
+                <button onClick={() => setSortKey('yoy_pct')} className={sortKey === 'yoy_pct' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>YoY</button>
+              </th>
+              <th className="text-right px-2 py-1.5 font-normal">
+                <button onClick={() => setSortKey('vs_avg5_pct')} className={sortKey === 'vs_avg5_pct' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>vs avg</button>
+              </th>
+              <th className="text-right px-4 py-1.5 font-normal">
+                <button onClick={() => setSortKey('injection')} className={sortKey === 'injection' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}>GWh/d</button>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -546,15 +537,28 @@ function StorageRankings({
                 </td>
                 <td
                   className="px-2 py-1.5 text-right"
+                  style={{ color: r.d7_pct == null ? '#64748b' : r.d7_pct >= 0 ? '#4ade80' : '#f87171' }}
+                >
+                  {r.d7_pct != null ? `${r.d7_pct >= 0 ? '+' : ''}${r.d7_pct.toFixed(1)}pp` : '--'}
+                </td>
+                <td
+                  className="px-2 py-1.5 text-right"
                   style={{ color: r.yoy_pct == null ? '#64748b' : r.yoy_pct >= 0 ? '#4ade80' : '#f87171' }}
                 >
                   {fmtDelta(r.yoy_pct)}
                 </td>
                 <td
-                  className="px-4 py-1.5 text-right"
+                  className="px-2 py-1.5 text-right"
                   style={{ color: r.vs_avg5_pct == null ? '#64748b' : r.vs_avg5_pct >= 0 ? '#4ade80' : '#f87171' }}
                 >
                   {fmtDelta(r.vs_avg5_pct)}
+                </td>
+                <td className="px-4 py-1.5 text-right text-muted-foreground">
+                  {r.injection != null && r.injection > 0
+                    ? `+${Math.round(r.injection)}`
+                    : r.withdrawal != null && r.withdrawal > 0
+                    ? `-${Math.round(r.withdrawal)}`
+                    : '--'}
                 </td>
               </tr>
             ))}
