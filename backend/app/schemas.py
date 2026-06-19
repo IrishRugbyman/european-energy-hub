@@ -625,3 +625,15 @@ class GenMonthlyRow(BaseModel):
 
 class GenMonthlyResponse(BaseModel):
     rows: list[GenMonthlyRow]
+
+
+class EuCfLatestResponse(BaseModel):
+    gen_date: str | None
+    wind_cf: float | None
+    solar_cf: float | None
+    wind_installed_gw: float | None
+    solar_installed_gw: float | None
+    wind_cf_month_avg: float | None
+    solar_cf_month_avg: float | None
+    wind_cf_month_pct_rank: float | None
+    solar_cf_month_pct_rank: float | None

@@ -586,6 +586,18 @@ export interface GenMonthlyResponse {
   rows: GenMonthlyRow[]
 }
 
+export interface EuCfLatestResponse {
+  gen_date: string | null
+  wind_cf: number | null
+  solar_cf: number | null
+  wind_installed_gw: number | null
+  solar_installed_gw: number | null
+  wind_cf_month_avg: number | null
+  solar_cf_month_avg: number | null
+  wind_cf_month_pct_rank: number | null
+  solar_cf_month_pct_rank: number | null
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -627,6 +639,7 @@ export const api = {
   genTrends: () => get<GenTrendsResponse>('/generation/trends'),
   genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),
   genEuMonthly: () => get<GenMonthlyResponse>('/generation/eu/monthly'),
+  genEuCfLatest: () => get<EuCfLatestResponse>('/generation/eu/cf-latest'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

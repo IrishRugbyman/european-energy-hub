@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow } from '@/lib/api'
+import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow, type EuCfLatestResponse } from '@/lib/api'
 import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
@@ -145,6 +145,50 @@ const METRIC_CONFIG: Record<MapMetric, MetricConfig> = {
 const PRICE_METRICS: MapMetric[] = ['price', 'range', 'neg_hours', 'pct_rank']
 const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel', 'carbon_intensity']
 
+function cfRankColor(rank: number | null, type: 'wind' | 'solar'): string {
+  if (rank == null) return '#64748b'
+  if (type === 'wind') {
+    if (rank <= 15) return '#f87171'    // low wind - bearish for RE, bullish for prices
+    if (rank >= 85) return '#4ade80'    // high wind
+    return '#64748b'
+  } else {
+    if (rank <= 15) return '#94a3b8'
+    if (rank >= 85) return '#fbbf24'    // high solar - bright yellow
+    return '#64748b'
+  }
+}
+
+function EuConditionsStrip({ cf }: { cf: EuCfLatestResponse }) {
+  const windColor = cfRankColor(cf.wind_cf_month_pct_rank, 'wind')
+  const solarColor = cfRankColor(cf.solar_cf_month_pct_rank, 'solar')
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+  const mo = cf.gen_date ? monthNames[parseInt(cf.gen_date.slice(5,7)) - 1] : ''
+
+  return (
+    <div className="flex items-center gap-3 text-xs bg-card/80 backdrop-blur border border-border rounded px-2.5 py-1.5 shadow-sm">
+      <span className="text-muted-foreground font-medium">EU conditions</span>
+      <span className="text-muted-foreground">|</span>
+      <span>
+        <span className="text-muted-foreground">Wind </span>
+        <span className="font-medium" style={{ color: windColor }}>{cf.wind_cf ?? '--'}%</span>
+        {cf.wind_cf_month_avg != null && (
+          <span className="text-muted-foreground"> (avg {cf.wind_cf_month_avg}%, p{cf.wind_cf_month_pct_rank ?? 0} for {mo})</span>
+        )}
+      </span>
+      <span className="text-muted-foreground">|</span>
+      <span>
+        <span className="text-muted-foreground">Solar </span>
+        <span className="font-medium" style={{ color: solarColor }}>{cf.solar_cf ?? '--'}%</span>
+        {cf.solar_cf_month_avg != null && (
+          <span className="text-muted-foreground"> (avg {cf.solar_cf_month_avg}%, p{cf.solar_cf_month_pct_rank ?? 0} for {mo})</span>
+        )}
+      </span>
+      <span className="text-muted-foreground">|</span>
+      <span className="text-muted-foreground">{(cf.wind_installed_gw ?? 0).toFixed(0)} GW wind / {(cf.solar_installed_gw ?? 0).toFixed(0)} GW solar installed</span>
+    </div>
+  )
+}
+
 function MapDashboard() {
   const { date: urlDate } = Route.useSearch()
   const navigate = useNavigate({ from: Route.fullPath })
@@ -186,6 +230,12 @@ function MapDashboard() {
     queryFn: api.powerDivergence,
     staleTime: 15 * 60 * 1000,
     enabled: showInterconnections,
+  })
+
+  const { data: cfData } = useQuery({
+    queryKey: ['gen-eu-cf-latest'],
+    queryFn: api.genEuCfLatest,
+    staleTime: 6 * 60 * 60 * 1000,
   })
 
   const powerByZone: Record<string, PowerLatestRow> = {}
@@ -388,6 +438,13 @@ function MapDashboard() {
               <span className="text-muted-foreground">{label}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Bottom-right: EU wind/solar conditions strip */}
+      {cfData && !isHistorical && (
+        <div className="hidden sm:block absolute bottom-6 right-3 z-[1000]">
+          <EuConditionsStrip cf={cfData} />
         </div>
       )}
 

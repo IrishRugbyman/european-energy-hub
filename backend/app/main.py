@@ -64,6 +64,7 @@ from .schemas import (
     ImbalanceLatest,
     GenMonthlyRow,
     GenMonthlyResponse,
+    EuCfLatestResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -1664,6 +1665,94 @@ def generation_eu_monthly():
         for r in df.itertuples()
     ]
     return GenMonthlyResponse(rows=rows)
+
+
+@app.get("/api/generation/eu/cf-latest", response_model=EuCfLatestResponse)
+def generation_eu_cf_latest():
+    """EU-aggregate wind and solar capacity factor for the most recent day, with same-month 5yr avg and percentile rank."""
+    today_df = db.query("""
+        WITH latest AS (
+            SELECT MAX(gen_date) AS d FROM capacity_factors_daily
+            WHERE wind_installed_mw > 0
+        )
+        SELECT
+            gen_date::VARCHAR AS gen_date,
+            SUM(wind_mw) / NULLIF(SUM(wind_installed_mw), 0)  AS wind_cf,
+            SUM(solar_mw) / NULLIF(SUM(solar_installed_mw), 0) AS solar_cf,
+            SUM(wind_installed_mw) / 1e3  AS wind_installed_gw,
+            SUM(solar_installed_mw) / 1e3 AS solar_installed_gw
+        FROM capacity_factors_daily, latest
+        WHERE gen_date = latest.d AND wind_installed_mw > 0
+        GROUP BY gen_date
+    """)
+    if today_df is None or today_df.empty:
+        return EuCfLatestResponse(gen_date=None, wind_cf=None, solar_cf=None,
+                                   wind_installed_gw=None, solar_installed_gw=None,
+                                   wind_cf_month_avg=None, solar_cf_month_avg=None,
+                                   wind_cf_month_pct_rank=None, solar_cf_month_pct_rank=None)
+
+    r = today_df.iloc[0]
+    gen_date = str(r["gen_date"])
+    wind_cf = _float(r["wind_cf"])
+    solar_cf = _float(r["solar_cf"])
+    current_month = int(gen_date[5:7])
+
+    hist_df = db.query("""
+        WITH daily_eu AS (
+            SELECT
+                gen_date,
+                SUM(wind_mw) / NULLIF(SUM(wind_installed_mw), 0)  AS wind_cf,
+                SUM(solar_mw) / NULLIF(SUM(solar_installed_mw), 0) AS solar_cf
+            FROM capacity_factors_daily
+            WHERE wind_installed_mw > 0
+              AND YEAR(gen_date) >= 2021
+              AND YEAR(gen_date) < YEAR(CURRENT_DATE)
+            GROUP BY gen_date
+        )
+        SELECT
+            AVG(CASE WHEN MONTH(gen_date) = ? THEN wind_cf END)  AS wind_avg,
+            AVG(CASE WHEN MONTH(gen_date) = ? THEN solar_cf END) AS solar_avg,
+            COUNT(CASE WHEN MONTH(gen_date) = ? THEN 1 END) AS n
+        FROM daily_eu
+    """, [current_month, current_month, current_month])
+
+    rank_df = db.query("""
+        WITH daily_eu AS (
+            SELECT
+                gen_date,
+                SUM(wind_mw) / NULLIF(SUM(wind_installed_mw), 0)  AS wind_cf,
+                SUM(solar_mw) / NULLIF(SUM(solar_installed_mw), 0) AS solar_cf
+            FROM capacity_factors_daily
+            WHERE wind_installed_mw > 0
+              AND YEAR(gen_date) >= 2021
+              AND YEAR(gen_date) < YEAR(CURRENT_DATE)
+              AND MONTH(gen_date) = ?
+            GROUP BY gen_date
+        )
+        SELECT
+            PERCENT_RANK() OVER (ORDER BY wind_cf) AS wind_rank,
+            PERCENT_RANK() OVER (ORDER BY solar_cf) AS solar_rank,
+            wind_cf, solar_cf
+        FROM daily_eu
+        ORDER BY ABS(wind_cf - ?) + ABS(solar_cf - ?) LIMIT 1
+    """, [current_month, wind_cf or 0.0, solar_cf or 0.0])
+
+    wind_avg = _float(hist_df.iloc[0]["wind_avg"]) if hist_df is not None and not hist_df.empty else None
+    solar_avg = _float(hist_df.iloc[0]["solar_avg"]) if hist_df is not None and not hist_df.empty else None
+    wind_rank = _float(rank_df.iloc[0]["wind_rank"]) if rank_df is not None and not rank_df.empty else None
+    solar_rank = _float(rank_df.iloc[0]["solar_rank"]) if rank_df is not None and not rank_df.empty else None
+
+    return EuCfLatestResponse(
+        gen_date=gen_date,
+        wind_cf=round(wind_cf * 100, 1) if wind_cf is not None else None,
+        solar_cf=round(solar_cf * 100, 1) if solar_cf is not None else None,
+        wind_installed_gw=round(_float(r["wind_installed_gw"]) or 0.0, 0),
+        solar_installed_gw=round(_float(r["solar_installed_gw"]) or 0.0, 0),
+        wind_cf_month_avg=round(wind_avg * 100, 1) if wind_avg is not None else None,
+        solar_cf_month_avg=round(solar_avg * 100, 1) if solar_avg is not None else None,
+        wind_cf_month_pct_rank=round((wind_rank or 0.0) * 100, 0),
+        solar_cf_month_pct_rank=round((solar_rank or 0.0) * 100, 0),
+    )
 
 
 @app.get("/api/imbalance", response_model=ImbalanceResponse)
