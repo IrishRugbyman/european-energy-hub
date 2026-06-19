@@ -85,11 +85,24 @@ function SpreadTooltip({ active, payload, label }: { active?: boolean; payload?:
           regime: {d.regime_threshold === 'gas' ? 'gas marginal' : 'coal marginal'}
         </p>
       )}
+      {d.disruption_bcm != null && (
+        <p style={{ color: '#f97316' }} className="mt-1">
+          gas offline: {d.disruption_bcm.toFixed(0)} bcm/yr
+        </p>
+      )}
     </div>
   )
 }
 
-function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: Window }) {
+function SpreadChart({
+  rows,
+  window: w,
+  showDisruption,
+}: {
+  rows: SpreadsDailyPoint[]
+  window: Window
+  showDisruption: boolean
+}) {
   const cutoff = cutoffDate(w)
 
   const { data, regimeSpans } = useMemo(() => {
@@ -104,7 +117,7 @@ function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: W
 
   return (
     <ResponsiveContainer width="100%" height={340}>
-      <ComposedChart data={data} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+      <ComposedChart data={data} margin={{ top: 8, right: showDisruption ? 48 : 16, bottom: 0, left: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
         <XAxis
           dataKey="label"
@@ -113,23 +126,39 @@ function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: W
           interval="preserveStartEnd"
         />
         <YAxis
+          yAxisId="left"
           tick={{ fontSize: 10, fill: '#64748b' }}
           tickLine={false}
           axisLine={false}
           tickFormatter={(v) => `${v.toFixed(0)}`}
           unit=" €"
         />
+        {showDisruption && (
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            tick={{ fontSize: 10, fill: '#f97316' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `${v.toFixed(0)}`}
+            unit=" bcm"
+          />
+        )}
         <Tooltip content={<SpreadTooltip />} />
         <Legend
           wrapperStyle={{ fontSize: 11, paddingTop: 8 }}
           formatter={(value) =>
-            value === 'css' ? 'Clean Spark (CSS)' : value === 'cds' ? 'Clean Dark (CDS)' : 'Fuel Switch (FSS)'
+            value === 'css' ? 'Clean Spark (CSS)' :
+            value === 'cds' ? 'Clean Dark (CDS)' :
+            value === 'fss' ? 'Fuel Switch (FSS)' :
+            value === 'disruption_bcm' ? 'Gas offline (bcm/yr)' : value
           }
         />
         {/* Regime background shading */}
         {regimeSpans.map((span, i) => (
           <ReferenceArea
             key={i}
+            yAxisId="left"
             x1={span.x1}
             x2={span.x2}
             fill={span.regime === 'gas' ? '#1e3a5f' : '#3b1c0a'}
@@ -137,10 +166,21 @@ function SpreadChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: W
             strokeOpacity={0}
           />
         ))}
-        <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
-        <Line dataKey="css" stroke="#60a5fa" dot={false} strokeWidth={1.5} name="css" />
-        <Line dataKey="cds" stroke="#f59e0b" dot={false} strokeWidth={1.5} name="cds" />
-        <Line dataKey="fss" stroke="#a78bfa" dot={false} strokeWidth={2} name="fss" />
+        <ReferenceLine yAxisId="left" y={0} stroke="#475569" strokeDasharray="4 2" />
+        <Line yAxisId="left" dataKey="css" stroke="#60a5fa" dot={false} strokeWidth={1.5} name="css" />
+        <Line yAxisId="left" dataKey="cds" stroke="#f59e0b" dot={false} strokeWidth={1.5} name="cds" />
+        <Line yAxisId="left" dataKey="fss" stroke="#a78bfa" dot={false} strokeWidth={2} name="fss" />
+        {showDisruption && (
+          <Line
+            yAxisId="right"
+            dataKey="disruption_bcm"
+            stroke="#f97316"
+            dot={false}
+            strokeWidth={1.5}
+            strokeDasharray="5 3"
+            name="disruption_bcm"
+          />
+        )}
       </ComposedChart>
     </ResponsiveContainer>
   )
@@ -404,6 +444,7 @@ function MultiZoneSection({ window: w }: { window: Window }) {
 
 function SpreadsDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
+  const [showDisruption, setShowDisruption] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['spreads'],
@@ -415,6 +456,7 @@ function SpreadsDashboard() {
   const cssNow = latest(rows, 'css')
   const cdsNow = latest(rows, 'cds')
   const fssNow = latest(rows, 'fss')
+  const disruptionNow = latest(rows, 'disruption_bcm')
   const regimeNow = rows.length ? rows[rows.length - 1].regime_threshold : null
 
   return (
@@ -431,6 +473,11 @@ function SpreadsDashboard() {
             }`}
           >
             {regimeNow === 'gas' ? 'Gas marginal' : 'Coal marginal'}
+          </span>
+        )}
+        {disruptionNow != null && (
+          <span className="text-xs text-orange-400">
+            {disruptionNow.toFixed(0)} bcm/yr offline
           </span>
         )}
         <div className="ml-auto flex items-center gap-1">
@@ -472,8 +519,18 @@ function SpreadsDashboard() {
                   coal marginal
                 </span>
               </div>
+              <button
+                onClick={() => setShowDisruption((v) => !v)}
+                className={`ml-auto px-2 py-0.5 rounded text-xs border transition-colors ${
+                  showDisruption
+                    ? 'bg-orange-900/50 border-orange-700 text-orange-300'
+                    : 'border-border text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Disruption overlay
+              </button>
             </div>
-            <SpreadChart rows={rows} window={window} />
+            <SpreadChart rows={rows} window={window} showDisruption={showDisruption} />
           </div>
 
           <MultiZoneSection window={window} />

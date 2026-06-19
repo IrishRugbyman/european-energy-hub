@@ -21,6 +21,7 @@ export interface StorageLatestRow {
 export interface GasMapResponse {
   as_of: string
   rows: StorageLatestRow[]
+  pipeline_offline_bcm: number | null
 }
 
 export interface GasPacePoint {
@@ -296,6 +297,7 @@ export interface SpreadsDailyPoint {
   cds: number | null
   fss: number | null
   regime_threshold: string | null
+  disruption_bcm: number | null
 }
 
 export interface SpreadsResponse {

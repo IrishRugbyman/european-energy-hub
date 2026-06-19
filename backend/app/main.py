@@ -176,7 +176,18 @@ def gas_map():
         for r in df.itertuples()
     ]
     as_of = _meta_val("refreshed_at_gas") or datetime.now(timezone.utc).isoformat()
-    return GasMapResponse(as_of=as_of, rows=rows)
+
+    pipeline_offline_bcm: float | None = None
+    try:
+        dis_df = db.query(
+            "SELECT disruption_bcm FROM spreads_daily ORDER BY price_date DESC LIMIT 1"
+        )
+        if not dis_df.empty:
+            pipeline_offline_bcm = _float(dis_df["disruption_bcm"].iloc[0])
+    except Exception:
+        pass
+
+    return GasMapResponse(as_of=as_of, rows=rows, pipeline_offline_bcm=pipeline_offline_bcm)
 
 
 @app.get("/api/gas/country/{cc}", response_model=GasCountryResponse)
@@ -948,7 +959,8 @@ def spreads():
     df = db.query(
         """
         SELECT price_date::VARCHAR AS price_date,
-               power_de, ttf, eua, coal_eur_mwh, css, cds, fss, regime_threshold
+               power_de, ttf, eua, coal_eur_mwh, css, cds, fss, regime_threshold,
+               disruption_bcm
         FROM spreads_daily
         ORDER BY price_date
         """
@@ -967,6 +979,7 @@ def spreads():
             cds=_float(r.cds),
             fss=_float(r.fss),
             regime_threshold=str(r.regime_threshold) if r.regime_threshold else None,
+            disruption_bcm=_float(getattr(r, "disruption_bcm", None)),
         )
         for r in df.itertuples()
     ]

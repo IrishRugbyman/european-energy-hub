@@ -292,7 +292,8 @@ def _write_spreads(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             css REAL,
             cds REAL,
             fss REAL,
-            regime_threshold VARCHAR
+            regime_threshold VARCHAR,
+            disruption_bcm REAL
         )
     """)
     if not spreads.empty:

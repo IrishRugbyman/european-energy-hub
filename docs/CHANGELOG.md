@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-19 - Phase 24: Pipeline disruption context on /spreads and /gas
+
+**Added:** World Monitor pipeline disruption data surfaced on two dashboards.
+
+**Spreads (/spreads):** `disruption_bcm` column added to `spreads_daily` in `energy_hub.duckdb`. The FSS chart gains a "Disruption overlay" toggle: when active, a dashed orange line on a right Y-axis (bcm/yr) plots how much EU gas pipeline capacity was offline each day, making the NS1 sabotage (Sep 2022: +130 bcm/yr step), Druzhba North suspension (Feb 2023), and Ukraine transit expiry (Jan 2025: +142 bcm/yr step) visible alongside spread movements. Current figure (288 bcm/yr) also shown as a small label in the stat strip. Tooltip shows gas offline bcm/yr on hover.
+
+**Gas (/gas):** `pipeline_offline_bcm` field added to `GasMapResponse`. The stat strip overlay shows "pipeline offline: 288 bcm/yr" next to the EU fill/7d/vs-5yr chips (hidden on mobile).
+
+Data source: World Monitor (Global Energy Monitor, CC-BY 4.0) via `load_capacity_offline_series(commodity='gas')` loader. Step function: 17 -> 72 -> 138 -> 268 -> 288 bcm/yr.
+
+**Artifacts:** `backend/analytics/spreads.py` (disruption_bcm column in _build_spreads), `backend/scripts/refresh.py` (DDL update), `backend/app/schemas.py` (SpreadsDailyPoint + GasMapResponse), `backend/app/main.py` (/api/spreads + /api/gas/map), `frontend/src/lib/api.ts`, `frontend/src/routes/spreads.tsx` (toggle + dual Y-axis), `frontend/src/routes/gas.tsx` (stat chip).
+
+---
+
 ## 2026-06-18 - Post-roadmap round 4: EU fuel mix, borders table, percentile ranks, refresh fixes
 
 **Tried:** Six improvements plus three critical infrastructure fixes:

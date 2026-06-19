@@ -35,6 +35,7 @@ class StorageLatestRow(BaseModel):
 class GasMapResponse(BaseModel):
     as_of: str
     rows: list[StorageLatestRow]
+    pipeline_offline_bcm: float | None = None
 
 
 # Gas pace-to-target
@@ -239,6 +240,7 @@ class SpreadsDailyPoint(BaseModel):
     cds: float | None
     fss: float | None
     regime_threshold: str | None = None
+    disruption_bcm: float | None = None
 
 
 class SpreadsResponse(BaseModel):

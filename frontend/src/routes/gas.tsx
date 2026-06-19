@@ -98,6 +98,15 @@ function GasDashboard() {
               positive={euRow.vs_avg5_pct != null && euRow.vs_avg5_pct >= 0}
             />
             <span className="hidden sm:block text-muted-foreground text-xs">{euRow.gas_day}</span>
+            {data?.pipeline_offline_bcm != null && (
+              <>
+                <span className="hidden sm:block text-muted-foreground text-border">|</span>
+                <span className="hidden sm:flex flex-col items-start">
+                  <span className="text-[10px] text-muted-foreground leading-none mb-0.5">pipeline offline</span>
+                  <span className="text-xs text-orange-400 font-medium">{data.pipeline_offline_bcm.toFixed(0)} bcm/yr</span>
+                </span>
+              </>
+            )}
           </>
         ) : isLoading ? (
           <span className="text-muted-foreground">Loading...</span>

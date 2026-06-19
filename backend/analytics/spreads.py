@@ -40,10 +40,11 @@ def build_spreads_tables() -> dict[str, pd.DataFrame]:
 
 def _build_spreads(start: date, end: date) -> pd.DataFrame:
     from loaders.spreads import load_spread_inputs
+    from loaders.worldmonitor import load_capacity_offline_series
 
     empty = pd.DataFrame(columns=[
         "price_date", "power_de", "ttf", "eua", "coal_eur_mwh",
-        "css", "cds", "fss", "regime_threshold",
+        "css", "cds", "fss", "regime_threshold", "disruption_bcm",
     ])
 
     try:
@@ -62,6 +63,13 @@ def _build_spreads(start: date, end: date) -> pd.DataFrame:
     df["fss"] = df["css"] - df["cds"]
     df["regime_threshold"] = df["fss"].apply(lambda x: "gas" if x > 0 else "coal")
 
+    try:
+        disruption = load_capacity_offline_series(start, end, commodity="gas")
+        disruption.index = pd.to_datetime(disruption.index)
+        df["disruption_bcm"] = disruption.reindex(df.index).ffill()
+    except Exception:
+        df["disruption_bcm"] = None
+
     out = df.reset_index().rename(columns={
         "index": "price_date",
         "power_eur_mwh": "power_de",
@@ -69,7 +77,7 @@ def _build_spreads(start: date, end: date) -> pd.DataFrame:
         "eua_eur_tco2": "eua",
     })
     return out[["price_date", "power_de", "ttf", "eua", "coal_eur_mwh",
-                "css", "cds", "fss", "regime_threshold"]].copy()
+                "css", "cds", "fss", "regime_threshold", "disruption_bcm"]].copy()
 
 
 _NBP_MWH_PER_MMBTU = 0.29307  # 1 MMBtu = 293.07 kWh = 0.29307 MWh
