@@ -592,3 +592,17 @@ class TtfCurveSnapshotRow(BaseModel):
 
 class TtfCurveSnapshotsResponse(BaseModel):
     rows: list[TtfCurveSnapshotRow]
+
+
+class ImbalanceMonthlyRow(BaseModel):
+    year: int
+    month: int
+    avg_eur: float | None
+    p25_eur: float | None
+    p75_eur: float | None
+    neg_pct: float | None
+    n_days: int
+
+
+class ImbalanceMonthlyResponse(BaseModel):
+    rows: list[ImbalanceMonthlyRow]

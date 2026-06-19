@@ -567,6 +567,20 @@ export interface TtfCurveSnapshotsResponse {
   rows: TtfCurveSnapshotRow[]
 }
 
+export interface ImbalanceMonthlyRow {
+  year: number
+  month: number
+  avg_eur: number | null
+  p25_eur: number | null
+  p75_eur: number | null
+  neg_pct: number | null
+  n_days: number
+}
+
+export interface ImbalanceMonthlyResponse {
+  rows: ImbalanceMonthlyRow[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -600,4 +614,5 @@ export const api = {
   imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),
   powerCorrelations: () => get<PowerCorrelationResponse>('/power/correlations'),
   pricesCurveSnapshots: () => get<TtfCurveSnapshotsResponse>('/prices/curve/snapshots'),
+  imbalanceMonthly: () => get<ImbalanceMonthlyResponse>('/imbalance/monthly'),
 }

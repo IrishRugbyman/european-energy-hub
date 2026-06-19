@@ -62,6 +62,8 @@ from .schemas import (
     PowerZoneResponse,
     ImbalanceDailyPoint,
     ImbalanceLatest,
+    ImbalanceMonthlyRow,
+    ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
     ImbalanceResponse,
     PricesDailyPoint,
@@ -1616,6 +1618,42 @@ def imbalance_profile():
         for r in df.itertuples()
     ]
     return ImbalanceProfileResponse(days=90, rows=rows)
+
+
+@app.get("/api/imbalance/monthly", response_model=ImbalanceMonthlyResponse)
+def imbalance_monthly():
+    """Monthly reBAP statistics for YoY comparison (year, month, avg/p25/p75/neg_pct)."""
+    df = db.query(
+        """
+        SELECT
+            CAST(EXTRACT('year' FROM price_date) AS INTEGER) AS year,
+            CAST(EXTRACT('month' FROM price_date) AS INTEGER) AS month,
+            ROUND(AVG(mean_eur), 1) AS avg_eur,
+            ROUND(PERCENTILE_CONT(0.25) WITHIN GROUP (ORDER BY mean_eur), 1) AS p25_eur,
+            ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY mean_eur), 1) AS p75_eur,
+            ROUND(100.0 * SUM(CASE WHEN mean_eur < 0 THEN 1 ELSE 0 END) / COUNT(*), 1) AS neg_pct,
+            CAST(COUNT(*) AS INTEGER) AS n_days
+        FROM imbalance_daily
+        WHERE mean_eur IS NOT NULL
+        GROUP BY year, month
+        ORDER BY year, month
+        """
+    )
+    if df is None or df.empty:
+        return ImbalanceMonthlyResponse(rows=[])
+    rows = [
+        ImbalanceMonthlyRow(
+            year=int(r.year),
+            month=int(r.month),
+            avg_eur=_float(r.avg_eur),
+            p25_eur=_float(r.p25_eur),
+            p75_eur=_float(r.p75_eur),
+            neg_pct=_float(r.neg_pct),
+            n_days=int(r.n_days),
+        )
+        for r in df.itertuples()
+    ]
+    return ImbalanceMonthlyResponse(rows=rows)
 
 
 @app.get("/api/imbalance/dispatch", response_model=BatteryResponse)

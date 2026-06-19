@@ -5,6 +5,7 @@ import {
   Area,
   AreaChart,
   Bar,
+  BarChart,
   CartesianGrid,
   Cell,
   ComposedChart,
@@ -17,7 +18,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint } from '@/lib/api'
+import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint, type ImbalanceMonthlyRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/imbalance')({
@@ -55,6 +56,12 @@ function ImbalanceDashboard() {
     queryKey: ['imbalance-profile'],
     queryFn: api.imbalanceProfile,
     staleTime: 60 * 60 * 1000,
+  })
+
+  const { data: monthlyData } = useQuery({
+    queryKey: ['imbalance-monthly'],
+    queryFn: api.imbalanceMonthly,
+    staleTime: 6 * 60 * 60 * 1000,
   })
 
   const latest = data?.latest
@@ -254,6 +261,11 @@ function ImbalanceDashboard() {
           <RebalancingHourlyProfile rows={profileData!.rows} />
         )}
 
+        {/* Year-on-Year monthly comparison */}
+        {(monthlyData?.rows.length ?? 0) > 0 && (
+          <ImbalanceYoYChart rows={monthlyData!.rows} />
+        )}
+
         {/* Battery oracle dispatch */}
         {dispatchData && <BatteryDispatchPanel hourly={dispatchData.hourly} summary={dispatchData.summary} />}
 
@@ -281,6 +293,75 @@ function ImbalanceDashboard() {
       </div>
 
       <StaleBanner datasetKey="imbalance" variant="inline" />
+    </div>
+  )
+}
+
+const MONTH_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+const YOY_COLORS: Record<number, string> = { 2024: '#64748b', 2025: '#38bdf8', 2026: '#4ade80' }
+
+function ImbalanceYoYChart({ rows }: { rows: ImbalanceMonthlyRow[] }) {
+  const years = [...new Set(rows.map((r) => r.year))].sort()
+
+  // Build pivot: month -> { year -> avg_eur }
+  const byMonth = useMemo(() => {
+    const m: Record<number, Record<number, number | null>> = {}
+    for (const r of rows) {
+      if (!m[r.month]) m[r.month] = {}
+      m[r.month][r.year] = r.avg_eur
+    }
+    return m
+  }, [rows])
+
+  const chartData = Array.from({ length: 12 }, (_, i) => {
+    const mo = i + 1
+    const entry: Record<string, string | number | null> = { month: MONTH_SHORT[i] }
+    for (const yr of years) {
+      entry[String(yr)] = byMonth[mo]?.[yr] ?? null
+    }
+    return entry
+  })
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center gap-4 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Monthly avg reBAP - year on year (€/MWh)</h2>
+        <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
+          {years.map((yr) => (
+            <span key={yr} className="flex items-center gap-1">
+              <span className="inline-block w-3 h-3 rounded-sm" style={{ background: YOY_COLORS[yr] ?? '#94a3b8' }} />
+              {yr}
+            </span>
+          ))}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="20%" barGap={2}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            tickFormatter={(v) => `${v as number}`}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => [
+              v != null ? `${(v as number).toFixed(1)} €/MWh` : '--',
+              name != null ? String(name) : '',
+            ]}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="2 2" />
+          {years.map((yr) => (
+            <Bar key={yr} dataKey={String(yr)} fill={YOY_COLORS[yr] ?? '#94a3b8'} radius={[2, 2, 0, 0]} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">
+        Monthly mean reBAP price. Current year is partial (YTD average). Higher = tighter balancing markets.
+      </p>
     </div>
   )
 }
