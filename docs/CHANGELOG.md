@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 19: per-zone gas price passthrough (TTF correlation)
+
+**New features:**
+1. Per-zone power-price vs TTF correlation chart (`/generation`): new `GET /api/generation/zone-ttf-corr` computes trailing-365-day Pearson r between daily DA base price and TTF front-month for all 34 zones. `ZoneTtfCorrChart` shows a diverging bar: IT-NORD (+0.57) is most gas-sensitive (heavy gas+LNG dependency, imports at hub price); ES (-0.30) and Baltics (EE -0.25, LV -0.20) are most insulated (wind/solar oversupply overrides gas signal). Pairs with the RE-price correlation chart directly above it - together they show the full merit-order decomposition: which zones are RE-priced vs gas-priced vs demand-driven. 86 tests (2 new).
+
+**Artifacts:** `backend/app/schemas.py` (ZoneTtfCorrRow, ZoneTtfCorrResponse), `backend/app/main.py` (/api/generation/zone-ttf-corr), `frontend/src/lib/api.ts` (ZoneTtfCorrRow, genZoneTtfCorr), `frontend/src/routes/generation.tsx` (ZoneTtfCorrChart, zoneTtfCorrData query), `backend/tests/test_endpoints.py` (2 new tests).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 18: cross-zone hourly DA price profile comparison
 
 **New features:**
