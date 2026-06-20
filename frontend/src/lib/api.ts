@@ -927,5 +927,5 @@ export const api = {
   genZoneTtfCorr: () => get<ZoneTtfCorrResponse>('/generation/zone-ttf-corr'),
   genZoneCarbonIntensity: () => get<ZoneCarbonIntensityResponse>('/generation/zone-carbon-intensity'),
   genForecastAccuracy: () => get<ForecastAccuracyResponse>('/generation/forecast-accuracy'),
-  powerCrossZoneSpreads: (country: string) => get<CrossZoneSpreadResponse>(`/power/cross-zone-spreads?country=${country}`),
+  powerCrossZoneSpreads: (country: string, windowDays?: number) => get<CrossZoneSpreadResponse>(`/power/cross-zone-spreads?country=${country}${windowDays ? `&window_days=${windowDays}` : ''}`),
 }

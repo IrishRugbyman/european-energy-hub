@@ -1117,9 +1117,17 @@ function ZoneNetFlowsChart({ rows, date }: { rows: ZoneNetFlowRow[]; date: strin
   )
 }
 
-function CrossZoneSpreadChart({ country, onCountryChange, rows, zones, refZone }: {
+const SPREAD_WINDOWS = [
+  { label: '3M', days: 90 },
+  { label: '1Y', days: 365 },
+  { label: '2Y', days: 730 },
+] as const
+
+function CrossZoneSpreadChart({ country, onCountryChange, windowDays, onWindowChange, rows, zones, refZone }: {
   country: string
   onCountryChange: (c: string) => void
+  windowDays: number
+  onWindowChange: (d: number) => void
   rows: CrossZoneSpreadPoint[]
   zones: string[]
   refZone: string
@@ -1163,9 +1171,19 @@ function CrossZoneSpreadChart({ country, onCountryChange, rows, zones, refZone }
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3 mb-1">
         <h2 className="text-sm font-semibold text-foreground">
-          {countryLabel} intrazone price spread vs {refZone} (90d)
+          {countryLabel} intrazone price spread vs {refZone}
         </h2>
         <div className="flex gap-1 ml-auto">
+          {SPREAD_WINDOWS.map(({ label, days }) => (
+            <button
+              key={label}
+              onClick={() => onWindowChange(days)}
+              className={`px-1.5 py-0.5 rounded text-xs ${days === windowDays ? 'bg-secondary text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="text-muted-foreground mx-1">|</span>
           {(['IT', 'NO', 'SE', 'DK'] as const).map((c) => (
             <button
               key={c}
@@ -1475,6 +1493,7 @@ function GenerationTrends() {
   })
 
   const [spreadCountry, setSpreadCountry] = useState<string | null>(null)
+  const [spreadWindowDays, setSpreadWindowDays] = useState<number>(90)
 
   // Compute country with biggest intrazone spread from today's power_latest
   const bestSpreadCountry = useMemo(() => {
@@ -1507,8 +1526,8 @@ function GenerationTrends() {
   const effectiveSpreadCountry = spreadCountry ?? bestSpreadCountry
 
   const { data: crossZoneSpreadData } = useQuery({
-    queryKey: ['power-cross-zone-spreads', effectiveSpreadCountry],
-    queryFn: () => api.powerCrossZoneSpreads(effectiveSpreadCountry),
+    queryKey: ['power-cross-zone-spreads', effectiveSpreadCountry, spreadWindowDays],
+    queryFn: () => api.powerCrossZoneSpreads(effectiveSpreadCountry, spreadWindowDays),
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -1573,6 +1592,8 @@ function GenerationTrends() {
       <CrossZoneSpreadChart
         country={effectiveSpreadCountry}
         onCountryChange={setSpreadCountry}
+        windowDays={spreadWindowDays}
+        onWindowChange={setSpreadWindowDays}
         rows={crossZoneSpreadData?.rows ?? []}
         zones={crossZoneSpreadData?.zones ?? []}
         refZone={crossZoneSpreadData?.ref_zone ?? COUNTRY_REF[effectiveSpreadCountry]}

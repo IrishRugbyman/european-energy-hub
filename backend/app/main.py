@@ -2638,10 +2638,11 @@ _COUNTRY_SPREAD_CONFIG: dict[str, tuple[str, list[str]]] = {
 
 
 @app.get("/api/power/cross-zone-spreads", response_model=CrossZoneSpreadResponse)
-def power_cross_zone_spreads(country: str = "IT"):
-    """Daily spread of each sub-zone vs the reference zone, trailing 90 days.
+def power_cross_zone_spreads(country: str = "IT", window_days: int = 90):
+    """Daily spread of each sub-zone vs the reference zone.
 
     country: IT | NO | SE | DK (default IT).
+    window_days: trailing days (default 90, max 730).
     For IT: each zone minus IT-NORD. Positive = premium, negative = discount.
     For NO: each zone minus NO-5 (south hub). Reflects hydro dispatch geography.
     For SE: each zone minus SE-3 (Stockholm, largest load center).
@@ -2650,6 +2651,7 @@ def power_cross_zone_spreads(country: str = "IT"):
     country = country.upper()
     if country not in _COUNTRY_SPREAD_CONFIG:
         raise HTTPException(status_code=400, detail=f"Unknown country '{country}'. Use: IT, NO, SE, DK")
+    window_days = max(30, min(730, window_days))
 
     ref_zone, other_zones = _COUNTRY_SPREAD_CONFIG[country]
     all_zones = [ref_zone] + other_zones
@@ -2659,20 +2661,20 @@ def power_cross_zone_spreads(country: str = "IT"):
         SELECT price_date, zone, base_eur
         FROM power_daily
         WHERE zone IN ({placeholders})
-          AND price_date >= current_date - INTERVAL '90 days'
+          AND price_date >= current_date - INTERVAL '{window_days} days'
           AND base_eur IS NOT NULL
         ORDER BY price_date, zone
     """)
 
     if df is None or df.empty:
         return CrossZoneSpreadResponse(
-            ref_zone=ref_zone, country=country, window_days=90, zones=other_zones, rows=[]
+            ref_zone=ref_zone, country=country, window_days=window_days, zones=other_zones, rows=[]
         )
 
     pivot = df.pivot_table(index="price_date", columns="zone", values="base_eur")
     if ref_zone not in pivot.columns:
         return CrossZoneSpreadResponse(
-            ref_zone=ref_zone, country=country, window_days=90, zones=other_zones, rows=[]
+            ref_zone=ref_zone, country=country, window_days=window_days, zones=other_zones, rows=[]
         )
 
     ref_col = pivot[ref_zone]
@@ -2694,7 +2696,7 @@ def power_cross_zone_spreads(country: str = "IT"):
     return CrossZoneSpreadResponse(
         ref_zone=ref_zone,
         country=country,
-        window_days=90,
+        window_days=window_days,
         zones=present_zones,
         rows=rows,
     )
