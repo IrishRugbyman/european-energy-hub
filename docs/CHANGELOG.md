@@ -1,5 +1,22 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 27: UI polish and data table improvements
+
+**Improvements:**
+1. CrossZoneSpreadChart legend now shows current spread values per zone, sorted by spread descending. Example for Norway today: "NO-2 +52€, NO-1 +13€, NO-3 -5€, NO-4 -16€". Makes the chart immediately readable without hovering.
+2. ZoneTable gains "Range" column (intraday high-low price range, `day_range_eur`). Today NO-2 shows 147 EUR range - indicating extreme spot volatility from the NordLink HVDC cable charging and grid constraints. Column is sortable.
+3. ZoneTable zone code cells gain `title` attribute with full zone name on hover (e.g. "Norway NO2 (Kristiansand)") for all 45 zones.
+4. BordersTable shows signed spread values (+/-) instead of absolute, making direction explicit: "+52 €" means from_zone is 52 EUR more expensive than to_zone, "-64 €" means from_zone is cheaper. Sorts by absolute magnitude.
+5. Congestion hotspot chip on /map stat strip now shows reference zone: "NO-2 vs NO-5: +52€" instead of "NO-2 +52€". Tooltip explains the comparison and includes EUR/MWh units.
+
+**Data:**
+- Expanded NTC ingest to cover all new border pairs. DK-1/DE-LU got NTC data; Nordic internal borders have no NTC in ENTSO-E Transparency (flow-based market - expected).
+- Expanded scheduled exchanges ingest to all 34 border pairs. Nordic internal corridors have limited coverage (~1920 rows/90d vs 7680 for actual flows - Nordic uses HVDC dispatch data not traditional scheduled exchange reports).
+
+**Artifacts:** `frontend/src/routes/generation.tsx` (spread legend), `frontend/src/routes/power.tsx` (ZoneTable Range, BordersTable signed spread, congestion chip), `shared/market-data/config.py` (already committed in round 26).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 26: Nordic/Baltic border flows + full zone centroid coverage
 
 **New features:**
