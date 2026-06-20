@@ -744,16 +744,18 @@ function BordersTable({
         return {
           from_zone: d.from_zone,
           to_zone: d.to_zone,
-          diff: d.diff_eur_mwh != null ? Math.abs(d.diff_eur_mwh) : null,
+          diff: d.diff_eur_mwh ?? null,       // signed: positive = from is more expensive
+          diffAbs: d.diff_eur_mwh != null ? Math.abs(d.diff_eur_mwh) : null,
           util: cong?.utilization_pct ?? null,
           ntc: cong?.ntc_mw ?? null,
         }
       })
       .sort((a, b) => {
-        const av = a[sortKey] as number | null
-        const bv = b[sortKey] as number | null
-        const diff = (av ?? (sortAsc ? Infinity : -Infinity)) - (bv ?? (sortAsc ? Infinity : -Infinity))
-        return sortAsc ? diff : -diff
+        // sort by absolute spread (most congested first) or by chosen key
+        const aVal = sortKey === 'diff' ? a.diffAbs : sortKey === 'util' ? a.util : a.ntc
+        const bVal = sortKey === 'diff' ? b.diffAbs : sortKey === 'util' ? b.util : b.ntc
+        const d2 = (aVal ?? (sortAsc ? Infinity : -Infinity)) - (bVal ?? (sortAsc ? Infinity : -Infinity))
+        return sortAsc ? d2 : -d2
       })
   }, [divergence, congMap, sortKey, sortAsc])
 
@@ -794,7 +796,7 @@ function BordersTable({
           </thead>
           <tbody>
             {rows.map((r) => {
-              const diffColor = r.diff == null ? '#64748b' : r.diff >= 30 ? '#f87171' : r.diff >= 10 ? '#fbbf24' : '#4ade80'
+              const diffColor = r.diffAbs == null ? '#64748b' : r.diffAbs >= 30 ? '#f87171' : r.diffAbs >= 10 ? '#fbbf24' : '#4ade80'
               const utilColor = r.util == null ? '#64748b' : r.util >= 90 ? '#f87171' : r.util >= 70 ? '#fbbf24' : '#4ade80'
               return (
                 <tr
@@ -806,7 +808,7 @@ function BordersTable({
                     {r.from_zone} <span className="text-muted-foreground">→</span> {r.to_zone}
                   </td>
                   <td className="px-2 py-1.5 text-right font-medium" style={{ color: diffColor }}>
-                    {r.diff != null ? `${r.diff.toFixed(1)} €/MWh` : '--'}
+                    {r.diff != null ? `${r.diff > 0 ? '+' : ''}${r.diff.toFixed(1)} €` : '--'}
                   </td>
                   <td className="px-2 py-1.5 text-right" style={{ color: utilColor }}>
                     {r.util != null ? `${Math.min(r.util, 150).toFixed(0)}%` : '--'}
