@@ -313,11 +313,7 @@ function ZoneCfChart({ rows }: { rows: ZoneCfRow[] }) {
             }}
             cursor={{ fill: 'rgba(255,255,255,0.04)' }}
           />
-          <Bar dataKey="value" fill={color} fillOpacity={0.8} radius={[0, 2, 2, 0]} isAnimationActive={false}>
-            {chartData.map((_, i) => (
-              <Bar key={i} dataKey="value" fill={color} />
-            ))}
-          </Bar>
+          <Bar dataKey="value" fill={color} fillOpacity={0.8} radius={[0, 2, 2, 0]} isAnimationActive={false} />
         </BarChart>
       </ResponsiveContainer>
     </div>

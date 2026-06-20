@@ -1,10 +1,13 @@
 import { X } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Area,
   AreaChart,
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ReferenceLine,
@@ -24,6 +27,8 @@ interface Props {
 }
 
 export function CountryPanel({ country, latest, onClose }: Props) {
+  const [chartMode, setChartMode] = useState<'fill' | 'rate'>('fill')
+
   const { data, isLoading } = useQuery({
     queryKey: ['gas-country', country],
     queryFn: () => api.gasCountry(country),
@@ -37,6 +42,18 @@ export function CountryPanel({ country, latest, onClose }: Props) {
   })
 
   const fillColor = gasFillColor(latest?.full_pct)
+
+  // Build net injection rate chart data from current_year
+  const injRateData = useMemo(() => {
+    return (data?.current_year ?? []).map((r) => {
+      const net = (r.injection ?? 0) - (r.withdrawal ?? 0)
+      return {
+        label: r.gas_day.slice(5),
+        net,
+        color: net >= 0 ? '#16a34a' : '#dc2626',
+      }
+    })
+  }, [data])
 
   // Build seasonal chart data: merge band + current + prior year by DOY
   const seasonalChartData = buildSeasonalChart(data)
@@ -138,8 +155,51 @@ export function CountryPanel({ country, latest, onClose }: Props) {
 
       {/* Seasonal chart */}
       <div className="flex-1 p-4 overflow-y-auto">
-        <p className="text-xs text-muted-foreground mb-2">Fill % - seasonal overlay</p>
-        {isLoading ? (
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-muted-foreground">
+            {chartMode === 'fill' ? 'Fill % - seasonal overlay' : 'Net injection rate (GWh/d)'}
+          </p>
+          <div className="flex gap-0.5">
+            {(['fill', 'rate'] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setChartMode(m)}
+                className={`px-1.5 py-0.5 rounded text-[10px] ${m === chartMode ? 'bg-primary/20 text-primary' : 'text-muted-foreground/60 hover:text-muted-foreground'}`}
+              >
+                {m === 'fill' ? 'Fill%' : 'Rate'}
+              </button>
+            ))}
+          </div>
+        </div>
+        {chartMode === 'rate' && injRateData.length > 0 ? (
+          <>
+            <ResponsiveContainer width="100%" height={200}>
+              <BarChart data={injRateData} margin={{ top: 4, right: 4, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={Math.floor(injRateData.length / 4)} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={36} tickFormatter={(v) => `${(v as number).toFixed(0)}`} />
+                <Tooltip
+                  contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                  formatter={(v) => {
+                    const n = typeof v === 'number' ? v : null
+                    return n != null ? [`${n >= 0 ? '+' : ''}${n.toFixed(0)} GWh/d`, 'Net inj.'] : ['--', 'Net inj.']
+                  }}
+                  cursor={{ fill: 'rgba(255,255,255,0.05)' }}
+                />
+                <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 2" />
+                <Bar dataKey="net" radius={[1, 1, 0, 0]} isAnimationActive={false}>
+                  {injRateData.map((d, i) => (
+                    <Cell key={i} fill={d.color} fillOpacity={0.75} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
+              <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-green-700" /><span>Injection</span></div>
+              <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-sm bg-red-700" /><span>Withdrawal</span></div>
+            </div>
+          </>
+        ) : isLoading ? (
           <div className="flex items-center justify-center h-32 text-muted-foreground text-xs">Loading...</div>
         ) : seasonalChartData.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
@@ -218,8 +278,8 @@ export function CountryPanel({ country, latest, onClose }: Props) {
           <div className="flex items-center justify-center h-32 text-muted-foreground text-xs">No data</div>
         )}
 
-        {/* Injection / withdrawal bars */}
-        {latest?.injection != null && latest.withdrawal != null && (
+        {/* Injection / withdrawal bars - only in fill mode */}
+        {chartMode === 'fill' && latest?.injection != null && latest.withdrawal != null && (
           <div className="mt-4">
             <p className="text-xs text-muted-foreground mb-2">Latest day flows (GWh)</p>
             <div className="space-y-1">
