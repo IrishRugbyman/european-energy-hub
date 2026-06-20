@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 20: per-zone carbon intensity ranking
+
+**New features:**
+1. Per-zone carbon intensity snapshot (`/generation`): new `GET /api/generation/zone-carbon-intensity` computes 90-day trailing average gCO2/kWh per zone using simplified emission factors (coal 820, gas 490 g/kWh; wind/solar/hydro/nuclear = 0). `ZoneCarbonIntensityChart` ranks all zones: PL 418, NL 245, CZ 235, DE-LU 200 g/kWh; AT/HR 23, NO-4 27 g/kWh. Color: red >= 300, amber >= 150, grey >= 60, green below. Placed before the TTF-correlation chart in the generation page. 87 tests (1 new).
+
+**Artifacts:** `backend/app/schemas.py` (ZoneCarbonIntensityRow/Response), `backend/app/main.py` (/api/generation/zone-carbon-intensity), `frontend/src/lib/api.ts` (ZoneCarbonIntensityRow, genZoneCarbonIntensity), `frontend/src/routes/generation.tsx` (ZoneCarbonIntensityChart, zoneCiData query), `backend/tests/test_endpoints.py` (1 new test).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 19: per-zone gas price passthrough (TTF correlation)
 
 **New features:**
