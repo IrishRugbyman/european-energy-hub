@@ -135,6 +135,8 @@ from .schemas import (
     ForecastAccuracyResponse,
     CrossZoneSpreadPoint,
     CrossZoneSpreadResponse,
+    BorderFlowHistPoint,
+    BorderFlowHistResponse,
 )
 
 
@@ -787,6 +789,36 @@ def power_congestion_border(from_zone: str, to_zone: str):
         for r in df.itertuples()
     ]
     return CongestionBorderResponse(from_zone=fz, to_zone=tz, rows=rows)
+
+
+@app.get("/api/power/border-flows/{from_zone}/{to_zone}", response_model=BorderFlowHistResponse)
+def power_border_flows(from_zone: str, to_zone: str):
+    """Trailing daily net cross-border flow history for one border pair (canonical order)."""
+    fz = from_zone.upper().replace("_", "-")
+    tz = to_zone.upper().replace("_", "-")
+    # Canonical order: a < b alphabetically
+    a, b = (fz, tz) if fz < tz else (tz, fz)
+    df = db.query(
+        """
+        SELECT price_date::VARCHAR AS price_date, net_flow_mw
+        FROM borders_daily
+        WHERE from_zone = ? AND to_zone = ?
+        ORDER BY price_date
+        """,
+        [a, b],
+    )
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No flow data for border: {a}-{b}")
+    # Sign: positive = a->b. Caller requested fz->tz; if canonical order flipped, negate.
+    flip = (fz != a)
+    rows = [
+        BorderFlowHistPoint(
+            price_date=str(r.price_date),
+            net_flow_mw=(_float(r.net_flow_mw) * -1 if flip and r.net_flow_mw is not None else _float(r.net_flow_mw)),
+        )
+        for r in df.itertuples()
+    ]
+    return BorderFlowHistResponse(from_zone=fz, to_zone=tz, rows=rows)
 
 
 @app.get("/api/power/divergence", response_model=DivergenceResponse)

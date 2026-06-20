@@ -402,6 +402,17 @@ export interface CongestionBorderResponse {
   rows: CongestionRow[]
 }
 
+export interface BorderFlowHistPoint {
+  price_date: string
+  net_flow_mw: number | null
+}
+
+export interface BorderFlowHistResponse {
+  from_zone: string
+  to_zone: string
+  rows: BorderFlowHistPoint[]
+}
+
 export interface BatteryHourlyPoint {
   ts: string
   rebap_price: number | null
@@ -862,6 +873,7 @@ export const api = {
   gasPaceCountries: () => get<GasPaceCountriesResponse>('/gas/pace/countries'),
   powerCongestion: () => get<CongestionResponse>('/power/congestion'),
   powerCongestionBorder: (fz: string, tz: string) => get<CongestionBorderResponse>(`/power/congestion/border/${fz}/${tz}`),
+  powerBorderFlows: (fz: string, tz: string) => get<BorderFlowHistResponse>(`/power/border-flows/${fz}/${tz}`),
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),

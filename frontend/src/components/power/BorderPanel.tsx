@@ -12,7 +12,7 @@ import {
   YAxis,
 } from 'recharts'
 import { api } from '@/lib/api'
-import type { CongestionRow, BorderFlowRow, DivergenceDailyPoint, DivergenceLatestRow } from '@/lib/api'
+import type { CongestionRow, BorderFlowRow, DivergenceDailyPoint, DivergenceLatestRow, BorderFlowHistPoint } from '@/lib/api'
 import { utilizationColor, priceDivergenceColor, zoneName } from '@/lib/scales'
 
 type HistWindow = '3M' | '1Y' | 'all'
@@ -46,6 +46,11 @@ export function BorderPanel({ from, to, congestion, flows, divergenceRow, diverg
   const { data: revHist } = useQuery({
     queryKey: ['congestion-border', to, from],
     queryFn: () => api.powerCongestionBorder(to, from),
+    staleTime: 15 * 60 * 1000,
+  })
+  const { data: flowHist } = useQuery({
+    queryKey: ['border-flow-hist', from, to],
+    queryFn: () => api.powerBorderFlows(from, to),
     staleTime: 15 * 60 * 1000,
   })
 
@@ -265,6 +270,9 @@ export function BorderPanel({ from, to, congestion, flows, divergenceRow, diverg
         {fwdRow?.price_date && (
           <p className="text-xs text-muted-foreground mt-3">As of {fwdRow.price_date}</p>
         )}
+
+        {/* Net physical flow history - shown when flow data exists */}
+        <FlowHistChart from={from} to={to} rows={flowHist?.rows ?? []} window={histWindow} />
       </div>
     </div>
   )
@@ -289,6 +297,71 @@ function DirBox({
         {row?.scheduled_mw != null ? `${row.scheduled_mw.toFixed(0)}` : '--'} /{' '}
         {row?.ntc_mw != null ? `${row.ntc_mw.toFixed(0)} MW` : '--'}
       </p>
+    </div>
+  )
+}
+
+function FlowHistChart({
+  from,
+  to,
+  rows,
+  window: win,
+}: {
+  from: string
+  to: string
+  rows: BorderFlowHistPoint[]
+  window: HistWindow
+}) {
+  if (!rows.length) return null
+
+  const windowed =
+    win === '3M' ? rows.slice(-90) :
+    win === '1Y' ? rows.slice(-365) :
+    rows
+
+  const maxAbs = Math.max(...windowed.map((r) => Math.abs(r.net_flow_mw ?? 0)), 1)
+
+  return (
+    <div className="mt-4">
+      <p className="text-xs text-muted-foreground mb-2">Net physical flow history (MW, +={from}→{to})</p>
+      <ResponsiveContainer width="100%" height={140}>
+        <LineChart data={windowed} margin={{ top: 4, right: 16, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="price_date"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            interval={Math.floor(windowed.length / 5)}
+            tickFormatter={(v) => (v as string)?.slice(5) ?? ''}
+          />
+          <YAxis
+            domain={[-maxAbs * 1.1, maxAbs * 1.1]}
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            width={38}
+            tickFormatter={(v) => `${Math.round(v as number)}`}
+          />
+          <ReferenceLine y={0} stroke="#4b5563" strokeDasharray="3 2" />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v) => {
+              const num = typeof v === 'number' ? v : null
+              if (num == null) return ['--', 'Net flow']
+              const dir = num >= 0 ? `${from}→${to}` : `${to}→${from}`
+              return [`${Math.abs(num).toFixed(0)} MW (${dir})`, 'Net flow']
+            }}
+            labelFormatter={(l) => String(l)}
+          />
+          <Line
+            type="monotone"
+            dataKey="net_flow_mw"
+            stroke="#60a5fa"
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }

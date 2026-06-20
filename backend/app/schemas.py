@@ -351,6 +351,17 @@ class CongestionBorderResponse(BaseModel):
     rows: list[CongestionRow]
 
 
+class BorderFlowHistPoint(BaseModel):
+    price_date: str
+    net_flow_mw: float | None
+
+
+class BorderFlowHistResponse(BaseModel):
+    from_zone: str
+    to_zone: str
+    rows: list[BorderFlowHistPoint]
+
+
 # Generation mix (used in PowerZoneResponse)
 
 class GenerationMixRow(BaseModel):
