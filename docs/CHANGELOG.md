@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 12: zone market coupling, EU storage vs price scatter
+
+**New features:**
+1. Zone market coupling panel (`/spreads`): new `ZoneDecouplingSection` component fetches the existing (but never-visualised) `/api/power/correlations` endpoint and renders the 8 most decoupled and 8 most coupled zone pairs as horizontal bar rows. FR/SE-1 (-0.24), FR/SE-2 (-0.20) and IE-SEM pairs are the most decoupled; CZ/AT (0.99), DE/CZ pairs are the most coupled. Color-coded: red = negative r (potential arbitrage), green = high r (moves as one system). Added `power_correlation_30d` seed to conftest and 2 new tests.
+2. EU storage vs TTF price scatter (`/gas` Trend view): new `GET /api/gas/price-scatter` endpoint joins EU storage fill% with TTF front-month price (1688 daily rows since 2020). `StoragePriceScatter` component shows each year's dots in a distinct color with Pearson r displayed, revealing the inverse storage-to-gas-price relationship. Placed below StorageCountryCompare in the Trend tab.
+
+**Tests:** 78 tests passing.
+
+**Artifacts:** `frontend/src/routes/spreads.tsx` (ZoneDecouplingSection, CorrelationBar), `frontend/src/routes/gas.tsx` (StoragePriceScatter, ScatterChart imports), `backend/app/schemas.py` (GasPriceScatterRow/Response), `backend/app/main.py` (/api/gas/price-scatter), `frontend/src/lib/api.ts` (GasPriceScatterRow, gasPriceScatter), `backend/tests/conftest.py` (power_correlation_30d seed), `backend/tests/test_endpoints.py` (4 new tests).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 11: capacity growth, neg-price trend, EU storage trajectory, UX
 
 **New features:**
