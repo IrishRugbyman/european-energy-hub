@@ -8,7 +8,7 @@ import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
 import { InterconnectionLayer, type BorderKey, type InterconnMode } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
-import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity } from '@/lib/scales'
+import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity, zoneName } from '@/lib/scales'
 
 export const Route = createFileRoute('/power')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -605,7 +605,7 @@ function StatChip({ label, value, valueColor }: { label: string; value: string; 
 // Expose zoneColor for use in legend previews (keeps import clean)
 export { zoneColor }
 
-type ZoneSortKey = 'base_eur' | 'vs_30d_pct' | 'pct_rank_2yr' | 'neg_hours' | 'renewable_pct'
+type ZoneSortKey = 'base_eur' | 'vs_30d_pct' | 'pct_rank_2yr' | 'neg_hours' | 'renewable_pct' | 'day_range_eur'
 
 function ZoneTable({
   power,
@@ -677,6 +677,7 @@ function ZoneTable({
             <tr>
               <th className="text-left px-4 py-1.5 font-normal text-muted-foreground">Zone</th>
               {headerBtn('base_eur', '€/MWh')}
+              {headerBtn('day_range_eur', 'Range')}
               {headerBtn('vs_30d_pct', 'vs 30d')}
               {headerBtn('pct_rank_2yr', '2yr %')}
               {headerBtn('neg_hours', 'Neg')}
@@ -693,8 +694,9 @@ function ZoneTable({
                   className="border-b border-border/40 hover:bg-secondary/50 cursor-pointer"
                   onClick={() => onSelect(r.zone)}
                 >
-                  <td className="px-4 py-1.5 font-mono text-foreground">{r.zone}</td>
+                  <td className="px-4 py-1.5 font-mono text-foreground" title={zoneName(r.zone)}>{r.zone}</td>
                   <td className="px-2 py-1.5 text-right font-medium text-foreground">{fmtPrice(r.base_eur)}</td>
+                  <td className="px-2 py-1.5 text-right text-muted-foreground">{fmtPrice(r.day_range_eur)}</td>
                   <td className="px-2 py-1.5 text-right" style={{ color: vsColor }}>{fmtDelta(r.vs_30d_pct)}</td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{fmtRank(r.pct_rank_2yr)}</td>
                   <td className="px-2 py-1.5 text-right text-muted-foreground">{r.neg_hours ?? 0}h</td>
