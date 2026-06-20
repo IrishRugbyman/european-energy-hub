@@ -1,5 +1,18 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 13: zone neg-price ranking, NTC congestion panel, YoY spreads chart
+
+**New features:**
+1. Zone negative price frequency ranking (`/generation`): new `GET /api/power/neg-hours-zones` returns trailing-30-day % of hours with DA price < 0 for all 34 zones, ranked descending. `NegHoursZoneRanking` bar chart placed immediately after the `NegHoursMonthlyChart` (which shows 5 zones over time). FR leads at 21.2%, ES at 20.4%, with red/amber/green color coding. 2 new tests; 80 tests total.
+2. NTC congestion ranking panel (`/spreads`): `CongestionRankingSection` reuses the existing `/api/power/congestion` endpoint and renders all interconnectors sorted by current NTC utilization. Today: BE->NL 150%, DE-LU->NL 150% (NTC breach), FR->IT-NORD 107%, CH->IT-NORD 104%. Color: red >= 100%, amber >= 80%, green otherwise. No new endpoint or tests.
+3. YoY annual spreads chart (`/spreads`): `ZoneSpreadYoYChart` computes annual averages of CSS/CDS/FSS per zone client-side from existing `spreadsZones` data. Grouped bar chart by zone with one bar per year (2021-2026), color-coded by year. Clearly shows the regime shift: FR CSS collapsed from +10 (2021) to -55 (2026 YTD) due to nuclear+solar surplus; IT-NORD CSS stayed positive at +13-16 throughout. No new endpoint.
+
+**Tests:** 80 tests passing.
+
+**Artifacts:** `backend/app/schemas.py` (NegHoursZoneRow/Response), `backend/app/main.py` (/api/power/neg-hours-zones), `frontend/src/lib/api.ts` (NegHoursZoneRow, powerNegHoursZones), `frontend/src/routes/generation.tsx` (NegHoursZoneRanking, negHoursZoneData query), `frontend/src/routes/spreads.tsx` (CongestionRankingSection, ZoneSpreadYoYChart, SPREAD_YOY_YEAR_COLORS), `backend/tests/test_endpoints.py` (2 new tests).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 12: zone market coupling, EU storage vs price scatter
 
 **New features:**
