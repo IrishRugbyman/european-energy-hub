@@ -834,3 +834,15 @@ class ZoneTtfCorrRow(BaseModel):
 class ZoneTtfCorrResponse(BaseModel):
     window_days: int
     rows: list[ZoneTtfCorrRow]
+
+
+class ZoneCarbonIntensityRow(BaseModel):
+    zone: str
+    ci_g_kwh: float
+    avg_re_pct: float
+    n_days: int
+
+
+class ZoneCarbonIntensityResponse(BaseModel):
+    window_days: int
+    rows: list[ZoneCarbonIntensityRow]

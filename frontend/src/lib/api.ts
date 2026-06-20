@@ -748,6 +748,18 @@ export interface MonthlyFuelMixResponse {
   rows: MonthlyFuelMixRow[]
 }
 
+export interface ZoneCarbonIntensityRow {
+  zone: string
+  ci_g_kwh: number
+  avg_re_pct: number
+  n_days: number
+}
+
+export interface ZoneCarbonIntensityResponse {
+  window_days: number
+  rows: ZoneCarbonIntensityRow[]
+}
+
 export interface ZoneTtfCorrRow {
   zone: string
   corr: number
@@ -858,4 +870,5 @@ export const api = {
   gasPriceScatter: () => get<GasPriceScatterResponse>('/gas/price-scatter'),
   powerHourlyProfilesAll: () => get<ZoneHourlyProfilesResponse>('/power/hourly-profiles-all'),
   genZoneTtfCorr: () => get<ZoneTtfCorrResponse>('/generation/zone-ttf-corr'),
+  genZoneCarbonIntensity: () => get<ZoneCarbonIntensityResponse>('/generation/zone-carbon-intensity'),
 }

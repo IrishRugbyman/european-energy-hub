@@ -961,3 +961,20 @@ def test_zone_ttf_corr_ordered_descending(client):
     rows = client.get("/api/generation/zone-ttf-corr").json()["rows"]
     corrs = [row["corr"] for row in rows]
     assert corrs == sorted(corrs, reverse=True)
+
+
+def test_zone_carbon_intensity(client):
+    """generation/zone-carbon-intensity returns per-zone CI ranked descending."""
+    r = client.get("/api/generation/zone-carbon-intensity")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["window_days"] == 90
+    rows = data["rows"]
+    assert len(rows) > 0
+    assert "DE-LU" in {row["zone"] for row in rows}
+    for row in rows:
+        assert row["ci_g_kwh"] >= 0
+        assert row["n_days"] >= 30
+    # Should be ordered descending by CI
+    cis = [row["ci_g_kwh"] for row in rows]
+    assert cis == sorted(cis, reverse=True)

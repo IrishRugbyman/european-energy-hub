@@ -129,6 +129,8 @@ from .schemas import (
     ZoneHourlyProfilesResponse,
     ZoneTtfCorrRow,
     ZoneTtfCorrResponse,
+    ZoneCarbonIntensityRow,
+    ZoneCarbonIntensityResponse,
 )
 
 
@@ -2470,3 +2472,38 @@ def generation_zone_ttf_corr():
         for r in df.itertuples()
     ]
     return ZoneTtfCorrResponse(window_days=365, rows=rows)
+
+
+@app.get("/api/generation/zone-carbon-intensity", response_model=ZoneCarbonIntensityResponse)
+def generation_zone_carbon_intensity():
+    """Per-zone average carbon intensity (gCO2/kWh), trailing 90 days.
+
+    Uses simplified emission factors: coal 820 gCO2/kWh, gas 490 gCO2/kWh.
+    Hydro, wind, solar, nuclear treated as zero. Ranked highest to lowest.
+    """
+    df = db.query("""
+        SELECT zone,
+               ROUND(AVG(CASE WHEN total_mw > 0
+                          THEN (COALESCE(coal, 0) * 820 + COALESCE(gas, 0) * 490) / total_mw
+                          ELSE NULL END)::REAL, 0) AS ci_g_kwh,
+               ROUND(AVG(renewable_pct)::REAL, 1)  AS avg_re_pct,
+               COUNT(*)::INT                        AS n_days
+        FROM generation_daily
+        WHERE gen_date >= (SELECT MAX(gen_date) FROM generation_daily) - INTERVAL 90 DAYS
+          AND total_mw > 0
+        GROUP BY zone
+        HAVING COUNT(*) >= 30
+        ORDER BY ci_g_kwh DESC
+    """)
+    if df is None or df.empty:
+        return ZoneCarbonIntensityResponse(window_days=90, rows=[])
+    rows = [
+        ZoneCarbonIntensityRow(
+            zone=str(r.zone),
+            ci_g_kwh=float(r.ci_g_kwh or 0),
+            avg_re_pct=float(r.avg_re_pct or 0),
+            n_days=int(r.n_days),
+        )
+        for r in df.itertuples()
+    ]
+    return ZoneCarbonIntensityResponse(window_days=90, rows=rows)
