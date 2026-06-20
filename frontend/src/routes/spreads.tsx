@@ -527,13 +527,43 @@ function SpreadsDashboard() {
   const disruptionNow = latest(rows, 'disruption_bcm')
   const regimeNow = rows.length ? rows[rows.length - 1].regime_threshold : null
 
+  const pctRank2yr = useMemo(() => {
+    const cutoff = cutoffDate('2Y') ?? ''
+    const rank = (key: 'css' | 'cds' | 'fss', current: number | null) => {
+      if (current == null) return null
+      const vals = rows
+        .filter((r) => r.price_date >= cutoff && r[key] != null)
+        .map((r) => r[key] as number)
+      if (!vals.length) return null
+      const below = vals.filter((v) => v < current).length
+      return Math.round((below / vals.length) * 100)
+    }
+    return { css: rank('css', cssNow), cds: rank('cds', cdsNow), fss: rank('fss', fssNow) }
+  }, [rows, cssNow, cdsNow, fssNow])
+
+  const rankColor = (r: number | null) => {
+    if (r == null) return '#64748b'
+    if (r >= 80) return '#f87171'
+    if (r <= 20) return '#4ade80'
+    return '#64748b'
+  }
+
   return (
     <div className="p-4 h-full overflow-y-auto">
       {/* Stat strip */}
       <div className="flex flex-wrap items-center gap-4 mb-4">
-        <StatChip label="Clean Spark (CSS)" value={fmt(cssNow)} color="#60a5fa" />
-        <StatChip label="Clean Dark (CDS)" value={fmt(cdsNow)} color="#f59e0b" />
-        <StatChip label="Fuel Switch (FSS)" value={fmt(fssNow)} color="#a78bfa" />
+        <div className="flex flex-col">
+          <StatChip label="Clean Spark (CSS)" value={fmt(cssNow)} color="#60a5fa" />
+          {pctRank2yr.css != null && <span className="text-xs mt-0.5 ml-0.5" style={{ color: rankColor(pctRank2yr.css) }}>p{pctRank2yr.css} (2yr)</span>}
+        </div>
+        <div className="flex flex-col">
+          <StatChip label="Clean Dark (CDS)" value={fmt(cdsNow)} color="#f59e0b" />
+          {pctRank2yr.cds != null && <span className="text-xs mt-0.5 ml-0.5" style={{ color: rankColor(pctRank2yr.cds) }}>p{pctRank2yr.cds} (2yr)</span>}
+        </div>
+        <div className="flex flex-col">
+          <StatChip label="Fuel Switch (FSS)" value={fmt(fssNow)} color="#a78bfa" />
+          {pctRank2yr.fss != null && <span className="text-xs mt-0.5 ml-0.5" style={{ color: rankColor(pctRank2yr.fss) }}>p{pctRank2yr.fss} (2yr)</span>}
+        </div>
         {regimeNow && (
           <span
             className={`px-2 py-0.5 rounded text-xs font-medium ${
