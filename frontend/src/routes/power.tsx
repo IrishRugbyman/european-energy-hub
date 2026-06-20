@@ -249,6 +249,37 @@ function MapDashboard() {
     .filter((v): v is number => v != null)
     .sort((a, b) => a - b)
   const medianPrice = prices.length ? prices[Math.floor(prices.length / 2)] : null
+
+  // Compute the largest intrazone congestion spread from today's power_latest
+  const congestionHotspot = useMemo(() => {
+    const rows = powerData?.rows ?? []
+    if (!rows.length) return null
+    const byZone: Record<string, number | null> = {}
+    for (const r of rows) byZone[r.zone] = r.base_eur ?? null
+    // Reference zones per country
+    const refs: Array<[string, string[]]> = [
+      ['IT-NORD',  ['IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD', 'IT-CALA']],
+      ['NO-5',     ['NO-1', 'NO-2', 'NO-3', 'NO-4']],
+      ['SE-3',     ['SE-1', 'SE-2', 'SE-4']],
+      ['DK-1',     ['DK-2']],
+    ]
+    let maxAbs = 0
+    let best: { zone: string; ref: string; spread: number } | null = null
+    for (const [ref, others] of refs) {
+      const refPrice = byZone[ref]
+      if (refPrice == null) continue
+      for (const z of others) {
+        const zp = byZone[z]
+        if (zp == null) continue
+        const spread = zp - refPrice
+        if (Math.abs(spread) > maxAbs) {
+          maxAbs = Math.abs(spread)
+          best = { zone: z, ref, spread: Math.round(spread * 10) / 10 }
+        }
+      }
+    }
+    return best && maxAbs >= 2 ? best : null
+  }, [powerData])
   const priceDate = powerData?.price_date ?? null
 
   const withGenData = (genData?.zones ?? []).filter((z) => z.renewable_pct != null && z.total_mw != null && z.total_mw > 0)
@@ -399,6 +430,13 @@ function MapDashboard() {
             {isPriceMetric(metric) && medianPrice != null && (
               <StatChip label="EU median price" value={`${medianPrice.toFixed(0)} €/MWh`} />
             )}
+            {isPriceMetric(metric) && congestionHotspot != null && (
+              <StatChip
+                label="top congestion"
+                value={`${congestionHotspot.zone} ${congestionHotspot.spread > 0 ? '+' : ''}${congestionHotspot.spread} €`}
+                valueColor={Math.abs(congestionHotspot.spread) > 20 ? '#f87171' : Math.abs(congestionHotspot.spread) > 8 ? '#fbbf24' : '#94a3b8'}
+              />
+            )}
             {(metric === 'renewable' || metric === 'dominant_fuel') && weightedRE != null && (
               <StatChip label="EU avg renewable" value={`${weightedRE.toFixed(0)}%`} />
             )}
@@ -547,11 +585,11 @@ function MetricBtn({
   )
 }
 
-function StatChip({ label, value }: { label: string; value: string }) {
+function StatChip({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
     <div className="flex items-baseline gap-1">
       <span className="text-muted-foreground text-xs">{label}</span>
-      <span className="text-foreground font-medium">{value}</span>
+      <span className="font-medium" style={{ color: valueColor ?? undefined }}>{value}</span>
     </div>
   )
 }
