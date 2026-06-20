@@ -123,6 +123,8 @@ from .schemas import (
     NegHoursZoneResponse,
     ZonePriceReCorrRow,
     ZonePriceReCorrResponse,
+    MonthlyFuelMixRow,
+    MonthlyFuelMixResponse,
 )
 
 
@@ -2369,3 +2371,41 @@ def generation_zone_price_re_corr():
         for r in df.itertuples()
     ]
     return ZonePriceReCorrResponse(window_days=365, rows=rows)
+
+
+@app.get("/api/generation/eu/monthly-fuel-mix", response_model=MonthlyFuelMixResponse)
+def generation_eu_monthly_fuel_mix():
+    """EU-34 monthly average fuel share (%) across all years with data, for seasonality view."""
+    df = db.query("""
+        SELECT EXTRACT('month' FROM gen_date)::INT AS month,
+               ROUND(AVG(solar)   / NULLIF(AVG(total_mw), 0) * 100, 1) AS solar_pct,
+               ROUND(AVG(wind)    / NULLIF(AVG(total_mw), 0) * 100, 1) AS wind_pct,
+               ROUND(AVG(nuclear) / NULLIF(AVG(total_mw), 0) * 100, 1) AS nuclear_pct,
+               ROUND(AVG(hydro)   / NULLIF(AVG(total_mw), 0) * 100, 1) AS hydro_pct,
+               ROUND(AVG(gas)     / NULLIF(AVG(total_mw), 0) * 100, 1) AS gas_pct,
+               ROUND(AVG(coal)    / NULLIF(AVG(total_mw), 0) * 100, 1) AS coal_pct,
+               ROUND(AVG(biomass) / NULLIF(AVG(total_mw), 0) * 100, 1) AS biomass_pct,
+               ROUND(AVG(COALESCE(oil, 0) + COALESCE(geothermal, 0) + COALESCE(other, 0))
+                     / NULLIF(AVG(total_mw), 0) * 100, 1)               AS other_pct
+        FROM generation_daily
+        WHERE gen_date >= '2022-01-01'::DATE
+        GROUP BY EXTRACT('month' FROM gen_date)
+        ORDER BY 1
+    """)
+    if df is None or df.empty:
+        return MonthlyFuelMixResponse(rows=[])
+    rows = [
+        MonthlyFuelMixRow(
+            month=int(r.month),
+            solar_pct=float(r.solar_pct or 0),
+            wind_pct=float(r.wind_pct or 0),
+            nuclear_pct=float(r.nuclear_pct or 0),
+            hydro_pct=float(r.hydro_pct or 0),
+            gas_pct=float(r.gas_pct or 0),
+            coal_pct=float(r.coal_pct or 0),
+            biomass_pct=float(r.biomass_pct or 0),
+            other_pct=float(r.other_pct or 0),
+        )
+        for r in df.itertuples()
+    ]
+    return MonthlyFuelMixResponse(rows=rows)

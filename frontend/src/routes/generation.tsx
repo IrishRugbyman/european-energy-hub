@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -363,6 +363,74 @@ function NegHoursZoneRanking({ rows }: { rows: NegHoursZoneRow[] }) {
             </div>
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+
+function MonthlyFuelMixSeasonality({ rows }: { rows: MonthlyFuelMixRow[] }) {
+  if (!rows.length) return null
+
+  const chartData = rows.map((r) => ({
+    month: MONTH_ABBR[r.month - 1] ?? String(r.month),
+    solar: r.solar_pct,
+    wind: r.wind_pct,
+    hydro: r.hydro_pct,
+    nuclear: r.nuclear_pct,
+    gas: r.gas_pct,
+    coal: r.coal_pct,
+    biomass: r.biomass_pct,
+    other: r.other_pct,
+  }))
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+        EU-34 fuel mix seasonality - monthly average share (2022+)
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Stacked % of total generation. Solar peaks Jun-Aug (~18%), wind peaks Jan-Feb (~21%). Nuclear is flat year-round (~24%).
+      </p>
+      <ResponsiveContainer width="100%" height={200}>
+        <AreaChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} stackOffset="expand">
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => [
+              v != null ? `${(Number(v) * 100).toFixed(1)}%` : '--',
+              String(name),
+            ]}
+          />
+          {(['coal', 'gas', 'other', 'biomass', 'hydro', 'nuclear', 'wind', 'solar'] as const).map((f) => (
+            <Area
+              key={f}
+              type="monotone"
+              dataKey={f}
+              stackId="1"
+              stroke={FUEL_COLORS[f] ?? '#94a3b8'}
+              fill={FUEL_COLORS[f] ?? '#94a3b8'}
+              fillOpacity={0.85}
+              isAnimationActive={false}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-2 mt-2">
+        {(['solar', 'wind', 'nuclear', 'hydro', 'gas', 'coal', 'biomass'] as const).map((f) => (
+          <span key={f} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: FUEL_COLORS[f] }} />
+            {f}
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -881,6 +949,12 @@ function GenerationTrends() {
     staleTime: 24 * 60 * 60 * 1000,
   })
 
+  const { data: monthlyFuelMixData } = useQuery({
+    queryKey: ['gen-eu-monthly-fuel-mix'],
+    queryFn: api.genEuMonthlyFuelMix,
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -925,6 +999,7 @@ function GenerationTrends() {
     <div className="p-4 h-full overflow-y-auto">
       {(euHourlyData?.rows.length ?? 0) > 0 && <EuGenHourlyChart rows={euHourlyData!.rows} />}
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
+      {(monthlyFuelMixData?.rows.length ?? 0) > 0 && <MonthlyFuelMixSeasonality rows={monthlyFuelMixData!.rows} />}
       {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
       {(negHoursData?.rows.length ?? 0) > 0 && <NegHoursMonthlyChart rows={negHoursData!.rows} />}
       {(negHoursZoneData?.rows.length ?? 0) > 0 && <NegHoursZoneRanking rows={negHoursZoneData!.rows} />}

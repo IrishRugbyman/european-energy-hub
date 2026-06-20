@@ -896,3 +896,27 @@ def test_zone_price_re_corr_ordered_ascending(client):
     rows = r.json()["rows"]
     corrs = [row["corr"] for row in rows]
     assert corrs == sorted(corrs), "zones must be sorted ascending by correlation"
+
+
+def test_generation_eu_monthly_fuel_mix(client):
+    """generation/eu/monthly-fuel-mix returns 12 monthly fuel share rows."""
+    r = client.get("/api/generation/eu/monthly-fuel-mix")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    # Should have up to 12 rows (one per calendar month present in data)
+    assert len(data["rows"]) > 0
+    for row in data["rows"]:
+        assert "month" in row
+        assert "solar_pct" in row
+        assert "wind_pct" in row
+        assert "nuclear_pct" in row
+        assert "gas_pct" in row
+        assert 1 <= row["month"] <= 12
+        # Each fuel share should be non-negative
+        assert row["solar_pct"] >= 0
+        assert row["wind_pct"] >= 0
+        # Share percentages should sum to roughly 100 (allow some float rounding)
+        total = sum(row[k] for k in ("solar_pct", "wind_pct", "nuclear_pct", "hydro_pct",
+                                      "gas_pct", "coal_pct", "biomass_pct", "other_pct"))
+        assert 90 <= total <= 110, f"fuel shares sum to {total}, expected ~100"

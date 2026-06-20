@@ -796,3 +796,19 @@ class ZonePriceReCorrRow(BaseModel):
 class ZonePriceReCorrResponse(BaseModel):
     window_days: int
     rows: list[ZonePriceReCorrRow]
+
+
+class MonthlyFuelMixRow(BaseModel):
+    month: int
+    solar_pct: float
+    wind_pct: float
+    nuclear_pct: float
+    hydro_pct: float
+    gas_pct: float
+    coal_pct: float
+    biomass_pct: float
+    other_pct: float
+
+
+class MonthlyFuelMixResponse(BaseModel):
+    rows: list[MonthlyFuelMixRow]

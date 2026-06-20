@@ -732,6 +732,22 @@ export interface NegHoursZoneResponse {
   rows: NegHoursZoneRow[]
 }
 
+export interface MonthlyFuelMixRow {
+  month: number
+  solar_pct: number
+  wind_pct: number
+  nuclear_pct: number
+  hydro_pct: number
+  gas_pct: number
+  coal_pct: number
+  biomass_pct: number
+  other_pct: number
+}
+
+export interface MonthlyFuelMixResponse {
+  rows: MonthlyFuelMixRow[]
+}
+
 export interface ZonePriceReCorrRow {
   zone: string
   corr: number
@@ -816,5 +832,6 @@ export const api = {
   powerNegHoursMonthly: () => get<NegHoursMonthlyResponse>('/power/neg-hours-monthly'),
   powerNegHoursZones: () => get<NegHoursZoneResponse>('/power/neg-hours-zones'),
   genZonePriceReCorr: () => get<ZonePriceReCorrResponse>('/generation/zone-price-re-corr'),
+  genEuMonthlyFuelMix: () => get<MonthlyFuelMixResponse>('/generation/eu/monthly-fuel-mix'),
   gasPriceScatter: () => get<GasPriceScatterResponse>('/gas/price-scatter'),
 }
