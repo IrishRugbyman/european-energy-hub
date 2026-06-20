@@ -681,3 +681,72 @@ def test_gas_pace_interim_target_values(client):
         assert eu["next_interim_pct"] in (62.5, 75.0, 83.3, 90.0)
     if eu["next_interim_date"] is not None:
         assert eu["next_interim_date"][:4].isdigit()
+
+
+def test_gas_country_compare(client):
+    """gas/country-compare returns correct schema; may be empty if fixture lacks multi-country data."""
+    r = client.get("/api/gas/country-compare")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    # Each row must have gas_day and at least the EU field (may be None)
+    for row in data["rows"]:
+        assert "gas_day" in row
+        assert "EU" in row
+
+
+def test_power_monthly(client):
+    """power/monthly returns 8 zones x 24 months structure (may be empty in test DB)."""
+    r = client.get("/api/power/monthly")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data
+    assert "months" in data
+    assert "cells" in data
+    # If data present, each cell must have zone/yr/mo
+    for cell in data["cells"]:
+        assert "zone" in cell
+        assert "yr" in cell
+        assert "mo" in cell
+        assert 1 <= cell["mo"] <= 12
+
+
+def test_generation_eu_hourly(client):
+    """generation/eu/hourly returns correct schema (empty OK: test fixture only has 1 zone)."""
+    r = client.get("/api/generation/eu/hourly")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    for row in data["rows"]:
+        assert "ts" in row
+        assert "wind" in row
+        assert "nuclear" in row
+        assert "n_zones" in row
+        assert row["n_zones"] >= 28
+
+
+def test_generation_eu_price_re(client):
+    """generation/eu/price-re returns correct schema (empty OK if <10 zones in test data)."""
+    r = client.get("/api/generation/eu/price-re")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    for row in data["rows"]:
+        assert "price_date" in row
+        assert "eu_avg_eur" in row
+        assert "re_pct" in row
+        if row["re_pct"] is not None:
+            assert 0 <= row["re_pct"] <= 100
+
+
+def test_generation_zones_cf(client):
+    """generation/zones/cf returns zone CF rows with correct fields."""
+    r = client.get("/api/generation/zones/cf")
+    assert r.status_code == 200
+    data = r.json()
+    assert "gen_date" in data
+    assert "rows" in data
+    for row in data["rows"]:
+        assert "zone" in row
+        assert "wind_cf" in row
+        assert "solar_cf" in row
