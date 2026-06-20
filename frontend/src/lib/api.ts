@@ -771,6 +771,24 @@ export interface ZoneTtfCorrResponse {
   rows: ZoneTtfCorrRow[]
 }
 
+export interface ForecastAccuracyRow {
+  zone: string
+  wind_mae_mw: number | null
+  wind_avg_mw: number | null
+  solar_mae_mw: number | null
+  solar_avg_mw: number | null
+  wind_installed_mw: number | null
+  solar_installed_mw: number | null
+  wind_mae_pct: number | null
+  solar_mae_pct: number | null
+  n_hours: number
+}
+
+export interface ForecastAccuracyResponse {
+  window_days: number
+  rows: ForecastAccuracyRow[]
+}
+
 export interface ZoneHourlyProfileRow {
   zone: string
   hour: number
@@ -871,4 +889,5 @@ export const api = {
   powerHourlyProfilesAll: () => get<ZoneHourlyProfilesResponse>('/power/hourly-profiles-all'),
   genZoneTtfCorr: () => get<ZoneTtfCorrResponse>('/generation/zone-ttf-corr'),
   genZoneCarbonIntensity: () => get<ZoneCarbonIntensityResponse>('/generation/zone-carbon-intensity'),
+  genForecastAccuracy: () => get<ForecastAccuracyResponse>('/generation/forecast-accuracy'),
 }

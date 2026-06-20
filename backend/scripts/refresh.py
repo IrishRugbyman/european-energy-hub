@@ -35,7 +35,7 @@ from analytics.congestion import build_congestion_tables
 from analytics.divergence import build_divergence_tables
 from analytics.gas import build_storage_tables
 from analytics.gas_flows import build_gas_flows_tables
-from analytics.generation import build_generation_tables
+from analytics.generation import build_generation_tables, compute_forecast_accuracy
 from analytics.imbalance import build_imbalance_tables
 from analytics.power import build_power_tables, build_power_correlations
 from analytics.spreads import build_spreads_tables
@@ -95,6 +95,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building generation mix from market_data (PostgreSQL)...")
     generation_tables = build_generation_tables()
 
+    logger.info("Building wind/solar forecast accuracy from market_data (PostgreSQL)...")
+    forecast_accuracy_df = compute_forecast_accuracy(window_days=90)
+
     logger.info("Building ENTSOG physical gas flows from market_data (PostgreSQL)...")
     gas_flows_tables = build_gas_flows_tables()
 
@@ -125,6 +128,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_flows(conn, flows_tables)
         _write_generation(conn, generation_tables)
         _write_capacity_factors(conn, generation_tables)
+        _write_forecast_accuracy(conn, forecast_accuracy_df)
         _write_gas_flows(conn, gas_flows_tables)
         _write_congestion(conn, congestion_tables)
         _write_imbalance(conn, imbalance_tables)
@@ -642,6 +646,29 @@ def _write_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_bd", borders)
         conn.execute("INSERT INTO borders_daily SELECT * FROM _bd")
     logger.info(f"flows: {len(borders)} border-day rows")
+
+
+def _write_forecast_accuracy(conn: duckdb.DuckDBPyConnection, df) -> None:  # type: ignore[type-arg]
+    conn.execute("""
+        CREATE OR REPLACE TABLE forecast_accuracy (
+            zone               VARCHAR,
+            wind_mae_mw        REAL,
+            wind_avg_mw        REAL,
+            solar_mae_mw       REAL,
+            solar_avg_mw       REAL,
+            wind_installed_mw  REAL,
+            solar_installed_mw REAL,
+            wind_mae_pct       REAL,
+            solar_mae_pct      REAL,
+            n_hours            INTEGER
+        )
+    """)
+    if df is not None and not df.empty:
+        conn.register("_fa", df)
+        cols = ["zone", "wind_mae_mw", "wind_avg_mw", "solar_mae_mw", "solar_avg_mw",
+                "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
+        conn.execute(f"INSERT INTO forecast_accuracy SELECT {', '.join(cols)} FROM _fa")
+    logger.info(f"forecast_accuracy: {len(df) if df is not None else 0} rows")
 
 
 if __name__ == "__main__":

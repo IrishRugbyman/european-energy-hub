@@ -539,6 +539,25 @@ def _seed_db(path: str) -> None:
                 [cc, doy, avg, round(avg * 0.7, 1), round(avg * 1.3, 1)],
             )
 
+    conn.execute("""
+        CREATE TABLE forecast_accuracy (
+            zone               VARCHAR,
+            wind_mae_mw        REAL,
+            wind_avg_mw        REAL,
+            solar_mae_mw       REAL,
+            solar_avg_mw       REAL,
+            wind_installed_mw  REAL,
+            solar_installed_mw REAL,
+            wind_mae_pct       REAL,
+            solar_mae_pct      REAL,
+            n_hours            INTEGER
+        )
+    """)
+    conn.execute(
+        "INSERT INTO forecast_accuracy VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ["DE-LU", 1216.7, 10508.0, 770.2, 13671.0, 63150.0, 81150.0, 1.9, 0.9, 6500],
+    )
+
     conn.close()
 
 

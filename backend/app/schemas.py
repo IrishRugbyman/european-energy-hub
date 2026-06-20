@@ -846,3 +846,21 @@ class ZoneCarbonIntensityRow(BaseModel):
 class ZoneCarbonIntensityResponse(BaseModel):
     window_days: int
     rows: list[ZoneCarbonIntensityRow]
+
+
+class ForecastAccuracyRow(BaseModel):
+    zone: str
+    wind_mae_mw: float | None
+    wind_avg_mw: float | None
+    solar_mae_mw: float | None
+    solar_avg_mw: float | None
+    wind_installed_mw: float | None
+    solar_installed_mw: float | None
+    wind_mae_pct: float | None
+    solar_mae_pct: float | None
+    n_hours: int
+
+
+class ForecastAccuracyResponse(BaseModel):
+    window_days: int
+    rows: list[ForecastAccuracyRow]

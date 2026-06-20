@@ -131,6 +131,8 @@ from .schemas import (
     ZoneTtfCorrResponse,
     ZoneCarbonIntensityRow,
     ZoneCarbonIntensityResponse,
+    ForecastAccuracyRow,
+    ForecastAccuracyResponse,
 )
 
 
@@ -2507,3 +2509,46 @@ def generation_zone_carbon_intensity():
         for r in df.itertuples()
     ]
     return ZoneCarbonIntensityResponse(window_days=90, rows=rows)
+
+
+@app.get("/api/generation/forecast-accuracy", response_model=ForecastAccuracyResponse)
+def generation_forecast_accuracy():
+    """Per-zone wind and solar DA forecast accuracy, trailing 90 days.
+
+    Mean absolute error (MAE) in MW and as % of installed capacity.
+    Higher % = more volatile/uncertain generation (bigger grid management challenge).
+    Sorted by wind_mae_pct descending.
+    """
+    df = db.query("""
+        SELECT
+            zone,
+            wind_mae_mw,
+            wind_avg_mw,
+            solar_mae_mw,
+            solar_avg_mw,
+            wind_installed_mw,
+            solar_installed_mw,
+            wind_mae_pct,
+            solar_mae_pct,
+            n_hours
+        FROM forecast_accuracy
+        ORDER BY wind_mae_pct DESC NULLS LAST
+    """)
+    if df is None or df.empty:
+        return ForecastAccuracyResponse(window_days=90, rows=[])
+    rows = [
+        ForecastAccuracyRow(
+            zone=str(r.zone),
+            wind_mae_mw=float(r.wind_mae_mw) if r.wind_mae_mw is not None and not (isinstance(r.wind_mae_mw, float) and math.isnan(r.wind_mae_mw)) else None,
+            wind_avg_mw=float(r.wind_avg_mw) if r.wind_avg_mw is not None and not (isinstance(r.wind_avg_mw, float) and math.isnan(r.wind_avg_mw)) else None,
+            solar_mae_mw=float(r.solar_mae_mw) if r.solar_mae_mw is not None and not (isinstance(r.solar_mae_mw, float) and math.isnan(r.solar_mae_mw)) else None,
+            solar_avg_mw=float(r.solar_avg_mw) if r.solar_avg_mw is not None and not (isinstance(r.solar_avg_mw, float) and math.isnan(r.solar_avg_mw)) else None,
+            wind_installed_mw=float(r.wind_installed_mw) if r.wind_installed_mw is not None and not (isinstance(r.wind_installed_mw, float) and math.isnan(r.wind_installed_mw)) else None,
+            solar_installed_mw=float(r.solar_installed_mw) if r.solar_installed_mw is not None and not (isinstance(r.solar_installed_mw, float) and math.isnan(r.solar_installed_mw)) else None,
+            wind_mae_pct=float(r.wind_mae_pct) if r.wind_mae_pct is not None and not (isinstance(r.wind_mae_pct, float) and math.isnan(r.wind_mae_pct)) else None,
+            solar_mae_pct=float(r.solar_mae_pct) if r.solar_mae_pct is not None and not (isinstance(r.solar_mae_pct, float) and math.isnan(r.solar_mae_pct)) else None,
+            n_hours=int(r.n_hours),
+        )
+        for r in df.itertuples()
+    ]
+    return ForecastAccuracyResponse(window_days=90, rows=rows)

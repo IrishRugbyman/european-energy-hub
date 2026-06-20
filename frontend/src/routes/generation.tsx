@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -71,7 +71,7 @@ function EuGenHourlyChart({ rows }: { rows: EuGenHourlyPoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-4 mb-2">
-        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Real-time Generation Stack (MW) - last 48h</h2>
+        <h2 className="text-sm font-semibold text-foreground">EU-34 Real-time Generation Stack (MW) - last 48h</h2>
         {lastRePct != null && (
           <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-foreground">
             RE% now: {lastRePct.toFixed(0)}%
@@ -159,7 +159,7 @@ function EuFuelMixChart({ rows }: { rows: EuAnnualFuelRow[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">EU-34 Energy Mix - Annual Average Generation (MW)</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-1">EU-34 Energy Mix - Annual Average Generation (MW)</h2>
       <p className="text-xs text-muted-foreground mb-3">
         Average of daily average MW per zone, summed across 34 bidding zones.
         Solar +{Math.round(((rows.find(r => r.year === currentYear - 1)?.solar_mw ?? 0) / (rows.find(r => r.year === 2021)?.solar_mw ?? 1) - 1) * 100)}% from 2021.
@@ -206,7 +206,7 @@ function EuCapacityChart({ rows }: { rows: CapacityAnnualRow[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3 mb-1">
-        <h2 className="text-sm font-medium text-muted-foreground">EU-27 Installed Renewable Capacity - Annual (GW)</h2>
+        <h2 className="text-sm font-semibold text-foreground">EU-27 Installed Renewable Capacity - Annual (GW)</h2>
         <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded">
           Solar +{solarGrowthPct}% since {first.yr}
         </span>
@@ -271,7 +271,7 @@ function NegHoursMonthlyChart({ rows }: { rows: NegHoursMonthlyRow[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3 mb-1">
-        <h2 className="text-sm font-medium text-muted-foreground">Negative Price Hour Frequency - Monthly (%)</h2>
+        <h2 className="text-sm font-semibold text-foreground">Negative Price Hour Frequency - Monthly (%)</h2>
         {(peakEs.es ?? 0) > 0 && (
           <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded">
             ES peak: {peakEs.es}% ({peakEs.month})
@@ -338,7 +338,7 @@ function NegHoursZoneRanking({ rows }: { rows: NegHoursZoneRow[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+      <h2 className="text-sm font-semibold text-foreground mb-1">
         Negative price hours by zone - 30-day ranking
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
@@ -387,7 +387,7 @@ function MonthlyFuelMixSeasonality({ rows }: { rows: MonthlyFuelMixRow[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+      <h2 className="text-sm font-semibold text-foreground mb-1">
         EU-34 fuel mix seasonality - monthly average share (2022+)
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
@@ -442,7 +442,7 @@ function ZonePriceReCorrChart({ rows }: { rows: ZonePriceReCorrRow[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">Merit-order strength by zone (1yr)</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-1">Merit-order strength by zone (1yr)</h2>
       <p className="text-xs text-muted-foreground mb-3">
         Pearson r: daily base price vs renewable %. Negative = renewables suppress prices (merit order).
         Positive (NO hydro) = demand seasonality dominates.
@@ -522,7 +522,7 @@ function GenMonthlyChart({ rows }: { rows: GenMonthlyRow[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex items-center gap-4 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Monthly Renewable % - year on year</h2>
+        <h2 className="text-sm font-semibold text-foreground">EU-34 Monthly Renewable % - year on year</h2>
         <div className="flex items-center gap-2 ml-auto text-xs text-muted-foreground">
           {years.map((yr) => (
             <span key={yr} className="flex items-center gap-1">
@@ -590,7 +590,7 @@ function EuCarbonIntensityChart({ rows }: { rows: EuCiDailyPoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex items-center justify-between mb-1">
-        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Carbon Intensity (last 180 days)</h2>
+        <h2 className="text-sm font-semibold text-foreground">EU-34 Carbon Intensity (last 180 days)</h2>
         <span className="text-xs text-muted-foreground">IPCC factors: coal 820, gas 490, oil 650 gCO2/kWh</span>
       </div>
       <p className="text-xs text-muted-foreground mb-3">
@@ -674,7 +674,7 @@ function ZoneCfChart({ rows }: { rows: ZoneCfRow[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex items-center gap-3 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Zone Capacity Factors - Latest Day (%)</h2>
+        <h2 className="text-sm font-semibold text-foreground">Zone Capacity Factors - Latest Day (%)</h2>
         <div className="flex gap-1 ml-auto">
           {(['wind', 'solar'] as const).map((m) => (
             <button
@@ -750,7 +750,7 @@ function EuPriceReScatter({ rows }: { rows: EuPriceRePoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3 mb-2">
-        <h2 className="text-sm font-medium text-muted-foreground">Merit Order Effect: RE% vs EU Avg Price</h2>
+        <h2 className="text-sm font-semibold text-foreground">Merit Order Effect: RE% vs EU Avg Price</h2>
         {corr != null && (
           <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded" style={{ color: corr < -0.3 ? '#f87171' : '#64748b' }}>
             r = {corr.toFixed(2)}
@@ -834,7 +834,7 @@ function EuDuckCurveChart({ rows }: { rows: EuDuckCurvePoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-4 mb-2">
-        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Duck Curve - Avg Hourly Price Profile (30d trailing)</h2>
+        <h2 className="text-sm font-semibold text-foreground">EU-34 Duck Curve - Avg Hourly Price Profile (30d trailing)</h2>
         {minHour && (
           <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-foreground">
             Trough: {minHour.hour.toString().padStart(2, '0')}:00 ({minHour.avg_eur?.toFixed(0)} €/MWh)
@@ -880,7 +880,7 @@ function ZoneCarbonIntensityChart({ rows }: { rows: ZoneCarbonIntensityRow[] }) 
   const maxCi = rows[0].ci_g_kwh
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+      <h2 className="text-sm font-semibold text-foreground mb-1">
         Zone carbon intensity - 90-day average (gCO2/kWh)
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
@@ -916,7 +916,7 @@ function ZoneTtfCorrChart({ rows }: { rows: ZoneTtfCorrRow[] }) {
   const maxAbs = Math.max(...rows.map((r) => Math.abs(r.corr)), 0.01)
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+      <h2 className="text-sm font-semibold text-foreground mb-1">
         Zone power price vs TTF gas correlation - 1yr trailing
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
@@ -966,6 +966,73 @@ function ZoneTtfCorrChart({ rows }: { rows: ZoneTtfCorrRow[] }) {
   )
 }
 
+function ForecastAccuracyChart({ rows }: { rows: ForecastAccuracyRow[] }) {
+  const [mode, setMode] = useState<'wind' | 'solar'>('wind')
+  if (!rows.length) return null
+
+  const filtered = rows.filter((r) =>
+    mode === 'wind' ? r.wind_mae_pct != null : r.solar_mae_pct != null
+  )
+  const maxPct = Math.max(...filtered.map((r) => (mode === 'wind' ? r.wind_mae_pct ?? 0 : r.solar_mae_pct ?? 0)), 1)
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-sm font-semibold text-foreground">
+          DA forecast accuracy - wind &amp; solar (90-day MAE)
+        </h2>
+        <div className="flex gap-1">
+          {(['wind', 'solar'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-2 py-0.5 rounded text-xs ${m === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
+            >
+              {m === 'wind' ? 'Wind' : 'Solar'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Mean absolute error of ENTSO-E day-ahead {mode} forecasts vs actual generation, as % of installed capacity.
+        Higher error = more grid uncertainty, larger imbalance risk.
+      </p>
+      <div className="space-y-1">
+        {filtered.map((r) => {
+          const pct = mode === 'wind' ? r.wind_mae_pct : r.solar_mae_pct
+          const maeMw = mode === 'wind' ? r.wind_mae_mw : r.solar_mae_mw
+          const avgMw = mode === 'wind' ? r.wind_avg_mw : r.solar_avg_mw
+          const barW = pct != null && maxPct > 0 ? (pct / maxPct) * 100 : 0
+          const color = pct == null ? '#4b5563' : pct > 15 ? '#f87171' : pct > 8 ? '#fbbf24' : '#4ade80'
+          return (
+            <div key={r.zone} className="flex items-center gap-1">
+              <span className="text-xs font-mono text-muted-foreground w-12 shrink-0 text-right">{r.zone}</span>
+              <div className="flex-1 h-3 bg-muted rounded-sm overflow-hidden">
+                <div
+                  className="h-3 rounded-sm transition-all"
+                  style={{ width: `${barW}%`, background: color }}
+                />
+              </div>
+              <span className="text-xs font-mono w-12 shrink-0 text-right" style={{ color }}>
+                {pct != null ? `${pct.toFixed(1)}%` : '--'}
+              </span>
+              <span className="text-[10px] text-muted-foreground w-28 shrink-0">
+                {maeMw != null && avgMw != null ? `${maeMw.toFixed(0)} / ${avgMw.toFixed(0)} MW` : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex gap-4 mt-3 text-[10px] text-muted-foreground">
+        <span><span style={{ color: '#4ade80' }}>■</span> &lt;8% (good)</span>
+        <span><span style={{ color: '#fbbf24' }}>■</span> 8-15% (moderate)</span>
+        <span><span style={{ color: '#f87171' }}>■</span> &gt;15% (high)</span>
+        <span className="ml-auto">MAE / avg actual MW</span>
+      </div>
+    </div>
+  )
+}
+
 const ZONE_PROFILE_COLORS: Record<string, string> = {
   'DE-LU': '#60a5fa',
   'FR':    '#4ade80',
@@ -1006,7 +1073,7 @@ function ZoneHourlyComparisonChart({ rows }: { rows: ZoneHourlyProfileRow[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+      <h2 className="text-sm font-semibold text-foreground mb-1">
         Zone hourly DA price profile - 30-day average (€/MWh)
       </h2>
       <p className="text-xs text-muted-foreground mb-3">
@@ -1170,6 +1237,12 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: forecastAccData } = useQuery({
+    queryKey: ['gen-forecast-accuracy'],
+    queryFn: api.genForecastAccuracy,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -1227,6 +1300,7 @@ function GenerationTrends() {
       {(priceReCorrData?.rows.length ?? 0) > 0 && <ZonePriceReCorrChart rows={priceReCorrData!.rows} />}
       {(zoneCiData?.rows.length ?? 0) > 0 && <ZoneCarbonIntensityChart rows={zoneCiData!.rows} />}
       {(zoneTtfCorrData?.rows.length ?? 0) > 0 && <ZoneTtfCorrChart rows={zoneTtfCorrData!.rows} />}
+      {(forecastAccData?.rows.length ?? 0) > 0 && <ForecastAccuracyChart rows={forecastAccData!.rows} />}
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>

@@ -5,6 +5,7 @@ Tables produced for energy_hub.duckdb:
   generation_hourly_recent - last 10 days of hourly mix per zone
   generation_latest        - most recent generation_daily row per zone
   capacity_factors_daily   - daily wind/solar capacity factor per zone (CF = avg_mw / installed_mw)
+  forecast_accuracy        - trailing 90-day wind/solar DA forecast MAE per zone
 
 Wind is stored as wind_onshore + wind_offshore in the source table; we merge
 them here into a single 'wind' column. Nuclear and fossil fuels (coal, gas, oil)
@@ -220,3 +221,93 @@ def _build_capacity_factors(daily: pd.DataFrame) -> pd.DataFrame:
     ]].rename(columns={"wind": "wind_mw", "solar": "solar_mw"})
 
     return result.dropna(subset=["wind_cf", "solar_cf"], how="all").reset_index(drop=True)
+
+
+def compute_forecast_accuracy(window_days: int = 90) -> pd.DataFrame:
+    """Trailing wind/solar DA forecast accuracy per zone.
+
+    Joins power_generation_actual with power_generation_forecast on (ts, zone, tech)
+    for wind_onshore, wind_offshore, solar over the trailing window_days.
+    Aggregates into wind (onshore + offshore combined) and solar MAE per zone,
+    then normalises by installed capacity.
+
+    Returns a DataFrame with columns:
+      zone, wind_mae_mw, wind_avg_mw, solar_mae_mw, solar_avg_mw,
+      wind_installed_mw, solar_installed_mw, wind_mae_pct, solar_mae_pct, n_hours
+    """
+    conn = get_read_conn()
+    sql = f"""
+        SELECT
+            a.zone,
+            a.tech,
+            ROUND(AVG(ABS(a.mw - f.mw))::numeric, 1)      AS mae_mw,
+            ROUND(AVG(a.mw)::numeric, 1)                   AS avg_actual_mw,
+            COUNT(*)                                        AS n_hours
+        FROM power_generation_actual a
+        JOIN power_generation_forecast f
+            ON a.ts = f.ts AND a.zone = f.zone AND a.tech = f.tech
+        WHERE a.tech IN ('wind_onshore', 'wind_offshore', 'solar')
+          AND a.ts >= NOW() - INTERVAL '{window_days} days'
+        GROUP BY a.zone, a.tech
+        HAVING COUNT(*) >= 200
+        ORDER BY a.zone, a.tech
+    """
+    df = _query(conn, sql)
+    if df is None or df.empty:
+        logger.warning("forecast_accuracy: no data")
+        return pd.DataFrame(
+            columns=["zone", "wind_mae_mw", "wind_avg_mw", "solar_mae_mw", "solar_avg_mw",
+                     "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
+        )
+
+    # Cast Decimal columns returned by PostgreSQL ROUND(::numeric) to float
+    for col in ("mae_mw", "avg_actual_mw"):
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Pivot: (zone, tech) -> columns
+    wind = df[df["tech"].isin(["wind_onshore", "wind_offshore"])].groupby("zone", as_index=False).agg(
+        wind_mae_mw=("mae_mw", "sum"),
+        wind_avg_mw=("avg_actual_mw", "sum"),
+        n_hours=("n_hours", "max"),
+    )
+    solar = df[df["tech"] == "solar"][["zone", "mae_mw", "avg_actual_mw"]].rename(
+        columns={"mae_mw": "solar_mae_mw", "avg_actual_mw": "solar_avg_mw"}
+    )
+
+    combined = wind.merge(solar, on="zone", how="outer")
+
+    # Join installed capacity for normalisation
+    # load_installed_capacity returns columns: zone, year, solar_mw, wind_onshore_mw, wind_offshore_mw, ...
+    cap_df = load_installed_capacity()
+    if cap_df is not None and not cap_df.empty:
+        latest_year = cap_df["year"].max()
+        cap_latest = cap_df[cap_df["year"] == latest_year].copy()
+        cap_latest["wind_installed_mw"] = (
+            cap_latest["wind_onshore_mw"].fillna(0) + cap_latest["wind_offshore_mw"].fillna(0)
+        )
+        cap_latest["solar_installed_mw"] = cap_latest["solar_mw"].fillna(0)
+        combined = combined.merge(
+            cap_latest[["zone", "wind_installed_mw", "solar_installed_mw"]],
+            on="zone", how="left"
+        )
+    else:
+        combined["wind_installed_mw"] = float("nan")
+        combined["solar_installed_mw"] = float("nan")
+
+    # Compute % of installed capacity
+    combined["wind_mae_pct"] = (
+        combined["wind_mae_mw"] / combined["wind_installed_mw"] * 100
+    ).round(1)
+    combined["solar_mae_pct"] = (
+        combined["solar_mae_mw"] / combined["solar_installed_mw"] * 100
+    ).round(1)
+
+    # Round MW columns
+    for col in ["wind_mae_mw", "wind_avg_mw", "solar_mae_mw", "solar_avg_mw",
+                "wind_installed_mw", "solar_installed_mw"]:
+        if col in combined.columns:
+            combined[col] = combined[col].round(0)
+
+    combined["n_hours"] = combined["n_hours"].fillna(0).astype(int)
+
+    return combined.sort_values("wind_mae_pct", ascending=False, na_position="last").reset_index(drop=True)

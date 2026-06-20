@@ -978,3 +978,19 @@ def test_zone_carbon_intensity(client):
     # Should be ordered descending by CI
     cis = [row["ci_g_kwh"] for row in rows]
     assert cis == sorted(cis, reverse=True)
+
+
+def test_generation_forecast_accuracy(client):
+    """generation/forecast-accuracy returns wind/solar MAE per zone (empty OK for test fixture)."""
+    r = client.get("/api/generation/forecast-accuracy")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["window_days"] == 90
+    assert "rows" in data
+    for row in data["rows"]:
+        assert "zone" in row
+        assert "n_hours" in row
+        if row["wind_mae_pct"] is not None:
+            assert row["wind_mae_pct"] >= 0
+        if row["solar_mae_pct"] is not None:
+            assert row["solar_mae_pct"] >= 0
