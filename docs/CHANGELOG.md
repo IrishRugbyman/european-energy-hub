@@ -1,6 +1,16 @@
 # Energy Hub Changelog
 
-## 2026-06-20 - Post-roadmap round 16: spread monthly seasonality chart
+## 2026-06-20 - Post-roadmap round 17: zone grid integration ranking + spread monthly seasonality
+
+**New features:**
+1. Zone grid integration ranking (`/spreads`): the "Zone Market Coupling" card now has a "Zones" toggle alongside "Pairs". The Zones view shows each zone's average Pearson correlation to all 33 other zones - a single-number measure of how well-integrated the zone is into the European grid. IE-SEM (0.14) and Iberia (ES/PT: 0.27) are clear island/peninsula outliers; the Central European mesh (NO-2, SK, CZ, DE-LU, NL, AT) scores above 0.74. Color: red below 0.35, amber below 0.6, green above. Computed client-side from the existing `/api/power/correlations` payload - no new endpoint.
+2. Spread monthly seasonality chart (`/spreads`): per-year CSS/CDS/FSS monthly averages shown as a multi-line chart (2021-2026, one line per year). Toggle between CSS/CDS/FSS. Reveals seasonal patterns (winter gas marginal, summer coal marginal due to solar oversupply) and isolates 2022 as a structural outlier (CSS -153 Oct 2022 vs -19 Oct 2024). Pure frontend from existing `/api/spreads` payload.
+
+**Artifacts:** `frontend/src/routes/spreads.tsx` (ZoneDecouplingSection Zones view, CouplingView type, zoneCentrality memo; SpreadMonthlySeasonalityChart, SpreadField type, MONTH_ABBR). 83 tests unchanged.
+
+---
+
+## 2026-06-20 - Post-roadmap round 15: EU fuel mix seasonality chart
 
 **New features:**
 1. Spread monthly seasonality by year (`/spreads`): `SpreadMonthlySeasonalityChart` groups existing `spreads_daily` data by calendar month and year to compute monthly averages of CSS, CDS, or FSS. Rendered as a multi-line chart with one line per year (2021-2026), using the same year color palette as the zone YoY chart. Toggle CSS/CDS/FSS. No new endpoint - pure frontend analytics from the existing `/api/spreads` payload. Key insight: winter months show gas-marginal regimes (positive FSS), summer months flip to coal-marginal (negative FSS due to solar+wind oversupply). The 2022 energy crisis appears as a clear outlier: CSS -153 in Oct 2022 vs -19 in Oct 2024.
