@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 11: capacity growth, neg-price trend, EU storage trajectory, UX
+
+**New features:**
+1. EU storage projected trajectory (`/gas` Trend tab): the multi-country 365-day chart now extends forward to Nov 1 using the last 7-day EU injection rate as a linear projection. Dashed blue line shows where EU fill% will be if current injection pace continues. The projection calculates daily from the last known EU fill% to Nov 1 at `(eu_now - eu_7d_ago) / 7` per day. Only shown when EU is actively injecting.
+2. EU-27 installed renewable capacity chart (`/generation`): new `GET /api/generation/capacity-annual` endpoint returns annual wind+solar GW from 2020-2026 (27 zones, ENTSO-E installed capacity data). Stacked bar chart shows solar tripling from 95 GW (2020) to 295 GW (2026) and wind growing from 152 GW to 211 GW. Badges show "+211% solar since 2020" and "+39% wind since 2020".
+3. Monthly negative price hour frequency chart (`/generation`): new `GET /api/power/neg-hours-monthly` endpoint returns monthly % of hours with DA price < 0 for ES, FR, DE-LU, NL and EU average since May 2024. Multi-line chart placed immediately after the capacity chart to tell the cause-effect story: solar buildout drove ES from ~3% negative hours (2024) to 20% (Jun 2026), with 32% in May 2025. FR April 2026: 24% negative hours. DE-LU June 2025: 19.6%.
+4. EU stat strip clickable (`/gas`): clicking "EU fill" in the gas page stat strip now opens the EU CountryPanel showing the 8-year YoY DOY trajectory chart and seasonal band. Previously EU was not directly accessible without going through Rankings.
+
+**Tests:** 75 tests passing.
+
+**Artifacts:** `backend/app/schemas.py` (CapacityAnnualRow/Response, NegHoursMonthlyRow/Response), `backend/app/main.py` (/api/generation/capacity-annual, /api/power/neg-hours-monthly), `backend/tests/test_endpoints.py`, `frontend/src/lib/api.ts` (CapacityAnnualRow, NegHoursMonthlyRow), `frontend/src/routes/generation.tsx` (EuCapacityChart, NegHoursMonthlyChart, queries), `frontend/src/routes/gas.tsx` (EU projection, clickable EU stat chip).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 10: EU duck curve hourly price profile
 
 **New features:**

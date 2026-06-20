@@ -96,10 +96,16 @@ function GasDashboard() {
   return (
     <div className="relative h-full flex">
       {/* Stat strip */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-3 px-3 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm pointer-events-none">
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-3 px-3 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm">
         {euRow ? (
           <>
-            <StatChip label="EU fill" value={euRow.full_pct != null ? `${euRow.full_pct.toFixed(1)}%` : '--'} />
+            <button
+              className="contents"
+              title="Open EU storage detail"
+              onClick={() => { setShowRankings(false); setSelected('EU') }}
+            >
+              <StatChip label="EU fill" value={euRow.full_pct != null ? `${euRow.full_pct.toFixed(1)}%` : '--'} className="cursor-pointer hover:text-foreground" />
+            </button>
             <StatChip
               label="7d"
               value={euRow.d7_pct != null ? `${euRow.d7_pct >= 0 ? '+' : ''}${euRow.d7_pct.toFixed(1)}pp` : '--'}
