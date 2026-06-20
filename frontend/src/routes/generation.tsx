@@ -1105,6 +1105,16 @@ function CrossZoneSpreadChart({ country, onCountryChange, rows, zones, refZone }
     ]
   }, [rows])
 
+  const currentSpreads = useMemo(() => {
+    if (!rows.length) return {} as Record<string, number>
+    const latestDate = rows.reduce((mx, r) => r.price_date > mx ? r.price_date : mx, '')
+    const result: Record<string, number> = {}
+    for (const r of rows) {
+      if (r.price_date === latestDate) result[r.zone] = r.spread_eur
+    }
+    return result
+  }, [rows])
+
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3 mb-1">
@@ -1130,12 +1140,24 @@ function CrossZoneSpreadChart({ country, onCountryChange, rows, zones, refZone }
       {rows.length > 0 && zones.length > 0 ? (
         <>
           <div className="flex flex-wrap gap-3 mb-2">
-            {zones.map((z) => (
-              <span key={z} className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                <span style={{ color: colors[z] ?? '#94a3b8' }}>&#9632;</span>
-                {z}
-              </span>
-            ))}
+            {zones
+              .slice()
+              .sort((a, b) => (currentSpreads[b] ?? 0) - (currentSpreads[a] ?? 0))
+              .map((z) => {
+                const spread = currentSpreads[z]
+                const col = colors[z] ?? '#94a3b8'
+                return (
+                  <span key={z} className="flex items-center gap-1 text-[10px]">
+                    <span style={{ color: col }}>&#9632;</span>
+                    <span style={{ color: col }}>{z}</span>
+                    {spread != null && (
+                      <span className="text-muted-foreground">
+                        {spread > 0 ? '+' : ''}{spread.toFixed(0)} €
+                      </span>
+                    )}
+                  </span>
+                )
+              })}
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
