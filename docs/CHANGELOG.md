@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 8: injection rate charts, zone CF bar chart, merit order scatter, multi-country storage trend, monthly power heatmap
+
+**New features:**
+1. EU gas injection rate tab in pace widget (`/gas`): PaceWidget gains a "Rate" toggle alongside "%" fill chart. 180-day EU net injection rate (TWh/d) vs p25/avg/p75 seasonal band. Shows whether EU is injecting above or below norm for this time of year.
+2. Net injection rate tab in country panel (`/gas`): CountryPanel now has "Fill%" vs "Rate" tabs. Rate view: daily bar chart of net injection (green) vs net withdrawal (red) for the selected country over current year.
+3. Per-zone capacity factor bar chart (`/generation`): new `GET /api/generation/zones/cf` endpoint returns latest-day wind/solar CF for all 27 zones with >500 MW installed. Horizontal bar chart with Wind/Solar toggle. Shows which zones are generating at high vs low efficiency today.
+4. Merit order scatter chart (`/generation`): new `GET /api/generation/eu/price-re` endpoint returns 765 days of EU average power price vs EU renewable penetration. Scatter chart colored by year (grey=2024, blue=2025, amber=2026). Correlation r=-0.7 confirms the merit order effect: high RE% days consistently have lower prices.
+5. Multi-country storage trajectory chart (`/gas` rankings panel): new `GET /api/gas/country-compare` endpoint pivots 365 days of storage fill% for DE/FR/NL/AT/IT/ES + EU (wide format). New "Trend" tab in the rankings panel shows a multi-line chart. EU 5yr seasonal average shown as grey dashed reference. Currently ES=73.8%, IT=64.6% tracking well above EU aggregate=41.1%. NL=23.1% is critically low.
+6. Zone power price monthly heatmap (`/prices`): new `GET /api/power/monthly` endpoint returns 24 months of monthly avg + neg-day% for 8 key zones (DE-LU, FR, NL, BE, AT, CH, IT-NORD, ES). Color-coded heatmap (green=cheap, red=expensive) with price/neg-days toggle. Shows IT-NORD is consistently the most expensive zone (Feb 2025: 150.5 EUR/MWh) and FR/ES cheapest (summer 2025 solar: 17-19 EUR/MWh avg).
+
+**Artifacts:** `backend/app/schemas.py`, `backend/app/main.py` (5 new endpoints), `frontend/src/lib/api.ts`, `frontend/src/routes/gas.tsx` (injection rate tab, country compare, trend tab), `frontend/src/routes/generation.tsx` (zone CF chart, merit order scatter), `frontend/src/routes/prices.tsx` (monthly heatmap), `frontend/src/components/gas/CountryPanel.tsx` (rate tab).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 7: EU gas interim targets, monthly RE chart, CF conditions strip, gas table columns, spreads percentile ranks
 
 **New features:**
