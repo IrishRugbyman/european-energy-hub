@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 7: EU gas interim targets, monthly RE chart, CF conditions strip, gas table columns, spreads percentile ranks
+
+**New features:**
+1. EU gas interim storage targets in pace widget (`/gas`): EU Regulation 2022/1369 targets (Aug 1=62.5%, Sep 1=75%, Oct 1=83.3%, Nov 1=90%) added to `gas_pace_to_target()`. Shows next upcoming target date, required daily injection rate vs current rate, colored red when behind. Today: EU at 3.8 TWh/d vs 7.2 TWh/d needed to hit Aug 1 target (well behind).
+2. EU monthly renewable % trend chart (`/generation`): new `GET /api/generation/eu/monthly` endpoint. Line chart shows EU capacity-weighted RE% by month for each year (2021-2026). Clear structural uptrend (June: 38.8% in 2021, 59.5% in 2026) plus seasonal pattern. Current year rendered with full opacity vs muted prior years.
+3. EU wind/solar capacity factor conditions strip (`/map`): new `GET /api/generation/eu/cf-latest` endpoint returns today's EU CF vs 5yr same-month percentile rank. Shown as bottom-right overlay: "Wind 8.7% (avg 16.1%, p7 for Jun)" in red (very low wind), "Solar 25.3% (avg 21.6%, p99 for Jun)" in amber. Directly explains price levels - low wind + high solar drove DE-LU to 141 EUR/MWh (p94 2yr rank).
+4. Gas country table improvements: added 7-day fill% change and injection rate (GWh/d) columns. All columns now sortable via clickable headers (replaces old sort control strip). Withdrawal shown as negative when no injection.
+5. Spreads percentile rank in stat strip (`/spreads`): CSS/CDS/FSS 2yr percentile rank computed client-side from existing rows. Today: CSS p93 (very high gas plant profitability), CDS p87, FSS p81. Colored red for p>=80, green for p<=20.
+6. Tests: 7 new endpoint tests covering all new endpoints; conftest seeds `ttf_curve_snapshots` and `storage_injection_seasonal` tables. Total: 67 tests.
+
+**Artifacts:** `backend/app/schemas.py` (EuCfLatestResponse, GenMonthlyRow/Response, GasPaceStats new fields), `backend/app/main.py` (/api/generation/eu/monthly, /api/generation/eu/cf-latest, pace EU Reg 2022/1369 targets), `frontend/src/lib/api.ts`, `frontend/src/routes/gas.tsx` (interim target row in PaceWidget; 7d+injection columns in table), `frontend/src/routes/generation.tsx` (GenMonthlyChart), `frontend/src/routes/spreads.tsx` (pctRank2yr useMemo + rank display), `frontend/src/routes/power.tsx` (EuConditionsStrip + cfData query), `backend/tests/conftest.py`, `backend/tests/test_endpoints.py`.
+
+---
+
 ## 2026-06-19 - Post-roadmap round 6: curve shift, injection seasonality, net trade, YoY imbalance
 
 **New features:**
