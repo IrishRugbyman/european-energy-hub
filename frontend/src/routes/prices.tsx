@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -841,6 +841,126 @@ function PriceRegimeCharts({ rows }: { rows: PriceRegimePoint[] }) {
   )
 }
 
+// Color scale for EUR/MWh: green (cheap) -> white (mid) -> red (expensive)
+function priceHeatColor(v: number | null, min: number, max: number): string {
+  if (v == null) return '#1e293b'
+  if (max === min) return '#334155'
+  const t = (v - min) / (max - min) // 0=cheap, 1=expensive
+  if (t <= 0.5) {
+    // cheap: green (#4ade80) -> mid (#1e293b)
+    const s = t / 0.5
+    const r = Math.round(74 + (30 - 74) * s)
+    const g = Math.round(222 + (41 - 222) * s)
+    const b = Math.round(128 + (59 - 128) * s)
+    return `rgb(${r},${g},${b})`
+  }
+  // mid -> expensive: (#1e293b) -> red (#ef4444)
+  const s = (t - 0.5) / 0.5
+  const r = Math.round(30 + (239 - 30) * s)
+  const g = Math.round(41 + (68 - 41) * s)
+  const b = Math.round(59 + (68 - 59) * s)
+  return `rgb(${r},${g},${b})`
+}
+
+function textOnHeat(v: number | null, min: number, max: number): string {
+  if (v == null) return '#475569'
+  const t = max === min ? 0 : (v - min) / (max - min)
+  return t < 0.2 || t > 0.8 ? '#f8fafc' : '#94a3b8'
+}
+
+const MO_ABBR = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function PowerMonthlyHeatmap({ data }: { data: PowerMonthlyResponse }) {
+  const [mode, setMode] = useState<'price' | 'negpct'>('price')
+  const { zones, months, cells } = data
+
+  const lookup = useMemo(() => {
+    const m: Record<string, PowerMonthlyCell> = {}
+    for (const c of cells) {
+      m[`${c.zone}|${String(c.yr)}-${String(c.mo).padStart(2, '0')}`] = c
+    }
+    return m
+  }, [cells])
+
+  // Get price range for color scale
+  const vals = cells
+    .map((c) => (mode === 'price' ? c.avg_eur : c.neg_day_pct))
+    .filter((v): v is number => v != null)
+  const minV = vals.length ? Math.min(...vals) : 0
+  const maxV = vals.length ? Math.max(...vals) : 1
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Zone Power Prices - Monthly (€/MWh)</h2>
+        <div className="flex items-center gap-1 ml-auto">
+          {(['price', 'negpct'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-2 py-0.5 rounded text-xs ${
+                m === mode
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {m === 'price' ? 'Avg price' : 'Neg days%'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        {mode === 'price'
+          ? 'Average day-ahead base price. Green = cheap, red = expensive.'
+          : '% of days in the month with negative day-ahead base price.'}
+      </p>
+      <div className="overflow-x-auto">
+        <table className="text-xs border-separate border-spacing-0.5 min-w-max">
+          <thead>
+            <tr>
+              <th className="text-left text-muted-foreground font-normal pr-3 pb-1 whitespace-nowrap">Zone</th>
+              {months.map((ym) => {
+                const [yr, mo] = ym.split('-').map(Number)
+                return (
+                  <th key={ym} className="text-center text-muted-foreground font-normal px-0 pb-1 min-w-[44px]" title={ym}>
+                    <span className="block text-[9px]">{yr}</span>
+                    <span>{MO_ABBR[mo]}</span>
+                  </th>
+                )
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {zones.map((zone) => (
+              <tr key={zone}>
+                <td className="text-muted-foreground pr-3 py-0.5 font-mono whitespace-nowrap">{zone}</td>
+                {months.map((ym) => {
+                  const cell = lookup[`${zone}|${ym}`]
+                  const v = cell ? (mode === 'price' ? cell.avg_eur : cell.neg_day_pct) : null
+                  const bg = priceHeatColor(v, minV, maxV)
+                  const fg = textOnHeat(v, minV, maxV)
+                  return (
+                    <td
+                      key={ym}
+                      title={v != null ? `${zone} ${ym}: ${mode === 'price' ? `${v} €/MWh` : `${v}% neg days`}` : 'no data'}
+                      style={{ background: bg }}
+                      className="rounded py-1 text-center"
+                    >
+                      <span style={{ color: fg, fontSize: 9 }}>
+                        {v != null ? (mode === 'price' ? Math.round(v) : v > 0 ? `${v.toFixed(0)}%` : '') : ''}
+                      </span>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 function PricesDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [indexed, setIndexed] = useState(false)
@@ -873,6 +993,12 @@ function PricesDashboard() {
     queryKey: ['prices-regime'],
     queryFn: api.pricesRegime,
     staleTime: 60 * 60 * 1000,
+  })
+
+  const { data: powerMonthlyData } = useQuery({
+    queryKey: ['power-monthly'],
+    queryFn: api.powerMonthly,
+    staleTime: 6 * 60 * 60 * 1000,
   })
 
   const rows = data?.rows ?? []
@@ -978,6 +1104,7 @@ function PricesDashboard() {
           <TtfHhSpread rows={rows} />
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />
+          {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
         </div>
       )}
 

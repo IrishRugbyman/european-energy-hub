@@ -73,6 +73,8 @@ from .schemas import (
     EuPriceReResponse,
     StorageCountryRow,
     StorageCountryResponse,
+    PowerMonthlyCell,
+    PowerMonthlyResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -1043,6 +1045,49 @@ def power_correlations():
         for r in df.itertuples()
     ]
     return PowerCorrelationResponse(window_days=30, rows=rows)
+
+
+# 8 most-liquid zones for the monthly heatmap (representative coverage)
+_MONTHLY_ZONES = ['DE-LU', 'FR', 'NL', 'BE', 'AT', 'CH', 'IT-NORD', 'ES']
+
+
+@app.get("/api/power/monthly", response_model=PowerMonthlyResponse)
+def power_monthly():
+    """Monthly average DA base price + negative-day % for 8 key zones, last 24 months."""
+    zone_list = ",".join(f"'{z}'" for z in _MONTHLY_ZONES)
+    df = db.query(f"""
+        SELECT zone,
+               YEAR(price_date)  AS yr,
+               MONTH(price_date) AS mo,
+               ROUND(AVG(base_eur), 1) AS avg_eur,
+               ROUND(
+                 100.0 * SUM(CASE WHEN base_eur < 0 THEN 1 ELSE 0 END) / COUNT(*),
+                 1
+               ) AS neg_day_pct
+        FROM power_daily
+        WHERE zone IN ({zone_list})
+          AND base_eur IS NOT NULL
+          AND price_date >= (SELECT MAX(price_date) - INTERVAL 24 MONTHS FROM power_daily)
+        GROUP BY zone, YEAR(price_date), MONTH(price_date)
+        ORDER BY zone, yr, mo
+    """)
+    if df is None or df.empty:
+        return PowerMonthlyResponse(zones=[], months=[], cells=[])
+
+    zone_set: list[str] = sorted(df["zone"].unique().tolist(), key=lambda z: _MONTHLY_ZONES.index(z) if z in _MONTHLY_ZONES else 99)
+    month_set: list[str] = sorted(set(f"{int(r.yr):04d}-{int(r.mo):02d}" for r in df.itertuples()))
+
+    cells = [
+        PowerMonthlyCell(
+            zone=str(r.zone),
+            yr=int(r.yr),
+            mo=int(r.mo),
+            avg_eur=round(_float(r.avg_eur) or 0.0, 1) if r.avg_eur is not None else None,
+            neg_day_pct=round(_float(r.neg_day_pct) or 0.0, 1) if r.neg_day_pct is not None else None,
+        )
+        for r in df.itertuples()
+    ]
+    return PowerMonthlyResponse(zones=zone_set, months=month_set, cells=cells)
 
 
 @app.get("/api/flows", response_model=FlowsResponse)

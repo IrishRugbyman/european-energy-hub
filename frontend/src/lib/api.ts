@@ -653,6 +653,20 @@ export interface StorageCountryResponse {
   rows: StorageCountryRow[]
 }
 
+export interface PowerMonthlyCell {
+  zone: string
+  yr: number
+  mo: number
+  avg_eur: number | null
+  neg_day_pct: number | null
+}
+
+export interface PowerMonthlyResponse {
+  zones: string[]
+  months: string[]
+  cells: PowerMonthlyCell[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -699,6 +713,7 @@ export const api = {
   genZonesCf: () => get<ZoneCfResponse>('/generation/zones/cf'),
   genEuPriceRe: () => get<EuPriceReResponse>('/generation/eu/price-re'),
   gasCountryCompare: () => get<StorageCountryResponse>('/gas/country-compare'),
+  powerMonthly: () => get<PowerMonthlyResponse>('/power/monthly'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

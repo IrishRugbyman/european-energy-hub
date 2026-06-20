@@ -692,3 +692,17 @@ class StorageCountryRow(BaseModel):
 
 class StorageCountryResponse(BaseModel):
     rows: list[StorageCountryRow]
+
+
+class PowerMonthlyCell(BaseModel):
+    zone: str
+    yr: int
+    mo: int
+    avg_eur: float | None = None
+    neg_day_pct: float | None = None
+
+
+class PowerMonthlyResponse(BaseModel):
+    zones: list[str]
+    months: list[str]
+    cells: list[PowerMonthlyCell]
