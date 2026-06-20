@@ -725,3 +725,16 @@ class EuGenHourlyResponse(BaseModel):
     rows: list[EuGenHourlyPoint]
 
 
+
+
+class EuDuckCurvePoint(BaseModel):
+    hour: int
+    avg_eur: float | None = None
+    p25_eur: float | None = None
+    p75_eur: float | None = None
+    neg_pct: float | None = None
+    n_zones: int | None = None
+
+
+class EuDuckCurveResponse(BaseModel):
+    rows: list[EuDuckCurvePoint]

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -525,6 +525,60 @@ function EuPriceReScatter({ rows }: { rows: EuPriceRePoint[] }) {
   )
 }
 
+function EuDuckCurveChart({ rows }: { rows: EuDuckCurvePoint[] }) {
+  const data = rows.map((r) => ({
+    h: `${r.hour.toString().padStart(2, '0')}h`,
+    avg: r.avg_eur,
+    p25: r.p25_eur,
+    p75: r.p75_eur,
+    neg_pct: r.neg_pct,
+  }))
+  const minHour = rows.find((r) => r.avg_eur != null && r.avg_eur === Math.min(...rows.map((x) => x.avg_eur ?? Infinity)))
+  const maxNeg = rows.reduce((a, b) => (b.neg_pct ?? 0) > (a.neg_pct ?? 0) ? b : a, rows[0])
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-4 mb-2">
+        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Duck Curve - Avg Hourly Price Profile (30d trailing)</h2>
+        {minHour && (
+          <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-foreground">
+            Trough: {minHour.hour.toString().padStart(2, '0')}:00 ({minHour.avg_eur?.toFixed(0)} €/MWh)
+          </span>
+        )}
+        {maxNeg && (maxNeg.neg_pct ?? 0) > 1 && (
+          <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-foreground">
+            Peak neg: {maxNeg.hour.toString().padStart(2, '0')}:00 ({maxNeg.neg_pct?.toFixed(0)}% hrs)
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">Avg (blue), IQR band. Red bars = negative price frequency. Solar trough at midday confirms duck curve.</p>
+      <ResponsiveContainer width="100%" height={160}>
+        <ComposedChart data={data} margin={{ top: 4, right: 40, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="h" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={3} />
+          <YAxis yAxisId="price" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={36} unit="€" />
+          <YAxis yAxisId="neg" orientation="right" tick={{ fontSize: 8, fill: '#f8717180' }} tickLine={false} width={28} unit="%" domain={[0, 'auto']} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => {
+              const n = typeof v === 'number' ? v : null
+              if (name === 'p25') return [n != null ? `${n.toFixed(0)} €` : '--', 'P25']
+              if (name === 'p75') return [n != null ? `${n.toFixed(0)} €` : '--', 'P75']
+              if (name === 'avg') return [n != null ? `${n.toFixed(0)} €/MWh` : '--', 'Avg']
+              if (name === 'neg_pct') return [n != null ? `${n.toFixed(1)}%` : '--', 'Neg hrs']
+              return [String(v), String(name)]
+            }}
+          />
+          <Area yAxisId="price" type="monotone" dataKey="p75" stroke="none" fill="#38bdf8" fillOpacity={0.12} legendType="none" />
+          <Area yAxisId="price" type="monotone" dataKey="p25" stroke="none" fill="#0f1117" fillOpacity={1} legendType="none" />
+          <Line yAxisId="price" type="monotone" dataKey="avg" stroke="#38bdf8" strokeWidth={2} dot={false} />
+          <Bar yAxisId="neg" dataKey="neg_pct" fill="#f87171" opacity={0.4} />
+          <ReferenceLine yAxisId="price" y={0} stroke="#475569" strokeDasharray="2 2" />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -566,6 +620,12 @@ function GenerationTrends() {
   const { data: priceReData } = useQuery({
     queryKey: ['gen-eu-price-re'],
     queryFn: api.genEuPriceRe,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: duckCurveData } = useQuery({
+    queryKey: ['power-hourly-profile-eu'],
+    queryFn: api.powerHourlyProfileEu,
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -615,6 +675,7 @@ function GenerationTrends() {
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
+      {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}
       {(zoneCfData?.rows.length ?? 0) > 0 && <ZoneCfChart rows={zoneCfData!.rows} />}
       {(priceReData?.rows.length ?? 0) > 0 && <EuPriceReScatter rows={priceReData!.rows} />}
 

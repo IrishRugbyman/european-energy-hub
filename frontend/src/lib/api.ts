@@ -684,6 +684,19 @@ export interface EuGenHourlyResponse {
   rows: EuGenHourlyPoint[]
 }
 
+export interface EuDuckCurvePoint {
+  hour: number
+  avg_eur: number | null
+  p25_eur: number | null
+  p75_eur: number | null
+  neg_pct: number | null
+  n_zones: number | null
+}
+
+export interface EuDuckCurveResponse {
+  rows: EuDuckCurvePoint[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -732,6 +745,7 @@ export const api = {
   gasCountryCompare: () => get<StorageCountryResponse>('/gas/country-compare'),
   powerMonthly: () => get<PowerMonthlyResponse>('/power/monthly'),
   genEuHourly: () => get<EuGenHourlyResponse>('/generation/eu/hourly'),
+  powerHourlyProfileEu: () => get<EuDuckCurveResponse>('/power/hourly-profile-eu'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

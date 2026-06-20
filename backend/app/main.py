@@ -77,6 +77,8 @@ from .schemas import (
     PowerMonthlyResponse,
     EuGenHourlyPoint,
     EuGenHourlyResponse,
+    EuDuckCurvePoint,
+    EuDuckCurveResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -2180,3 +2182,33 @@ def generation_eu_hourly():
         for r in df.itertuples()
     ]
     return EuGenHourlyResponse(rows=rows)
+
+
+@app.get("/api/power/hourly-profile-eu", response_model=EuDuckCurveResponse)
+def power_hourly_profile_eu():
+    """EU aggregate hourly price profile (30-day trailing average across all 34 zones)."""
+    df = db.query("""
+        SELECT hour,
+               ROUND(AVG(avg_eur), 1)  AS avg_eur,
+               ROUND(AVG(p25_eur), 1)  AS p25_eur,
+               ROUND(AVG(p75_eur), 1)  AS p75_eur,
+               ROUND(AVG(neg_pct), 1)  AS neg_pct,
+               COUNT(DISTINCT zone)    AS n_zones
+        FROM power_hourly_profiles
+        GROUP BY hour
+        ORDER BY hour
+    """)
+    if df is None or df.empty:
+        return EuDuckCurveResponse(rows=[])
+    rows = [
+        EuDuckCurvePoint(
+            hour=int(r.hour),
+            avg_eur=_float(r.avg_eur),
+            p25_eur=_float(r.p25_eur),
+            p75_eur=_float(r.p75_eur),
+            neg_pct=_float(r.neg_pct),
+            n_zones=int(r.n_zones) if r.n_zones is not None else None,
+        )
+        for r in df.itertuples()
+    ]
+    return EuDuckCurveResponse(rows=rows)

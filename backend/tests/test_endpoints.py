@@ -750,3 +750,17 @@ def test_generation_zones_cf(client):
         assert "zone" in row
         assert "wind_cf" in row
         assert "solar_cf" in row
+
+
+def test_power_hourly_profile_eu(client):
+    """power/hourly-profile-eu returns 24 hourly rows with correct schema."""
+    r = client.get("/api/power/hourly-profile-eu")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) == 24
+    for row in data["rows"]:
+        assert "hour" in row
+        assert 0 <= row["hour"] <= 23
+        assert "avg_eur" in row
+        assert "neg_pct" in row
