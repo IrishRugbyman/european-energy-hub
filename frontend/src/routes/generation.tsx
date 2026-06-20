@@ -1572,23 +1572,68 @@ function GenerationTrends() {
   const { zones, years } = data
 
   return (
-    <div className="p-4 h-full overflow-y-auto">
-      {(euHourlyData?.rows.length ?? 0) > 0 && <EuGenHourlyChart rows={euHourlyData!.rows} />}
-      {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
-      {(monthlyFuelMixData?.rows.length ?? 0) > 0 && <MonthlyFuelMixSeasonality rows={monthlyFuelMixData!.rows} />}
-      {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
-      {(negHoursData?.rows.length ?? 0) > 0 && <NegHoursMonthlyChart rows={negHoursData!.rows} />}
-      {(negHoursZoneData?.rows.length ?? 0) > 0 && <NegHoursZoneRanking rows={negHoursZoneData!.rows} />}
-      {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
-      {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
-      {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}
-      {(hourlyProfilesData?.rows.length ?? 0) > 0 && <ZoneHourlyComparisonChart rows={hourlyProfilesData!.rows} />}
-      {(zoneCfData?.rows.length ?? 0) > 0 && <ZoneCfChart rows={zoneCfData!.rows} />}
-      {(priceReData?.rows.length ?? 0) > 0 && <EuPriceReScatter rows={priceReData!.rows} />}
-      {(priceReCorrData?.rows.length ?? 0) > 0 && <ZonePriceReCorrChart rows={priceReCorrData!.rows} />}
-      {(zoneCiData?.rows.length ?? 0) > 0 && <ZoneCarbonIntensityChart rows={zoneCiData!.rows} />}
-      {(zoneTtfCorrData?.rows.length ?? 0) > 0 && <ZoneTtfCorrChart rows={zoneTtfCorrData!.rows} />}
-      {(forecastAccData?.rows.length ?? 0) > 0 && <ForecastAccuracyChart rows={forecastAccData!.rows} />}
+    <div className="p-4 h-full overflow-y-auto" id="gen-scroll-root">
+      {/* Section jump nav */}
+      <nav className="flex flex-wrap gap-x-3 gap-y-1 mb-4 text-[10px] text-muted-foreground border-b border-border pb-2">
+        <a href="#gen-eu-overview" className="hover:text-foreground transition-colors">EU Overview</a>
+        <span className="text-border">·</span>
+        <a href="#gen-neg-prices" className="hover:text-foreground transition-colors">Negative Prices</a>
+        <span className="text-border">·</span>
+        <a href="#gen-re-trend" className="hover:text-foreground transition-colors">RE Trend</a>
+        <span className="text-border">·</span>
+        <a href="#gen-carbon" className="hover:text-foreground transition-colors">Carbon + Gas</a>
+        <span className="text-border">·</span>
+        <a href="#gen-zone-profile" className="hover:text-foreground transition-colors">Zone Profiles</a>
+        <span className="text-border">·</span>
+        <a href="#gen-market" className="hover:text-foreground transition-colors">Market + Merit Order</a>
+        <span className="text-border">·</span>
+        <a href="#gen-forecast" className="hover:text-foreground transition-colors">Forecast Accuracy</a>
+        <span className="text-border">·</span>
+        <a href="#gen-intrazone" className="hover:text-foreground transition-colors">Intrazone Congestion</a>
+        <span className="text-border">·</span>
+        <a href="#gen-flows" className="hover:text-foreground transition-colors">Net Flows</a>
+        <span className="text-border">·</span>
+        <a href="#gen-renewable-trends" className="hover:text-foreground transition-colors">Renewable Trends</a>
+      </nav>
+
+      <div id="gen-eu-overview">
+        {(euHourlyData?.rows.length ?? 0) > 0 && <EuGenHourlyChart rows={euHourlyData!.rows} />}
+        {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
+        {(monthlyFuelMixData?.rows.length ?? 0) > 0 && <MonthlyFuelMixSeasonality rows={monthlyFuelMixData!.rows} />}
+        {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
+      </div>
+
+      <div id="gen-neg-prices">
+        {(negHoursData?.rows.length ?? 0) > 0 && <NegHoursMonthlyChart rows={negHoursData!.rows} />}
+        {(negHoursZoneData?.rows.length ?? 0) > 0 && <NegHoursZoneRanking rows={negHoursZoneData!.rows} />}
+      </div>
+
+      <div id="gen-re-trend">
+        {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
+      </div>
+
+      <div id="gen-carbon">
+        {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
+        {(zoneCiData?.rows.length ?? 0) > 0 && <ZoneCarbonIntensityChart rows={zoneCiData!.rows} />}
+        {(zoneTtfCorrData?.rows.length ?? 0) > 0 && <ZoneTtfCorrChart rows={zoneTtfCorrData!.rows} />}
+      </div>
+
+      <div id="gen-zone-profile">
+        {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}
+        {(hourlyProfilesData?.rows.length ?? 0) > 0 && <ZoneHourlyComparisonChart rows={hourlyProfilesData!.rows} />}
+        {(zoneCfData?.rows.length ?? 0) > 0 && <ZoneCfChart rows={zoneCfData!.rows} />}
+      </div>
+
+      <div id="gen-market">
+        {(priceReData?.rows.length ?? 0) > 0 && <EuPriceReScatter rows={priceReData!.rows} />}
+        {(priceReCorrData?.rows.length ?? 0) > 0 && <ZonePriceReCorrChart rows={priceReCorrData!.rows} />}
+      </div>
+
+      <div id="gen-forecast">
+        {(forecastAccData?.rows.length ?? 0) > 0 && <ForecastAccuracyChart rows={forecastAccData!.rows} />}
+      </div>
+
+      <div id="gen-intrazone">
       <CrossZoneSpreadChart
         country={effectiveSpreadCountry}
         onCountryChange={setSpreadCountry}
@@ -1599,10 +1644,15 @@ function GenerationTrends() {
         refZone={crossZoneSpreadData?.ref_zone ?? COUNTRY_REF[effectiveSpreadCountry]}
       />
 
-      {(zoneNetFlowsData?.rows.length ?? 0) > 0 && (
-        <ZoneNetFlowsChart rows={zoneNetFlowsData!.rows} date={zoneNetFlowsData!.price_date} />
-      )}
+      </div>
 
+      <div id="gen-flows">
+        {(zoneNetFlowsData?.rows.length ?? 0) > 0 && (
+          <ZoneNetFlowsChart rows={zoneNetFlowsData!.rows} date={zoneNetFlowsData!.price_date} />
+        )}
+      </div>
+
+      <div id="gen-renewable-trends">
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
@@ -1682,6 +1732,7 @@ function GenerationTrends() {
         </div>
         <span>* Partial year (YTD average)</span>
       </div>
+      </div>{/* end gen-renewable-trends */}
     </div>
   )
 }
