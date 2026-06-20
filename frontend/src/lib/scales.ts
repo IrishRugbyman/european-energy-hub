@@ -140,25 +140,30 @@ export function zoneName(zone: string): string {
 
 // Zones that share a country and whose prices should be compared side-by-side.
 // Only groups with >= 2 zones where congestion creates meaningful divergence.
+const IT_SIBLINGS = ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD', 'IT-CALA']
+const NO_SIBLINGS = ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5']
+const SE_SIBLINGS = ['SE-1', 'SE-2', 'SE-3', 'SE-4']
+const DK_SIBLINGS = ['DK-1', 'DK-2']
+
 export const ZONE_SIBLINGS: Record<string, string[]> = {
-  'IT-NORD': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'IT-CNOR': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'IT-CSUD': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'IT-SUD':  ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'IT-SICI': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'IT-SARD': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'IT-CALA': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
-  'NO-1': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
-  'NO-2': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
-  'NO-3': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
-  'NO-4': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
-  'NO-5': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
-  'SE-1': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
-  'SE-2': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
-  'SE-3': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
-  'SE-4': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
-  'DK-1': ['DK-1', 'DK-2'],
-  'DK-2': ['DK-1', 'DK-2'],
+  'IT-NORD': IT_SIBLINGS,
+  'IT-CNOR': IT_SIBLINGS,
+  'IT-CSUD': IT_SIBLINGS,
+  'IT-SUD':  IT_SIBLINGS,
+  'IT-SICI': IT_SIBLINGS,
+  'IT-SARD': IT_SIBLINGS,
+  'IT-CALA': IT_SIBLINGS,
+  'NO-1': NO_SIBLINGS,
+  'NO-2': NO_SIBLINGS,
+  'NO-3': NO_SIBLINGS,
+  'NO-4': NO_SIBLINGS,
+  'NO-5': NO_SIBLINGS,
+  'SE-1': SE_SIBLINGS,
+  'SE-2': SE_SIBLINGS,
+  'SE-3': SE_SIBLINGS,
+  'SE-4': SE_SIBLINGS,
+  'DK-1': DK_SIBLINGS,
+  'DK-2': DK_SIBLINGS,
 }
 
 // NTC utilization pct -> color. Sequential scale: green (free) -> yellow -> red (saturated).
