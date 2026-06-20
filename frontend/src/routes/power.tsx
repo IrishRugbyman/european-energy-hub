@@ -420,7 +420,7 @@ function MapDashboard() {
       </div>
 
       {/* Top-center stat strip - shows the single most relevant EU aggregate for the active metric */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-4 px-4 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm pointer-events-none">
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-4 px-4 py-2 rounded-lg bg-card/90 backdrop-blur border border-border shadow-lg text-sm pointer-events-none [&_.clickable]:pointer-events-auto">
         {powerLoading ? (
           <span className="text-muted-foreground text-xs">Loading...</span>
         ) : powerError ? (
@@ -431,11 +431,19 @@ function MapDashboard() {
               <StatChip label="EU median price" value={`${medianPrice.toFixed(0)} €/MWh`} />
             )}
             {isPriceMetric(metric) && congestionHotspot != null && (
-              <StatChip
-                label="top congestion"
-                value={`${congestionHotspot.zone} ${congestionHotspot.spread > 0 ? '+' : ''}${congestionHotspot.spread} €`}
-                valueColor={Math.abs(congestionHotspot.spread) > 20 ? '#f87171' : Math.abs(congestionHotspot.spread) > 8 ? '#fbbf24' : '#94a3b8'}
-              />
+              <button
+                className="clickable flex items-baseline gap-1 hover:opacity-80 transition-opacity cursor-pointer"
+                onClick={() => handleSelectZone(congestionHotspot.zone)}
+                title={`Click to open ${congestionHotspot.zone} zone panel`}
+              >
+                <span className="text-muted-foreground text-xs">top congestion</span>
+                <span
+                  className="font-medium"
+                  style={{ color: Math.abs(congestionHotspot.spread) > 20 ? '#f87171' : Math.abs(congestionHotspot.spread) > 8 ? '#fbbf24' : '#94a3b8' }}
+                >
+                  {congestionHotspot.zone} {congestionHotspot.spread > 0 ? '+' : ''}{congestionHotspot.spread} €
+                </span>
+              </button>
             )}
             {(metric === 'renewable' || metric === 'dominant_fuel') && weightedRE != null && (
               <StatChip label="EU avg renewable" value={`${weightedRE.toFixed(0)}%`} />
