@@ -1,10 +1,12 @@
 # Energy Hub Changelog
 
-## 2026-06-20 - Post-roadmap round 25: live congestion hotspot chip on /map
+## 2026-06-20 - Post-roadmap round 25: live congestion hotspot chip + smart spread country
 
-**New feature:** When viewing /map in price mode, the top-center stat strip now shows a second chip: "top congestion - ZONE +/-N EUR". Finds the zone with the largest absolute deviation from its country reference (IT-NORD, NO-5, SE-3, DK-1) across all 45 zones. Red if >20 EUR/MWh, amber if >8 EUR/MWh. Pure frontend computation from existing powerData.rows, zero new API calls. Today: NO-2 vs NO-5 at +52€ (severe north-south Norway bottleneck), SE-2 vs SE-3 at -38€ (Swedish hydro surplus). StatChip updated to accept optional `valueColor` prop.
+**New features:**
+1. Live congestion hotspot chip on /map: when viewing in price mode, the top-center stat strip shows "top congestion - ZONE +/-N EUR". Finds the zone with the largest absolute deviation from its country reference (IT-NORD, NO-5, SE-3, DK-1) across all 45 zones. Red >20 EUR/MWh, amber >8 EUR/MWh. Chip is clickable to open the congested zone's panel directly. Today: NO-2 vs NO-5 at +52€ (north-south Norway bottleneck); SE zones showing +/-37€ hydro dispatch spreads.
+2. Auto-country on cross-zone spread chart: the chart on /generation now defaults to the country with the largest live intrazone spread (by fetching power/map, shared QueryClient cache with /map). User tab clicks override. Today it opens Norway automatically showing the dramatic NO-2/NO-5 congestion.
 
-**Artifacts:** `frontend/src/routes/power.tsx` (congestionHotspot useMemo, StatChip valueColor prop, chip in stat strip).
+**Artifacts:** `frontend/src/routes/power.tsx` (congestionHotspot useMemo, StatChip valueColor + onClick, pointer-events passthrough), `frontend/src/routes/generation.tsx` (powerMapData query, bestSpreadCountry useMemo, effectiveSpreadCountry logic).
 
 ---
 
