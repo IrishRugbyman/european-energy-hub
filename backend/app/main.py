@@ -121,6 +121,8 @@ from .schemas import (
     GasPriceScatterResponse,
     NegHoursZoneRow,
     NegHoursZoneResponse,
+    ZonePriceReCorrRow,
+    ZonePriceReCorrResponse,
 )
 
 
@@ -2336,3 +2338,34 @@ def power_neg_hours_zones():
         for r in df.itertuples()
     ]
     return NegHoursZoneResponse(window_days=30, rows=rows)
+
+
+@app.get("/api/generation/zone-price-re-corr", response_model=ZonePriceReCorrResponse)
+def generation_zone_price_re_corr():
+    """Per-zone Pearson correlation of daily base price vs renewable %, trailing 365 days."""
+    df = db.query("""
+        SELECT pd.zone,
+               ROUND(CORR(gd.renewable_pct, pd.base_eur)::REAL, 3) AS corr,
+               ROUND(AVG(pd.base_eur)::REAL, 1)                     AS avg_price_eur,
+               ROUND(AVG(gd.renewable_pct)::REAL, 1)                AS avg_re_pct,
+               COUNT(*)::INT                                         AS n_days
+        FROM power_daily pd
+        JOIN generation_daily gd ON pd.zone = gd.zone AND pd.price_date = gd.gen_date
+        WHERE pd.price_date >= (SELECT MAX(price_date) FROM power_daily) - INTERVAL 365 DAYS
+        GROUP BY pd.zone
+        HAVING COUNT(*) > 100
+        ORDER BY corr
+    """)
+    if df is None or df.empty:
+        return ZonePriceReCorrResponse(window_days=365, rows=[])
+    rows = [
+        ZonePriceReCorrRow(
+            zone=str(r.zone),
+            corr=float(r.corr),
+            avg_price_eur=float(r.avg_price_eur),
+            avg_re_pct=float(r.avg_re_pct),
+            n_days=int(r.n_days),
+        )
+        for r in df.itertuples()
+    ]
+    return ZonePriceReCorrResponse(window_days=365, rows=rows)

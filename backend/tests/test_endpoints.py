@@ -866,3 +866,33 @@ def test_neg_hours_zones_ordered_descending(client):
     rows = r.json()["rows"]
     pcts = [row["neg_pct_30d"] for row in rows]
     assert pcts == sorted(pcts, reverse=True), "zones must be sorted descending by neg_pct_30d"
+
+
+def test_zone_price_re_corr(client):
+    """generation/zone-price-re-corr returns merit-order correlation for seeded zones."""
+    r = client.get("/api/generation/zone-price-re-corr")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["window_days"] == 365
+    assert "rows" in data
+    # DE-LU is seeded in both power_daily and generation_daily
+    assert len(data["rows"]) >= 1
+    zones = {row["zone"] for row in data["rows"]}
+    assert "DE-LU" in zones
+    for row in data["rows"]:
+        assert "zone" in row
+        assert "corr" in row
+        assert "avg_price_eur" in row
+        assert "avg_re_pct" in row
+        assert "n_days" in row
+        assert -1.0 <= row["corr"] <= 1.0
+        assert row["n_days"] >= 100
+
+
+def test_zone_price_re_corr_ordered_ascending(client):
+    """Zones are sorted from most negative correlation to most positive."""
+    r = client.get("/api/generation/zone-price-re-corr")
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    corrs = [row["corr"] for row in rows]
+    assert corrs == sorted(corrs), "zones must be sorted ascending by correlation"

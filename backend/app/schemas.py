@@ -783,3 +783,16 @@ class NegHoursZoneRow(BaseModel):
 class NegHoursZoneResponse(BaseModel):
     window_days: int
     rows: list[NegHoursZoneRow]
+
+
+class ZonePriceReCorrRow(BaseModel):
+    zone: str
+    corr: float
+    avg_price_eur: float
+    avg_re_pct: float
+    n_days: int
+
+
+class ZonePriceReCorrResponse(BaseModel):
+    window_days: int
+    rows: list[ZonePriceReCorrRow]
