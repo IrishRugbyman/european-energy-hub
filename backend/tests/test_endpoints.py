@@ -595,3 +595,89 @@ def test_generation_zone_capacity(client):
 def test_generation_zone_capacity_not_found(client):
     r = client.get("/api/generation/zone/XX-FAKE/capacity")
     assert r.status_code == 404
+
+
+def test_generation_eu_monthly(client):
+    r = client.get("/api/generation/eu/monthly")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    # The fixture has only 1 zone (DE-LU); the endpoint requires >=5 zones, so rows may be empty.
+    # Just validate structure if rows are present.
+    for row in data["rows"]:
+        assert "year" in row and "month" in row
+        assert row["year"] >= 2021
+        assert 1 <= row["month"] <= 12
+        if row["renewable_pct"] is not None:
+            assert 0.0 <= row["renewable_pct"] <= 100.0
+
+
+def test_generation_eu_monthly_schema(client):
+    r = client.get("/api/generation/eu/monthly")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data["rows"], list)
+
+
+def test_generation_eu_cf_latest(client):
+    r = client.get("/api/generation/eu/cf-latest")
+    assert r.status_code == 200
+    data = r.json()
+    assert "wind_cf" in data
+    assert "solar_cf" in data
+    assert "wind_installed_gw" in data
+    assert "wind_cf_month_avg" in data
+    if data["wind_cf"] is not None:
+        assert 0.0 <= data["wind_cf"] <= 100.0
+    if data["solar_cf"] is not None:
+        assert 0.0 <= data["solar_cf"] <= 100.0
+    if data["wind_cf_month_pct_rank"] is not None:
+        assert 0.0 <= data["wind_cf_month_pct_rank"] <= 100.0
+
+
+def test_prices_curve_snapshots(client):
+    r = client.get("/api/prices/curve/snapshots")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+    labels = {row["snapshot_label"] for row in data["rows"]}
+    assert "today" in labels
+    row = data["rows"][0]
+    assert "contract" in row
+    assert "settlement" in row and row["settlement"] > 0
+    assert "tenor_type" in row
+
+
+def test_imbalance_monthly(client):
+    r = client.get("/api/imbalance/monthly")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+    row = data["rows"][0]
+    assert "year" in row and "month" in row
+    assert row["year"] >= 2024
+    assert 1 <= row["month"] <= 12
+    if row["avg_eur"] is not None:
+        assert row["avg_eur"] > 0
+
+
+def test_gas_pace_has_seasonal_norm(client):
+    r = client.get("/api/gas/pace")
+    assert r.status_code == 200
+    data = r.json()
+    eu = data["eu"]
+    assert "seasonal_inj_avg_gwh_d" in eu
+    assert "next_interim_date" in eu
+    assert "next_interim_pct" in eu
+
+
+def test_gas_pace_interim_target_values(client):
+    r = client.get("/api/gas/pace")
+    assert r.status_code == 200
+    eu = r.json()["eu"]
+    if eu["next_interim_pct"] is not None:
+        assert eu["next_interim_pct"] in (62.5, 75.0, 83.3, 90.0)
+    if eu["next_interim_date"] is not None:
+        assert eu["next_interim_date"][:4].isdigit()

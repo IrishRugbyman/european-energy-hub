@@ -490,6 +490,35 @@ def _seed_db(path: str) -> None:
     ]
     conn.executemany("INSERT INTO ttf_curve_latest VALUES (?, ?, ?, ?)", curve_contracts)
 
+    # TTF curve snapshots (Phase post-6: curve shift)
+    conn.execute("""
+        CREATE TABLE ttf_curve_snapshots (
+            snapshot_label VARCHAR, contract VARCHAR,
+            settlement REAL, tenor_type VARCHAR, sort_key INTEGER
+        )
+    """)
+    for label in ["today", "-30d", "-180d", "-365d"]:
+        offset_eur = {"today": 0.0, "-30d": 2.0, "-180d": 5.0, "-365d": -3.0}[label]
+        for contract, base_price, tenor_type, sort_key in curve_contracts:
+            conn.execute(
+                "INSERT INTO ttf_curve_snapshots VALUES (?, ?, ?, ?, ?)",
+                [label, contract, round(base_price + offset_eur, 2), tenor_type, sort_key],
+            )
+
+    # Storage injection seasonal (for pace endpoint seasonal norm)
+    conn.execute("""
+        CREATE TABLE storage_injection_seasonal (
+            country VARCHAR, doy SMALLINT, avg_gwh_d REAL, p25_gwh_d REAL, p75_gwh_d REAL
+        )
+    """)
+    for doy in range(1, 367):
+        for cc in ("DE", "FR", "EU"):
+            avg = round(80.0 + 20.0 * ((doy - 182) / 182) if doy < 270 else 0.0, 1)
+            conn.execute(
+                "INSERT INTO storage_injection_seasonal VALUES (?, ?, ?, ?, ?)",
+                [cc, doy, avg, round(avg * 0.7, 1), round(avg * 1.3, 1)],
+            )
+
     conn.close()
 
 
