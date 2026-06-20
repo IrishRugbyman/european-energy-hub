@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -1033,6 +1033,158 @@ function ForecastAccuracyChart({ rows }: { rows: ForecastAccuracyRow[] }) {
   )
 }
 
+// Colors for Italian intrazone spreads (excluding IT-NORD which is the zero reference)
+const IT_SPREAD_COLORS: Record<string, string> = {
+  'IT-CNOR': '#60a5fa',
+  'IT-CSUD': '#f97316',
+  'IT-SUD':  '#f87171',
+  'IT-SICI': '#a78bfa',
+  'IT-SARD': '#4ade80',
+  'IT-CALA': '#fbbf24',
+}
+const NO_SPREAD_COLORS: Record<string, string> = {
+  'NO-1': '#60a5fa',
+  'NO-2': '#4ade80',
+  'NO-3': '#f97316',
+  'NO-4': '#a78bfa',
+}
+const SE_SPREAD_COLORS: Record<string, string> = {
+  'SE-1': '#60a5fa',
+  'SE-2': '#4ade80',
+  'SE-4': '#f97316',
+}
+
+const COUNTRY_LABELS: Record<string, string> = {
+  IT: 'Italy',
+  NO: 'Norway',
+  SE: 'Sweden',
+  DK: 'Denmark',
+}
+const COUNTRY_REF: Record<string, string> = {
+  IT: 'IT-NORD',
+  NO: 'NO-5',
+  SE: 'SE-3',
+  DK: 'DK-1',
+}
+const COUNTRY_COLORS: Record<string, Record<string, string>> = {
+  IT: IT_SPREAD_COLORS,
+  NO: NO_SPREAD_COLORS,
+  SE: SE_SPREAD_COLORS,
+  DK: { 'DK-2': '#60a5fa' },
+}
+
+function CrossZoneSpreadChart({ country, onCountryChange, rows, zones, refZone }: {
+  country: string
+  onCountryChange: (c: string) => void
+  rows: CrossZoneSpreadPoint[]
+  zones: string[]
+  refZone: string
+}) {
+  const colors = COUNTRY_COLORS[country] ?? {}
+  const countryLabel = COUNTRY_LABELS[country] ?? country
+
+  const chartData = useMemo(() => {
+    if (!rows.length) return []
+    const byDate: Record<string, Record<string, number>> = {}
+    for (const r of rows) {
+      if (!byDate[r.price_date]) byDate[r.price_date] = {}
+      byDate[r.price_date][r.zone] = r.spread_eur
+    }
+    return Object.entries(byDate)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, vals]) => ({ date, ...vals }))
+  }, [rows])
+
+  const yDomain = useMemo((): [number, number] => {
+    if (!rows.length) return [-20, 20]
+    const spreads = rows.map((r) => r.spread_eur)
+    const maxAbs = Math.max(Math.abs(Math.min(...spreads)), Math.abs(Math.max(...spreads)), 1)
+    return [
+      Math.floor((-maxAbs * 1.15) / 5) * 5,
+      Math.ceil((maxAbs * 1.15) / 5) * 5,
+    ]
+  }, [rows])
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h2 className="text-sm font-semibold text-foreground">
+          {countryLabel} intrazone price spread vs {refZone} (90d)
+        </h2>
+        <div className="flex gap-1 ml-auto">
+          {(['IT', 'NO', 'SE', 'DK'] as const).map((c) => (
+            <button
+              key={c}
+              onClick={() => onCountryChange(c)}
+              className={`px-2 py-0.5 rounded text-xs ${c === country ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
+            >
+              {COUNTRY_LABELS[c]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Daily spread = zone base price minus {refZone}. Positive = premium, negative = discount.
+        Persistent gap indicates grid congestion or surplus local generation.
+      </p>
+      {rows.length > 0 && zones.length > 0 ? (
+        <>
+          <div className="flex flex-wrap gap-3 mb-2">
+            {zones.map((z) => (
+              <span key={z} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <span style={{ color: colors[z] ?? '#94a3b8' }}>&#9632;</span>
+                {z}
+              </span>
+            ))}
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(v) => v.slice(5)}
+                tick={{ fontSize: 10, fill: '#64748b' }}
+                interval="preserveStartEnd"
+              />
+              <YAxis
+                domain={yDomain}
+                tickFormatter={(v) => `${v > 0 ? '+' : ''}${v}`}
+                tick={{ fontSize: 10, fill: '#64748b' }}
+                width={42}
+                unit=" €"
+              />
+              <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+              <Tooltip
+                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+                formatter={(val, name) => {
+                    const n = typeof val === 'number' ? val : 0
+                    return [`${n > 0 ? '+' : ''}${n.toFixed(1)} €/MWh`, String(name ?? '')]
+                  }}
+                labelFormatter={(l) => `${l}`}
+              />
+              {zones.map((z) => (
+                <Line
+                  key={z}
+                  type="monotone"
+                  dataKey={z}
+                  stroke={colors[z] ?? '#94a3b8'}
+                  dot={false}
+                  strokeWidth={1.5}
+                  connectNulls={false}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground py-4 text-center">
+          No intrazone spread data for {countryLabel} yet.
+        </p>
+      )}
+    </div>
+  )
+}
+
 const ZONE_PROFILE_COLORS: Record<string, string> = {
   'DE-LU': '#60a5fa',
   'FR':    '#4ade80',
@@ -1243,6 +1395,13 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const [spreadCountry, setSpreadCountry] = useState<string>('IT')
+  const { data: crossZoneSpreadData } = useQuery({
+    queryKey: ['power-cross-zone-spreads', spreadCountry],
+    queryFn: () => api.powerCrossZoneSpreads(spreadCountry),
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -1301,6 +1460,13 @@ function GenerationTrends() {
       {(zoneCiData?.rows.length ?? 0) > 0 && <ZoneCarbonIntensityChart rows={zoneCiData!.rows} />}
       {(zoneTtfCorrData?.rows.length ?? 0) > 0 && <ZoneTtfCorrChart rows={zoneTtfCorrData!.rows} />}
       {(forecastAccData?.rows.length ?? 0) > 0 && <ForecastAccuracyChart rows={forecastAccData!.rows} />}
+      <CrossZoneSpreadChart
+        country={spreadCountry}
+        onCountryChange={setSpreadCountry}
+        rows={crossZoneSpreadData?.rows ?? []}
+        zones={crossZoneSpreadData?.zones ?? []}
+        refZone={crossZoneSpreadData?.ref_zone ?? COUNTRY_REF[spreadCountry]}
+      />
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>

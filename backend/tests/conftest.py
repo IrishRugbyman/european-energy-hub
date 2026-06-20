@@ -85,10 +85,10 @@ def _seed_db(path: str) -> None:
         )
     """)
 
-    # Seed 2 years of daily power data for DE-LU and FR
+    # Seed 2 years of daily power data; Italian zones added for cross-zone-spreads test
     for i in range((today - start).days + 1):
         day = start + timedelta(days=i)
-        for zone, base in [("DE-LU", 80.0), ("FR", 65.0)]:
+        for zone, base in [("DE-LU", 80.0), ("FR", 65.0), ("IT-NORD", 90.0), ("IT-SARD", 82.0)]:
             price = base + (i % 365 - 182) * 0.2
             range_eur = round(abs((i % 24) * 2.5 + 10), 2)
             neg_h = 2 if price < 50 else 0

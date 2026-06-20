@@ -994,3 +994,27 @@ def test_generation_forecast_accuracy(client):
             assert row["wind_mae_pct"] >= 0
         if row["solar_mae_pct"] is not None:
             assert row["solar_mae_pct"] >= 0
+
+
+def test_power_cross_zone_spreads(client):
+    """power/cross-zone-spreads returns daily spread of IT sub-zones vs IT-NORD."""
+    r = client.get("/api/power/cross-zone-spreads?country=IT")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["ref_zone"] == "IT-NORD"
+    assert data["country"] == "IT"
+    assert data["window_days"] == 90
+    # IT-SARD is seeded; other zones may be absent
+    zones_with_data = data["zones"]
+    if zones_with_data:
+        assert "IT-SARD" in zones_with_data
+        rows = data["rows"]
+        assert len(rows) > 0
+        # All rows must reference zones that were declared present
+        for row in rows:
+            assert row["zone"] in zones_with_data
+            assert isinstance(row["spread_eur"], float)
+            assert isinstance(row["price_date"], str)
+    # Unknown country -> 400
+    r2 = client.get("/api/power/cross-zone-spreads?country=XX")
+    assert r2.status_code == 400

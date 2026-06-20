@@ -789,6 +789,20 @@ export interface ForecastAccuracyResponse {
   rows: ForecastAccuracyRow[]
 }
 
+export interface CrossZoneSpreadPoint {
+  price_date: string
+  zone: string
+  spread_eur: number
+}
+
+export interface CrossZoneSpreadResponse {
+  ref_zone: string
+  country: string
+  window_days: number
+  zones: string[]
+  rows: CrossZoneSpreadPoint[]
+}
+
 export interface ZoneHourlyProfileRow {
   zone: string
   hour: number
@@ -890,4 +904,5 @@ export const api = {
   genZoneTtfCorr: () => get<ZoneTtfCorrResponse>('/generation/zone-ttf-corr'),
   genZoneCarbonIntensity: () => get<ZoneCarbonIntensityResponse>('/generation/zone-carbon-intensity'),
   genForecastAccuracy: () => get<ForecastAccuracyResponse>('/generation/forecast-accuracy'),
+  powerCrossZoneSpreads: (country: string) => get<CrossZoneSpreadResponse>(`/power/cross-zone-spreads?country=${country}`),
 }

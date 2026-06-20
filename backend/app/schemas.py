@@ -864,3 +864,17 @@ class ForecastAccuracyRow(BaseModel):
 class ForecastAccuracyResponse(BaseModel):
     window_days: int
     rows: list[ForecastAccuracyRow]
+
+
+class CrossZoneSpreadPoint(BaseModel):
+    price_date: str
+    zone: str
+    spread_eur: float
+
+
+class CrossZoneSpreadResponse(BaseModel):
+    ref_zone: str
+    country: str
+    window_days: int
+    zones: list[str]
+    rows: list[CrossZoneSpreadPoint]

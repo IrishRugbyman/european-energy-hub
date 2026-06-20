@@ -133,6 +133,8 @@ from .schemas import (
     ZoneCarbonIntensityResponse,
     ForecastAccuracyRow,
     ForecastAccuracyResponse,
+    CrossZoneSpreadPoint,
+    CrossZoneSpreadResponse,
 )
 
 
@@ -2552,3 +2554,75 @@ def generation_forecast_accuracy():
         for r in df.itertuples()
     ]
     return ForecastAccuracyResponse(window_days=90, rows=rows)
+
+
+# Country -> (ref_zone, all_zones) for cross-zone spread chart
+_COUNTRY_SPREAD_CONFIG: dict[str, tuple[str, list[str]]] = {
+    "IT": ("IT-NORD", ["IT-CNOR", "IT-CSUD", "IT-SUD", "IT-SICI", "IT-SARD", "IT-CALA"]),
+    "NO": ("NO-5",   ["NO-1", "NO-2", "NO-3", "NO-4"]),
+    "SE": ("SE-3",   ["SE-1", "SE-2", "SE-4"]),
+    "DK": ("DK-1",   ["DK-2"]),
+}
+
+
+@app.get("/api/power/cross-zone-spreads", response_model=CrossZoneSpreadResponse)
+def power_cross_zone_spreads(country: str = "IT"):
+    """Daily spread of each sub-zone vs the reference zone, trailing 90 days.
+
+    country: IT | NO | SE | DK (default IT).
+    For IT: each zone minus IT-NORD. Positive = premium, negative = discount.
+    For NO: each zone minus NO-5 (south hub). Reflects hydro dispatch geography.
+    For SE: each zone minus SE-3 (Stockholm, largest load center).
+    For DK: DK-2 minus DK-1.
+    """
+    country = country.upper()
+    if country not in _COUNTRY_SPREAD_CONFIG:
+        raise HTTPException(status_code=400, detail=f"Unknown country '{country}'. Use: IT, NO, SE, DK")
+
+    ref_zone, other_zones = _COUNTRY_SPREAD_CONFIG[country]
+    all_zones = [ref_zone] + other_zones
+    placeholders = ", ".join(f"'{z}'" for z in all_zones)
+
+    df = db.query(f"""
+        SELECT price_date, zone, base_eur
+        FROM power_daily
+        WHERE zone IN ({placeholders})
+          AND price_date >= current_date - INTERVAL '90 days'
+          AND base_eur IS NOT NULL
+        ORDER BY price_date, zone
+    """)
+
+    if df is None or df.empty:
+        return CrossZoneSpreadResponse(
+            ref_zone=ref_zone, country=country, window_days=90, zones=other_zones, rows=[]
+        )
+
+    pivot = df.pivot_table(index="price_date", columns="zone", values="base_eur")
+    if ref_zone not in pivot.columns:
+        return CrossZoneSpreadResponse(
+            ref_zone=ref_zone, country=country, window_days=90, zones=other_zones, rows=[]
+        )
+
+    ref_col = pivot[ref_zone]
+    rows: list[CrossZoneSpreadPoint] = []
+    present_zones: list[str] = []
+    for z in other_zones:
+        if z not in pivot.columns:
+            continue
+        present_zones.append(z)
+        spread = (pivot[z] - ref_col).dropna()
+        for date_val, spread_val in spread.items():
+            rows.append(CrossZoneSpreadPoint(
+                price_date=pd.Timestamp(date_val).strftime("%Y-%m-%d"),
+                zone=z,
+                spread_eur=round(float(spread_val), 2),
+            ))
+
+    rows.sort(key=lambda r: (r.price_date, r.zone))
+    return CrossZoneSpreadResponse(
+        ref_zone=ref_zone,
+        country=country,
+        window_days=90,
+        zones=present_zones,
+        rows=rows,
+    )
