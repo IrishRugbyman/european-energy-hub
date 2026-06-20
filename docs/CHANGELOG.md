@@ -1,5 +1,13 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 28: Border flow history in drill-down panel
+
+**New feature:** `GET /api/power/border-flows/{from}/{to}` returns daily net cross-border flow history from `borders_daily` (up to 400 days for CWE borders; 81 days for recently-added Nordic/Baltic borders). The BorderPanel drill-down now shows a net flow history chart alongside the NTC utilization chart, sharing the 3M/1Y/all window selector. For Nordic borders with no NTC data (flow-based market coupling), the flow chart provides context: e.g. NO-2 <-> NO-5 shows ~-200 MW avg (NO-5 to NO-2, hydro flowing north from Kristiansand to Oslo). CWE borders show 400 days with visible seasonal patterns.
+
+**Frontend:** `BorderPanel.tsx` - `FlowHistChart` sub-component with reference line at zero, tooltip showing direction ("458 MW (NO-5->NO-2)"), blue line on dark bg. **Backend:** `schemas.py` gets `BorderFlowHistPoint` + `BorderFlowHistResponse`. Canonical pair ordering handled server-side (sign flipped when request direction differs from alphabetical canonical). 89 tests passing.
+
+---
+
 ## 2026-06-20 - Post-roadmap round 27: UI polish and data table improvements
 
 **Improvements:**
