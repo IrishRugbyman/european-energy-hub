@@ -12,12 +12,14 @@ import {
   LineChart,
   ReferenceLine,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow } from '@/lib/api'
+import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow, type GasPriceScatterRow } from '@/lib/api'
 import { GasMap, type GasColorMode } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
@@ -477,6 +479,114 @@ function buildEuProjection(rows: StorageCountryRow[]): { gas_day: string; EU_pro
   return result
 }
 
+const SCATTER_YEAR_COLORS: Record<number, string> = {
+  2020: '#94a3b8',
+  2021: '#60a5fa',
+  2022: '#f87171',
+  2023: '#fbbf24',
+  2024: '#4ade80',
+  2025: '#a78bfa',
+  2026: '#f97316',
+}
+
+function StoragePriceScatter() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['gas-price-scatter'],
+    queryFn: api.gasPriceScatter,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { byYear, years, corr } = useMemo(() => {
+    const rows: GasPriceScatterRow[] = data?.rows ?? []
+    const groups: Record<number, { fill_pct: number; ttf_eur_mwh: number }[]> = {}
+    for (const r of rows) {
+      const yr = parseInt(r.gas_day.slice(0, 4))
+      if (!groups[yr]) groups[yr] = []
+      groups[yr].push({ fill_pct: r.fill_pct, ttf_eur_mwh: r.ttf_eur_mwh })
+    }
+    const sortedYears = Object.keys(groups).map(Number).sort()
+    // Pearson r (fill_pct, ttf)
+    const xs = rows.map((r) => r.fill_pct)
+    const ys = rows.map((r) => r.ttf_eur_mwh)
+    let pearsonR: number | null = null
+    if (xs.length > 5) {
+      const mx = xs.reduce((a, b) => a + b) / xs.length
+      const my = ys.reduce((a, b) => a + b) / ys.length
+      const num = xs.reduce((acc, x, i) => acc + (x - mx) * (ys[i] - my), 0)
+      const den = Math.sqrt(xs.reduce((a, x) => a + (x - mx) ** 2, 0) * ys.reduce((a, y) => a + (y - my) ** 2, 0))
+      pearsonR = den > 0 ? num / den : null
+    }
+    return { byYear: groups, years: sortedYears, corr: pearsonR }
+  }, [data])
+
+  if (isLoading) return <p className="text-xs text-muted-foreground py-4 text-center">Loading...</p>
+  if (!data?.rows.length) return null
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-3 mb-2">
+        <h3 className="text-xs font-medium text-muted-foreground">Storage fill% vs TTF price</h3>
+        {corr != null && (
+          <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded" style={{ color: corr < -0.3 ? '#60a5fa' : '#64748b' }}>
+            r = {corr.toFixed(2)}
+          </span>
+        )}
+      </div>
+      <p className="text-[10px] text-muted-foreground mb-2">
+        Each dot = one day. Higher storage = lower gas price (merit order / carry cost).
+      </p>
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-2">
+        {years.map((yr) => (
+          <span key={yr} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+            <span className="w-2 h-2 rounded-full" style={{ background: SCATTER_YEAR_COLORS[yr] ?? '#94a3b8', display: 'inline-block' }} />
+            {yr}
+          </span>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <ScatterChart margin={{ top: 4, right: 8, bottom: 16, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="fill_pct"
+            type="number"
+            domain={[0, 100]}
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            label={{ value: 'EU fill %', position: 'insideBottom', offset: -12, fontSize: 9, fill: '#64748b' }}
+          />
+          <YAxis
+            dataKey="ttf_eur_mwh"
+            type="number"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            label={{ value: '€/MWh', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#64748b' }}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: string | number | undefined) => {
+              if (name === 'fill_pct') return [`${(v as number).toFixed(1)}%`, 'EU fill']
+              if (name === 'ttf_eur_mwh') return [`${(v as number).toFixed(2)} €/MWh`, 'TTF']
+              return [String(v), String(name)]
+            }}
+          />
+          {years.map((yr) => (
+            <Scatter
+              key={yr}
+              name={String(yr)}
+              data={byYear[yr]}
+              fill={SCATTER_YEAR_COLORS[yr] ?? '#94a3b8'}
+              fillOpacity={0.55}
+              r={2.5}
+            />
+          ))}
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
   // Build tick marks: show first of each month (including future months)
   const { combined, projTicks } = useMemo(() => {
@@ -748,6 +858,7 @@ function StorageRankings({
           ) : (
             <StorageCountryCompare rows={compareData.rows} />
           )}
+          <StoragePriceScatter />
         </div>
       ) : (
         <>

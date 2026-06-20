@@ -721,6 +721,16 @@ export interface NegHoursMonthlyResponse {
   rows: NegHoursMonthlyRow[]
 }
 
+export interface GasPriceScatterRow {
+  gas_day: string
+  fill_pct: number
+  ttf_eur_mwh: number
+}
+
+export interface GasPriceScatterResponse {
+  rows: GasPriceScatterRow[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -780,4 +790,5 @@ export const api = {
   imbalanceMonthly: () => get<ImbalanceMonthlyResponse>('/imbalance/monthly'),
   genCapacityAnnual: () => get<CapacityAnnualResponse>('/generation/capacity-annual'),
   powerNegHoursMonthly: () => get<NegHoursMonthlyResponse>('/power/neg-hours-monthly'),
+  gasPriceScatter: () => get<GasPriceScatterResponse>('/gas/price-scatter'),
 }

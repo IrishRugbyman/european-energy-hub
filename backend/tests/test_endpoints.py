@@ -823,3 +823,18 @@ def test_power_correlations_has_decoupled_pairs(client):
     # With 10 seeded zones: 45 pairs; in production 33 zones = 561 pairs
     assert len(corrs) > 10
     assert min(corrs) < 0.9  # not all perfectly coupled
+
+
+def test_gas_price_scatter(client):
+    """gas/price-scatter returns EU fill% vs TTF price pairs since 2020."""
+    r = client.get("/api/gas/price-scatter")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+    for row in data["rows"]:
+        assert "gas_day" in row
+        assert "fill_pct" in row
+        assert "ttf_eur_mwh" in row
+        assert 0 <= row["fill_pct"] <= 100
+        assert row["ttf_eur_mwh"] > 0

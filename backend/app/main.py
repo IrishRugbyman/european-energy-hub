@@ -117,6 +117,8 @@ from .schemas import (
     CapacityAnnualResponse,
     NegHoursMonthlyRow,
     NegHoursMonthlyResponse,
+    GasPriceScatterRow,
+    GasPriceScatterResponse,
 )
 
 
@@ -683,6 +685,33 @@ def gas_country_compare():
         for _, r in df.iterrows()
     ]
     return StorageCountryResponse(rows=rows)
+
+
+@app.get("/api/gas/price-scatter", response_model=GasPriceScatterResponse)
+def gas_price_scatter():
+    """EU storage fill% vs TTF front-month price, daily since 2020, for scatter plot."""
+    df = db.query("""
+        SELECT sh.gas_day::VARCHAR AS gas_day,
+               ROUND(sh.full_pct::REAL, 1)     AS fill_pct,
+               ROUND(pd.ttf_eur_mwh::REAL, 2)  AS ttf_eur_mwh
+        FROM storage_history sh
+        JOIN prices_daily pd ON sh.gas_day::DATE = pd.price_date::DATE
+        WHERE sh.country = 'EU'
+          AND pd.ttf_eur_mwh IS NOT NULL
+          AND sh.gas_day >= '2020-01-01'
+        ORDER BY sh.gas_day
+    """)
+    if df is None or df.empty:
+        return GasPriceScatterResponse(rows=[])
+    rows = [
+        GasPriceScatterRow(
+            gas_day=str(r.gas_day),
+            fill_pct=float(r.fill_pct),
+            ttf_eur_mwh=float(r.ttf_eur_mwh),
+        )
+        for r in df.itertuples()
+    ]
+    return GasPriceScatterResponse(rows=rows)
 
 
 @app.get("/api/power/congestion", response_model=CongestionResponse)

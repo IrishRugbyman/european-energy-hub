@@ -762,3 +762,13 @@ class NegHoursMonthlyRow(BaseModel):
 
 class NegHoursMonthlyResponse(BaseModel):
     rows: list[NegHoursMonthlyRow]
+
+
+class GasPriceScatterRow(BaseModel):
+    gas_day: str
+    fill_pct: float
+    ttf_eur_mwh: float
+
+
+class GasPriceScatterResponse(BaseModel):
+    rows: list[GasPriceScatterRow]
