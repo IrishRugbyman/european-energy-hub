@@ -64,6 +64,8 @@ from .schemas import (
     ImbalanceLatest,
     GenMonthlyRow,
     GenMonthlyResponse,
+    EuCiDailyPoint,
+    EuCiDailyResponse,
     EuCfLatestResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
@@ -1753,6 +1755,47 @@ def generation_eu_cf_latest():
         wind_cf_month_pct_rank=round((wind_rank or 0.0) * 100, 0),
         solar_cf_month_pct_rank=round((solar_rank or 0.0) * 100, 0),
     )
+
+
+@app.get("/api/generation/eu/carbon-intensity", response_model=EuCiDailyResponse)
+def generation_eu_carbon_intensity():
+    """EU-aggregate daily carbon intensity (gCO2/kWh) plus RE% and fossil% for the last 2 years.
+
+    Uses standard IPCC emission factors (gCO2/kWh): coal=820, gas=490, oil=650.
+    Only dates with >=5 reporting zones included to avoid incomplete aggregates.
+    """
+    df = db.query("""
+        WITH daily_eu AS (
+            SELECT gen_date,
+                SUM(coal * 820 + gas * 490 + oil * 650) / NULLIF(SUM(total_mw), 0) AS ci,
+                SUM(solar + wind + hydro + biomass) / NULLIF(SUM(total_mw), 0) * 100 AS re_pct,
+                SUM(coal + gas + oil) / NULLIF(SUM(total_mw), 0) * 100 AS fossil_pct,
+                COUNT(DISTINCT zone) AS n_zones
+            FROM generation_daily
+            WHERE total_mw > 0 AND gen_date >= CURRENT_DATE - INTERVAL '2 years'
+            GROUP BY gen_date
+            HAVING COUNT(DISTINCT zone) >= 5
+        )
+        SELECT gen_date::VARCHAR AS gen_date,
+               ROUND(ci, 1) AS ci,
+               ROUND(re_pct, 1) AS re_pct,
+               ROUND(fossil_pct, 1) AS fossil_pct
+        FROM daily_eu
+        ORDER BY gen_date
+    """)
+    if df is None or df.empty:
+        return EuCiDailyResponse(rows=[])
+
+    rows = [
+        EuCiDailyPoint(
+            gen_date=str(r.gen_date),
+            ci_gco2_kwh=_float(r.ci),
+            re_pct=_float(r.re_pct),
+            fossil_pct=_float(r.fossil_pct),
+        )
+        for r in df.itertuples()
+    ]
+    return EuCiDailyResponse(rows=rows)
 
 
 @app.get("/api/imbalance", response_model=ImbalanceResponse)

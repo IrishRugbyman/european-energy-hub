@@ -586,6 +586,17 @@ export interface GenMonthlyResponse {
   rows: GenMonthlyRow[]
 }
 
+export interface EuCiDailyPoint {
+  gen_date: string
+  ci_gco2_kwh: number | null
+  re_pct: number | null
+  fossil_pct: number | null
+}
+
+export interface EuCiDailyResponse {
+  rows: EuCiDailyPoint[]
+}
+
 export interface EuCfLatestResponse {
   gen_date: string | null
   wind_cf: number | null
@@ -640,6 +651,7 @@ export const api = {
   genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),
   genEuMonthly: () => get<GenMonthlyResponse>('/generation/eu/monthly'),
   genEuCfLatest: () => get<EuCfLatestResponse>('/generation/eu/cf-latest'),
+  genEuCarbonIntensity: () => get<EuCiDailyResponse>('/generation/eu/carbon-intensity'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

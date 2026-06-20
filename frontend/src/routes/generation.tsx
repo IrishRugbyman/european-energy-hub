@@ -1,9 +1,10 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint } from '@/lib/api'
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart, Bar, LineChart, Line, ComposedChart, Area,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 
 export const Route = createFileRoute('/generation')({
@@ -181,6 +182,72 @@ function GenMonthlyChart({ rows }: { rows: GenMonthlyRow[] }) {
   )
 }
 
+function EuCarbonIntensityChart({ rows }: { rows: EuCiDailyPoint[] }) {
+  const recent = rows.slice(-180)
+
+  const ciAvg = recent.reduce((s, r) => s + (r.ci_gco2_kwh ?? 0), 0) / (recent.filter((r) => r.ci_gco2_kwh != null).length || 1)
+
+  const chartData = recent.map((r) => ({
+    date: r.gen_date.slice(5),
+    ci: r.ci_gco2_kwh != null ? Math.round(r.ci_gco2_kwh) : null,
+    re: r.re_pct,
+    fossil: r.fossil_pct,
+  }))
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center justify-between mb-1">
+        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Carbon Intensity (last 180 days)</h2>
+        <span className="text-xs text-muted-foreground">IPCC factors: coal 820, gas 490, oil 650 gCO2/kWh</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        180-day avg: {Math.round(ciAvg)} gCO2/kWh. Low wind = more fossil dispatch = higher CI and higher prices.
+      </p>
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="date" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} interval={29} />
+          <YAxis
+            yAxisId="ci"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            tickFormatter={(v) => `${v as number}`}
+          />
+          <YAxis
+            yAxisId="re"
+            orientation="right"
+            tick={{ fontSize: 10, fill: '#4ade80' }}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            tickFormatter={(v) => `${v as number}%`}
+            domain={[0, 100]}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => {
+              const n = name != null ? String(name) : ''
+              if (n === 'ci') return [`${v as number} gCO2/kWh`, 'Carbon intensity']
+              if (n === 're') return [`${v as number}%`, 'Renewable %']
+              if (n === 'fossil') return [`${v as number}%`, 'Fossil %']
+              return [String(v), n]
+            }}
+          />
+          <ReferenceLine yAxisId="ci" y={Math.round(ciAvg)} stroke="#475569" strokeDasharray="4 4" label={{ value: 'avg', fill: '#475569', fontSize: 9, position: 'left' }} />
+          <Area yAxisId="ci" type="monotone" dataKey="ci" fill="#f87171" fillOpacity={0.15} stroke="#f87171" strokeWidth={1.5} dot={false} />
+          <Line yAxisId="re" type="monotone" dataKey="re" stroke="#4ade80" strokeWidth={1.5} dot={false} strokeOpacity={0.7} />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+        <span><span className="inline-block w-3 h-0.5 bg-red-400 mr-1.5" style={{ display: 'inline-block', verticalAlign: 'middle' }} />Carbon intensity (gCO2/kWh, left)</span>
+        <span><span className="inline-block w-3 h-0.5 bg-green-400 mr-1.5" style={{ display: 'inline-block', verticalAlign: 'middle' }} />Renewable % (right)</span>
+      </div>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -197,6 +264,12 @@ function GenerationTrends() {
   const { data: euMonthlyData } = useQuery({
     queryKey: ['gen-eu-monthly'],
     queryFn: api.genEuMonthly,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: euCiData } = useQuery({
+    queryKey: ['gen-eu-ci'],
+    queryFn: api.genEuCarbonIntensity,
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -244,6 +317,7 @@ function GenerationTrends() {
     <div className="p-4 h-full overflow-y-auto">
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
+      {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>

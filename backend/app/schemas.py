@@ -627,6 +627,17 @@ class GenMonthlyResponse(BaseModel):
     rows: list[GenMonthlyRow]
 
 
+class EuCiDailyPoint(BaseModel):
+    gen_date: str
+    ci_gco2_kwh: float | None
+    re_pct: float | None
+    fossil_pct: float | None
+
+
+class EuCiDailyResponse(BaseModel):
+    rows: list[EuCiDailyPoint]
+
+
 class EuCfLatestResponse(BaseModel):
     gen_date: str | None
     wind_cf: float | None
