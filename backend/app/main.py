@@ -119,6 +119,8 @@ from .schemas import (
     NegHoursMonthlyResponse,
     GasPriceScatterRow,
     GasPriceScatterResponse,
+    NegHoursZoneRow,
+    NegHoursZoneResponse,
 )
 
 
@@ -2309,3 +2311,28 @@ def power_neg_hours_monthly():
         for r in df.itertuples()
     ]
     return NegHoursMonthlyResponse(rows=rows)
+
+
+@app.get("/api/power/neg-hours-zones", response_model=NegHoursZoneResponse)
+def power_neg_hours_zones():
+    """30-day negative price hour % for every zone, ranked descending."""
+    df = db.query("""
+        SELECT zone,
+               ROUND(AVG(neg_hours) / 24.0 * 100, 1) AS neg_pct_30d,
+               COUNT(*) AS n_days
+        FROM power_daily
+        WHERE price_date >= (SELECT MAX(price_date) - INTERVAL 30 DAYS FROM power_daily)
+        GROUP BY zone
+        ORDER BY neg_pct_30d DESC
+    """)
+    if df is None or df.empty:
+        return NegHoursZoneResponse(window_days=30, rows=[])
+    rows = [
+        NegHoursZoneRow(
+            zone=str(r.zone),
+            neg_pct_30d=float(r.neg_pct_30d),
+            n_days=int(r.n_days),
+        )
+        for r in df.itertuples()
+    ]
+    return NegHoursZoneResponse(window_days=30, rows=rows)

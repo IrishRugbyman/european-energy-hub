@@ -838,3 +838,31 @@ def test_gas_price_scatter(client):
         assert "ttf_eur_mwh" in row
         assert 0 <= row["fill_pct"] <= 100
         assert row["ttf_eur_mwh"] > 0
+
+
+def test_neg_hours_zones(client):
+    """power/neg-hours-zones returns 30d negative price % for all seeded zones."""
+    r = client.get("/api/power/neg-hours-zones")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["window_days"] == 30
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+    zones = {row["zone"] for row in data["rows"]}
+    assert "DE-LU" in zones
+    assert "FR" in zones
+    for row in data["rows"]:
+        assert "zone" in row
+        assert "neg_pct_30d" in row
+        assert "n_days" in row
+        assert 0 <= row["neg_pct_30d"] <= 100
+        assert row["n_days"] > 0
+
+
+def test_neg_hours_zones_ordered_descending(client):
+    """Zones are ranked from highest to lowest negative price frequency."""
+    r = client.get("/api/power/neg-hours-zones")
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    pcts = [row["neg_pct_30d"] for row in rows]
+    assert pcts == sorted(pcts, reverse=True), "zones must be sorted descending by neg_pct_30d"

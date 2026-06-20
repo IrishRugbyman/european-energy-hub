@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -327,6 +327,42 @@ function NegHoursMonthlyChart({ rows }: { rows: NegHoursMonthlyRow[] }) {
             {label}
           </span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function NegHoursZoneRanking({ rows }: { rows: NegHoursZoneRow[] }) {
+  if (!rows.length) return null
+  const maxPct = rows[0].neg_pct_30d
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+        Negative price hours by zone - 30-day ranking
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        % of hours with DA price below zero, trailing 30 days. Solar oversupply drives the leaders.
+      </p>
+      <div className="space-y-1">
+        {rows.map((r) => {
+          const barW = maxPct > 0 ? (r.neg_pct_30d / maxPct) * 100 : 0
+          const color = r.neg_pct_30d >= 15 ? '#f87171' : r.neg_pct_30d >= 8 ? '#fbbf24' : '#4ade80'
+          return (
+            <div key={r.zone} className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground w-12 shrink-0 text-right">{r.zone}</span>
+              <div className="flex-1 h-3 bg-secondary rounded-sm overflow-hidden">
+                <div
+                  className="h-full rounded-sm transition-all"
+                  style={{ width: `${barW}%`, background: color }}
+                />
+              </div>
+              <span className="text-xs tabular-nums w-10 shrink-0 text-right" style={{ color }}>
+                {r.neg_pct_30d.toFixed(1)}%
+              </span>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
@@ -782,6 +818,12 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: negHoursZoneData } = useQuery({
+    queryKey: ['power-neg-hours-zones'],
+    queryFn: api.powerNegHoursZones,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -828,6 +870,7 @@ function GenerationTrends() {
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
       {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
       {(negHoursData?.rows.length ?? 0) > 0 && <NegHoursMonthlyChart rows={negHoursData!.rows} />}
+      {(negHoursZoneData?.rows.length ?? 0) > 0 && <NegHoursZoneRanking rows={negHoursZoneData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
       {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}

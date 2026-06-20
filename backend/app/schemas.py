@@ -772,3 +772,14 @@ class GasPriceScatterRow(BaseModel):
 
 class GasPriceScatterResponse(BaseModel):
     rows: list[GasPriceScatterRow]
+
+
+class NegHoursZoneRow(BaseModel):
+    zone: str
+    neg_pct_30d: float
+    n_days: int
+
+
+class NegHoursZoneResponse(BaseModel):
+    window_days: int
+    rows: list[NegHoursZoneRow]
