@@ -1,5 +1,13 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 24: intrazone price spread chart
+
+**New feature:** Cross-zone price spread series on /generation. New `GET /api/power/cross-zone-spreads?country=IT|NO|SE|DK` computes the trailing 90-day daily spread of each sub-zone vs the country reference zone (IT-NORD for Italy, NO-5 for Norway, SE-3 for Sweden, DK-1 for Denmark). CrossZoneSpreadChart shows persistent congestion signals: today NO-2 (Oslo) is +52 EUR/MWh vs NO-5 due to a north-south bottleneck; IT-SARD is -4 EUR/MWh vs IT-NORD showing island surplus. Country tabs (Italy/Norway/Sweden/Denmark) switch context. Reference line at zero, color per sub-zone, tooltip with +/- EUR/MWh format.
+
+**Artifacts:** `backend/app/schemas.py` (CrossZoneSpreadPoint/Response), `backend/app/main.py` (/api/power/cross-zone-spreads), `frontend/src/lib/api.ts` (CrossZoneSpreadPoint/Response, powerCrossZoneSpreads), `frontend/src/routes/generation.tsx` (CrossZoneSpreadChart, spreadCountry state, crossZoneSpreadData query), `backend/tests/conftest.py` (IT-NORD + IT-SARD seeded), `backend/tests/test_endpoints.py` (1 new test). 79 tests total.
+
+---
+
 ## 2026-06-20 - Post-roadmap round 23: zone expansion (45 zones) + forecast accuracy + zone siblings
 
 **New features:**
