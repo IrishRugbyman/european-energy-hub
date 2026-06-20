@@ -127,9 +127,9 @@ function GasDashboard() {
         ) : null}
       </div>
 
-      {/* Pace-to-target widget (below stat strip, hidden on mobile) */}
+      {/* Pace-to-target widget (top-left, below stat strip, hidden on mobile) */}
       {paceData?.eu && (
-        <div className="hidden sm:block absolute top-14 left-1/2 -translate-x-1/2 z-[1000] w-72 bg-card/95 backdrop-blur border border-border rounded-lg shadow-lg overflow-hidden">
+        <div className="hidden sm:block absolute top-14 left-3 z-[1000] w-64 bg-card/95 backdrop-blur border border-border rounded-lg shadow-lg overflow-hidden">
           <PaceWidget eu={paceData.eu} />
         </div>
       )}
@@ -250,7 +250,6 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
 
   const reqRate = eu.required_gwh_per_day
   const curRate = eu.current_rate_gwh_per_day
-  const daysLeft = eu.days_to_target
   const seasAvg = eu.seasonal_inj_avg_gwh_d
   const seasP25 = eu.seasonal_inj_p25_gwh_d
   const seasP75 = eu.seasonal_inj_p75_gwh_d
@@ -266,44 +265,40 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
   const niColor = niOnTrack === true ? '#22c55e' : niOnTrack === false ? '#f87171' : '#6b7280'
 
   return (
-    <div className="p-2.5">
-      {niDate && niPct && (
-        <div className="flex items-center justify-between mb-1 text-xs">
-          <span className="text-muted-foreground">Next target: {niPct}% by {niDate.slice(5)}</span>
-          <span className="font-semibold" style={{ color: niColor }}>
-            {niReq != null ? `needs ${(niReq / 1000).toFixed(1)} TWh/d` : ''}
-          </span>
-        </div>
-      )}
-      <div className="flex items-center justify-between mb-1.5">
-        <span className="text-xs font-medium text-muted-foreground">90% target - Nov 1</span>
+    <div className="p-2">
+      {/* Title row */}
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium text-muted-foreground">EU storage pace</span>
         <span className="text-xs font-semibold" style={{ color: statusColor }}>{statusLabel}</span>
       </div>
-      <div className="flex gap-3 mb-1.5 text-xs">
-        <div>
-          <span className="text-muted-foreground">Need </span>
-          <span className="font-medium text-foreground">{reqRate != null ? `${(reqRate / 1000).toFixed(1)} TWh/d` : '--'}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Pace </span>
+      {/* Nov 1 target */}
+      <div className="flex items-center justify-between text-xs mb-0.5">
+        <span className="text-muted-foreground">90% by Nov 1</span>
+        <span>
+          <span className="text-muted-foreground">need </span>
+          <span className="font-medium text-foreground">{reqRate != null ? `${(reqRate / 1000).toFixed(1)}` : '--'}</span>
+          <span className="text-muted-foreground"> / pace </span>
           <span className="font-medium" style={{ color: statusColor }}>{curRate != null ? `${(curRate / 1000).toFixed(1)} TWh/d` : '--'}</span>
-        </div>
-        <div>
-          <span className="text-muted-foreground">{daysLeft}d left</span>
-        </div>
+        </span>
       </div>
-      {seasAvg != null && (
-        <div className="flex items-center gap-1.5 mb-1.5 text-xs">
-          <span className="text-muted-foreground">vs 5yr avg</span>
-          <span className="font-medium" style={{ color: vsNormColor }}>
-            {vsNorm != null ? `${vsNorm >= 0 ? '+' : ''}${(vsNorm / 1000).toFixed(1)} TWh/d` : '--'}
-          </span>
-          <span className="text-muted-foreground">
-            (norm: {(seasAvg / 1000).toFixed(1)}, p25-p75: {seasP25 != null ? (seasP25 / 1000).toFixed(1) : '--'}-{seasP75 != null ? (seasP75 / 1000).toFixed(1) : '--'})
-          </span>
+      {/* Next interim target */}
+      {niDate && niPct && (
+        <div className="flex items-center justify-between text-xs mb-0.5">
+          <span style={{ color: niColor }}>{niPct}% by {niDate.slice(5)}</span>
+          <span className="text-muted-foreground">{niReq != null ? `need ${(niReq / 1000).toFixed(1)} TWh/d` : ''}</span>
         </div>
       )}
-      <ResponsiveContainer width="100%" height={90}>
+      {/* Seasonal norm compact row */}
+      {seasAvg != null && (
+        <div className="text-xs text-muted-foreground mb-1">
+          vs norm{' '}
+          <span style={{ color: vsNormColor }}>
+            {vsNorm != null ? `${vsNorm >= 0 ? '+' : ''}${(vsNorm / 1000).toFixed(1)}` : '--'} TWh/d
+          </span>
+          {' '}(avg {(seasAvg / 1000).toFixed(1)}, p25-p75: {seasP25 != null ? (seasP25 / 1000).toFixed(1) : '--'}-{seasP75 != null ? (seasP75 / 1000).toFixed(1) : '--'})
+        </div>
+      )}
+      <ResponsiveContainer width="100%" height={80}>
         <ComposedChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
           <XAxis
             dataKey="gas_day"

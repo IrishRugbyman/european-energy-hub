@@ -22,7 +22,7 @@ function Root() {
     <div className="flex flex-col h-full">
       <header className="flex items-center gap-6 px-4 py-2 border-b border-border bg-card shrink-0 z-50">
         <Link to="/" className="flex items-center gap-2 font-semibold text-foreground hover:text-primary transition-colors">
-          <Flame className="w-5 h-5 text-primary" />
+          <img src="/favicon.svg" className="w-5 h-5" alt="Energy Hub" />
           <span className="text-sm">Energy Hub</span>
         </Link>
         <nav className="flex items-center gap-1">
@@ -88,7 +88,7 @@ function AboutModal({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-center justify-between">
           <h2 className="font-semibold text-foreground flex items-center gap-2">
-            <Flame className="w-4 h-4 text-primary" />
+            <img src="/favicon.svg" className="w-4 h-4" alt="" />
             European Energy Hub
           </h2>
           <button
