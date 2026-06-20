@@ -492,6 +492,13 @@ function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
               String(name) === 'EU_avg5' ? 'EU avg5' : String(name),
             ]}
           />
+          {/* Winter target reference lines */}
+          <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="4 2" strokeWidth={1}
+            label={{ value: '90% (Nov)', position: 'insideTopRight', fontSize: 8, fill: '#22c55e' }}
+          />
+          <ReferenceLine y={75} stroke="#fbbf24" strokeDasharray="3 2" strokeWidth={1} opacity={0.6}
+            label={{ value: '75%', position: 'insideTopRight', fontSize: 8, fill: '#fbbf24' }}
+          />
           {/* EU 5yr avg as dashed reference */}
           <Line
             dataKey="EU_avg5"
