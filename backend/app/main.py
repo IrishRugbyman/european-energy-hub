@@ -127,6 +127,8 @@ from .schemas import (
     MonthlyFuelMixResponse,
     ZoneHourlyProfileRow,
     ZoneHourlyProfilesResponse,
+    ZoneTtfCorrRow,
+    ZoneTtfCorrResponse,
 )
 
 
@@ -2436,3 +2438,35 @@ def power_hourly_profiles_all():
         for r in df.itertuples()
     ]
     return ZoneHourlyProfilesResponse(rows=rows)
+
+
+@app.get("/api/generation/zone-ttf-corr", response_model=ZoneTtfCorrResponse)
+def generation_zone_ttf_corr():
+    """Per-zone Pearson correlation of daily base price vs TTF gas price, trailing 365 days.
+
+    Measures gas-price passthrough: high positive r means gas sets the price (IT-NORD);
+    negative r means renewable oversupply drives the market (ES, FR, EE).
+    """
+    df = db.query("""
+        SELECT pd.zone,
+               ROUND(CORR(pd.base_eur, pr.ttf_eur_mwh)::REAL, 3) AS corr,
+               COUNT(*)::INT                                        AS n_days
+        FROM power_daily pd
+        JOIN prices_daily pr ON pd.price_date = pr.price_date
+        WHERE pd.price_date >= (SELECT MAX(price_date) FROM power_daily) - INTERVAL 365 DAYS
+          AND pr.ttf_eur_mwh IS NOT NULL
+        GROUP BY pd.zone
+        HAVING COUNT(*) > 100
+        ORDER BY corr DESC
+    """)
+    if df is None or df.empty:
+        return ZoneTtfCorrResponse(window_days=365, rows=[])
+    rows = [
+        ZoneTtfCorrRow(
+            zone=str(r.zone),
+            corr=float(r.corr),
+            n_days=int(r.n_days),
+        )
+        for r in df.itertuples()
+    ]
+    return ZoneTtfCorrResponse(window_days=365, rows=rows)

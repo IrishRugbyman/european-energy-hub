@@ -823,3 +823,14 @@ class ZoneHourlyProfileRow(BaseModel):
 
 class ZoneHourlyProfilesResponse(BaseModel):
     rows: list[ZoneHourlyProfileRow]
+
+
+class ZoneTtfCorrRow(BaseModel):
+    zone: str
+    corr: float
+    n_days: int
+
+
+class ZoneTtfCorrResponse(BaseModel):
+    window_days: int
+    rows: list[ZoneTtfCorrRow]

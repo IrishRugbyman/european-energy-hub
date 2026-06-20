@@ -748,6 +748,17 @@ export interface MonthlyFuelMixResponse {
   rows: MonthlyFuelMixRow[]
 }
 
+export interface ZoneTtfCorrRow {
+  zone: string
+  corr: number
+  n_days: number
+}
+
+export interface ZoneTtfCorrResponse {
+  window_days: number
+  rows: ZoneTtfCorrRow[]
+}
+
 export interface ZoneHourlyProfileRow {
   zone: string
   hour: number
@@ -846,4 +857,5 @@ export const api = {
   genEuMonthlyFuelMix: () => get<MonthlyFuelMixResponse>('/generation/eu/monthly-fuel-mix'),
   gasPriceScatter: () => get<GasPriceScatterResponse>('/gas/price-scatter'),
   powerHourlyProfilesAll: () => get<ZoneHourlyProfilesResponse>('/power/hourly-profiles-all'),
+  genZoneTtfCorr: () => get<ZoneTtfCorrResponse>('/generation/zone-ttf-corr'),
 }

@@ -939,3 +939,25 @@ def test_power_hourly_profiles_all(client):
     assert len(de_rows) == 24
     hours = sorted(r["hour"] for r in de_rows)
     assert hours == list(range(24))
+
+
+def test_zone_ttf_corr(client):
+    """generation/zone-ttf-corr returns per-zone Pearson r of base price vs TTF."""
+    r = client.get("/api/generation/zone-ttf-corr")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["window_days"] == 365
+    rows = data["rows"]
+    assert len(rows) > 0
+    zones = {row["zone"] for row in rows}
+    assert "DE-LU" in zones
+    for row in rows:
+        assert -1.0 <= row["corr"] <= 1.0
+        assert row["n_days"] > 100
+
+
+def test_zone_ttf_corr_ordered_descending(client):
+    """zone-ttf-corr rows are ordered by correlation descending."""
+    rows = client.get("/api/generation/zone-ttf-corr").json()["rows"]
+    corrs = [row["corr"] for row in rows]
+    assert corrs == sorted(corrs, reverse=True)
