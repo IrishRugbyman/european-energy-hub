@@ -137,6 +137,8 @@ from .schemas import (
     CrossZoneSpreadResponse,
     BorderFlowHistPoint,
     BorderFlowHistResponse,
+    ZoneNetFlowRow,
+    ZoneNetFlowsResponse,
 )
 
 
@@ -789,6 +791,44 @@ def power_congestion_border(from_zone: str, to_zone: str):
         for r in df.itertuples()
     ]
     return CongestionBorderResponse(from_zone=fz, to_zone=tz, rows=rows)
+
+
+@app.get("/api/power/zone-net-flows", response_model=ZoneNetFlowsResponse)
+def power_zone_net_flows():
+    """Latest-day net cross-border flow (import/export) per zone, for all zones in borders_daily."""
+    df = db.query(
+        """
+        WITH latest AS (SELECT MAX(price_date) AS d FROM borders_daily),
+        all_zones AS (
+            SELECT DISTINCT unnest([from_zone, to_zone]) AS zone FROM borders_daily
+        ),
+        day_flows AS (
+            SELECT from_zone, to_zone, net_flow_mw
+            FROM borders_daily
+            WHERE price_date = (SELECT d FROM latest)
+        )
+        SELECT
+            z.zone,
+            ROUND(
+                COALESCE(SUM(CASE WHEN f.to_zone = z.zone THEN f.net_flow_mw ELSE 0 END), 0) -
+                COALESCE(SUM(CASE WHEN f.from_zone = z.zone THEN f.net_flow_mw ELSE 0 END), 0),
+                1
+            ) AS net_import_mw,
+            (SELECT d FROM latest) AS price_date
+        FROM all_zones z
+        LEFT JOIN day_flows f ON f.from_zone = z.zone OR f.to_zone = z.zone
+        GROUP BY z.zone
+        ORDER BY net_import_mw ASC
+        """
+    )
+    if df.empty:
+        return ZoneNetFlowsResponse(price_date=None, rows=[])
+    price_date = str(df.iloc[0]["price_date"]) if not df.empty else None
+    rows = [
+        ZoneNetFlowRow(zone=str(r.zone), net_import_mw=_float(r.net_import_mw))
+        for r in df.itertuples()
+    ]
+    return ZoneNetFlowsResponse(price_date=price_date, rows=rows)
 
 
 @app.get("/api/power/border-flows/{from_zone}/{to_zone}", response_model=BorderFlowHistResponse)

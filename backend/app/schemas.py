@@ -362,6 +362,16 @@ class BorderFlowHistResponse(BaseModel):
     rows: list[BorderFlowHistPoint]
 
 
+class ZoneNetFlowRow(BaseModel):
+    zone: str
+    net_import_mw: float | None
+
+
+class ZoneNetFlowsResponse(BaseModel):
+    price_date: str | None
+    rows: list[ZoneNetFlowRow]
+
+
 # Generation mix (used in PowerZoneResponse)
 
 class GenerationMixRow(BaseModel):

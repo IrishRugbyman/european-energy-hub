@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint, type ZoneNetFlowRow } from '@/lib/api'
 import {
-  BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
+  BarChart, Bar, Cell, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
   XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
@@ -1073,6 +1073,50 @@ const COUNTRY_COLORS: Record<string, Record<string, string>> = {
   DK: { 'DK-2': '#60a5fa' },
 }
 
+function ZoneNetFlowsChart({ rows, date }: { rows: ZoneNetFlowRow[]; date: string | null }) {
+  const sorted = [...rows].sort((a, b) => (a.net_import_mw ?? 0) - (b.net_import_mw ?? 0))
+  const maxAbs = Math.max(...sorted.map((r) => Math.abs(r.net_import_mw ?? 0)), 1)
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-6">
+      <div className="flex items-center gap-3 mb-1">
+        <h2 className="text-sm font-semibold text-foreground">Zone Net Cross-Border Flow ({date ?? '--'})</h2>
+        <span className="text-xs text-muted-foreground ml-auto">+MW = net import; -MW = net export</span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Sum of cross-border flows into/out of each zone. Exporters (hydro, nuclear surplus) shown in green; importers (demand exceeds local generation) in red.
+      </p>
+      <ResponsiveContainer width="100%" height={Math.max(220, sorted.length * 22)}>
+        <BarChart data={sorted} layout="vertical" margin={{ top: 2, right: 60, bottom: 2, left: 52 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+          <XAxis
+            type="number"
+            domain={[-maxAbs * 1.05, maxAbs * 1.05]}
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(v) => `${Math.round(v / 1000)}k`}
+          />
+          <YAxis type="category" dataKey="zone" tick={{ fontSize: 10, fill: '#94a3b8', fontFamily: 'monospace' }} tickLine={false} width={48} />
+          <ReferenceLine x={0} stroke="#4b5563" />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v) => {
+              const mw = typeof v === 'number' ? v : null
+              if (mw == null) return ['--', 'Net flow']
+              const dir = mw >= 0 ? 'import' : 'export'
+              return [`${Math.abs(mw).toFixed(0)} MW net ${dir}`, 'Net flow']
+            }}
+          />
+          <Bar dataKey="net_import_mw" radius={[0, 2, 2, 0]}>
+            {sorted.map((r) => (
+              <Cell key={r.zone} fill={(r.net_import_mw ?? 0) >= 0 ? '#f87171' : '#4ade80'} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function CrossZoneSpreadChart({ country, onCountryChange, rows, zones, refZone }: {
   country: string
   onCountryChange: (c: string) => void
@@ -1417,6 +1461,12 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: zoneNetFlowsData } = useQuery({
+    queryKey: ['power-zone-net-flows'],
+    queryFn: api.powerZoneNetFlows,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Fetch power map to derive the country with the biggest live congestion spread
   const { data: powerMapData } = useQuery({
     queryKey: ['power-map'],
@@ -1527,6 +1577,10 @@ function GenerationTrends() {
         zones={crossZoneSpreadData?.zones ?? []}
         refZone={crossZoneSpreadData?.ref_zone ?? COUNTRY_REF[effectiveSpreadCountry]}
       />
+
+      {(zoneNetFlowsData?.rows.length ?? 0) > 0 && (
+        <ZoneNetFlowsChart rows={zoneNetFlowsData!.rows} date={zoneNetFlowsData!.price_date} />
+      )}
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>

@@ -862,6 +862,16 @@ export interface ImbalanceMonthlyResponse {
   rows: ImbalanceMonthlyRow[]
 }
 
+export interface ZoneNetFlowRow {
+  zone: string
+  net_import_mw: number | null
+}
+
+export interface ZoneNetFlowsResponse {
+  price_date: string | null
+  rows: ZoneNetFlowRow[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -874,6 +884,7 @@ export const api = {
   powerCongestion: () => get<CongestionResponse>('/power/congestion'),
   powerCongestionBorder: (fz: string, tz: string) => get<CongestionBorderResponse>(`/power/congestion/border/${fz}/${tz}`),
   powerBorderFlows: (fz: string, tz: string) => get<BorderFlowHistResponse>(`/power/border-flows/${fz}/${tz}`),
+  powerZoneNetFlows: () => get<ZoneNetFlowsResponse>('/power/zone-net-flows'),
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
