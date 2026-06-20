@@ -723,3 +723,5 @@ class EuGenHourlyPoint(BaseModel):
 
 class EuGenHourlyResponse(BaseModel):
     rows: list[EuGenHourlyPoint]
+
+
