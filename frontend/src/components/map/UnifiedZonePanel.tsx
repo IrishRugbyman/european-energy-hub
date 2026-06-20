@@ -27,7 +27,7 @@ import {
   type MonthPoint,
   type ZoneCorrelationRow,
 } from '@/lib/api'
-import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName } from '@/lib/scales'
+import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
 type TrendWindow = '3M' | '1Y' | 'ALL'
@@ -42,11 +42,12 @@ interface Props {
   genItem: GenMapItem | null
   onClose: () => void
   selectedDate?: string
+  allZones?: PowerLatestRow[]
 }
 
 type PanelTab = 'price' | 'generation'
 
-export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selectedDate }: Props) {
+export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selectedDate, allZones }: Props) {
   const [tab, setTab] = useState<PanelTab>('price')
   const [genWindow, setGenWindow] = useState<TrendWindow>('1Y')
   const [priceWindow, setPriceWindow] = useState<DailyWindow>('1Y')
@@ -92,6 +93,14 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
   const priceColor = powerPriceColor(powerLatest?.base_eur)
   const reColor = renewablePctColor(genItem?.renewable_pct)
   const carbonIntensity = computeCarbonIntensity(genItem)
+
+  const siblingZones = ZONE_SIBLINGS[zone]
+  const siblingsData = siblingZones && allZones
+    ? siblingZones
+        .map(z => allZones.find(r => r.zone === z))
+        .filter((r): r is PowerLatestRow => r != null && r.base_eur != null)
+        .sort((a, b) => (b.base_eur ?? 0) - (a.base_eur ?? 0))
+    : null
 
   const hourlyPriceData = buildHourlyPriceChart(powerData?.hourly_recent)
   const priceHeatmapRows = buildPriceHeatmap(powerData?.hourly_recent)
@@ -196,6 +205,49 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
             )}
           </div>
         )}
+
+        {/* Sibling zone price comparison */}
+        {siblingsData && siblingsData.length > 1 && (() => {
+          const maxPrice = siblingsData[0].base_eur ?? 0
+          const minPrice = siblingsData[siblingsData.length - 1].base_eur ?? 0
+          const priceRange = Math.max(maxPrice - minPrice, 1)
+          const label = zone.startsWith('IT') ? 'Italy zone prices'
+            : zone.startsWith('NO') ? 'Norway zone prices'
+            : zone.startsWith('SE') ? 'Sweden zone prices'
+            : zone.startsWith('DK') ? 'Denmark zone prices'
+            : 'Zone prices'
+          return (
+            <div className="p-3 border-b border-border">
+              <p className="text-xs text-muted-foreground mb-2">{label} ({siblingsData[0].price_date})</p>
+              <div className="space-y-1">
+                {siblingsData.map(row => {
+                  const isSelected = row.zone === zone
+                  const barWidth = Math.max(4, ((row.base_eur ?? 0) - minPrice) / priceRange * 80 + 20)
+                  return (
+                    <div key={row.zone} className={`flex items-center gap-2 text-xs rounded px-1 py-0.5 ${isSelected ? 'bg-secondary' : ''}`}>
+                      <span className={`w-16 shrink-0 ${isSelected ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+                        {zoneName(row.zone).replace(/^(Italy|Norway|Sweden|Denmark)\s+/, '')}
+                      </span>
+                      <div className="flex-1 relative h-4 flex items-center">
+                        <div
+                          className="h-2 rounded-sm"
+                          style={{
+                            width: `${barWidth}%`,
+                            backgroundColor: powerPriceColor(row.base_eur),
+                            opacity: isSelected ? 1 : 0.7,
+                          }}
+                        />
+                      </div>
+                      <span className={`w-12 text-right tabular-nums shrink-0 ${isSelected ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>
+                        {row.base_eur?.toFixed(0)} €
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Hourly price chart */}
         <div className="p-3 border-b border-border">

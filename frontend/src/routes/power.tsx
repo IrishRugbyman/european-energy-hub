@@ -485,6 +485,7 @@ function MapDashboard() {
               genItem={genByZone[selectedZone] ?? null}
               onClose={() => setSelectedZone(null)}
               selectedDate={urlDate}
+              allZones={powerData?.rows}
             />
           )}
           {selectedBorder && (() => {

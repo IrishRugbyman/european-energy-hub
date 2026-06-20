@@ -138,6 +138,29 @@ export function zoneName(zone: string): string {
   return ZONE_NAMES[zone] ?? zone
 }
 
+// Zones that share a country and whose prices should be compared side-by-side.
+// Only groups with >= 2 zones where congestion creates meaningful divergence.
+export const ZONE_SIBLINGS: Record<string, string[]> = {
+  'IT-NORD': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'IT-CNOR': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'IT-CSUD': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'IT-SUD':  ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'IT-SICI': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'IT-SARD': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'IT-CALA': ['IT-NORD', 'IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD'],
+  'NO-1': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
+  'NO-2': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
+  'NO-3': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
+  'NO-4': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
+  'NO-5': ['NO-1', 'NO-2', 'NO-3', 'NO-4', 'NO-5'],
+  'SE-1': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
+  'SE-2': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
+  'SE-3': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
+  'SE-4': ['SE-1', 'SE-2', 'SE-3', 'SE-4'],
+  'DK-1': ['DK-1', 'DK-2'],
+  'DK-2': ['DK-1', 'DK-2'],
+}
+
 // NTC utilization pct -> color. Sequential scale: green (free) -> yellow -> red (saturated).
 // Clipped at 150% (meshed flow models can exceed 100%). Null = grey.
 export function utilizationColor(pct: number | null | undefined): string {
