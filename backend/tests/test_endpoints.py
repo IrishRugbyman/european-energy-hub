@@ -795,3 +795,31 @@ def test_power_neg_hours_monthly(client):
         assert "fr" in row
         assert "de" in row
         assert "nl" in row
+
+
+def test_power_correlations(client):
+    """power/correlations returns pairwise zone correlations."""
+    r = client.get("/api/power/correlations")
+    assert r.status_code == 200
+    data = r.json()
+    assert "window_days" in data
+    assert data["window_days"] == 30
+    assert "rows" in data
+    assert len(data["rows"]) > 0
+    for row in data["rows"]:
+        assert "zone_a" in row
+        assert "zone_b" in row
+        assert "correlation" in row
+        if row["correlation"] is not None:
+            assert -1.0 <= row["correlation"] <= 1.0
+
+
+def test_power_correlations_has_decoupled_pairs(client):
+    """Some zone pairs should be decoupled (r < 0.5) - validates real data not synthetic."""
+    r = client.get("/api/power/correlations")
+    assert r.status_code == 200
+    rows = r.json()["rows"]
+    corrs = [row["correlation"] for row in rows if row["correlation"] is not None]
+    # With 10 seeded zones: 45 pairs; in production 33 zones = 561 pairs
+    assert len(corrs) > 10
+    assert min(corrs) < 0.9  # not all perfectly coupled

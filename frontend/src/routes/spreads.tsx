@@ -16,7 +16,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -383,6 +383,80 @@ function LatestSnapshotChart({
   )
 }
 
+function ZoneDecouplingSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['power-correlations'],
+    queryFn: api.powerCorrelations,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { decoupled, coupled } = useMemo(() => {
+    const rows = (data?.rows ?? []).filter((r): r is ZoneCorrelationRow & { correlation: number } => r.correlation != null)
+    const sorted = [...rows].sort((a, b) => a.correlation - b.correlation)
+    return {
+      decoupled: sorted.slice(0, 8),
+      coupled: sorted.slice(-8).reverse(),
+    }
+  }, [data])
+
+  if (isLoading) return null
+  if (!data?.rows.length) return null
+
+  const CorrelationBar = ({ row, flip }: { row: ZoneCorrelationRow & { correlation: number }; flip?: boolean }) => {
+    const r = row.correlation
+    const color = r < -0.1 ? '#f87171' : r < 0.3 ? '#94a3b8' : r < 0.7 ? '#60a5fa' : '#4ade80'
+    const pct = Math.abs(r) * 100
+    return (
+      <div className="flex items-center gap-2 py-1">
+        <span className="text-xs text-muted-foreground w-20 shrink-0 text-right">
+          {row.zone_a} / {row.zone_b}
+        </span>
+        <div className="flex-1 h-3 bg-secondary rounded-sm overflow-hidden relative">
+          {flip ? (
+            <div
+              className="absolute right-1/2 top-0 h-full rounded-sm"
+              style={{ width: `${pct / 2}%`, background: color }}
+            />
+          ) : (
+            <div
+              className="absolute left-1/2 top-0 h-full rounded-sm"
+              style={{ width: `${pct / 2}%`, background: color }}
+            />
+          )}
+          <div className="absolute inset-y-0 left-1/2 w-px bg-border/60" />
+        </div>
+        <span className="text-xs font-mono w-10 shrink-0" style={{ color }}>
+          {r.toFixed(2)}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-1">Zone Market Coupling - 30 day</h2>
+      <p className="text-xs text-muted-foreground mb-4">
+        Pearson correlation of daily base prices. Decoupled pairs signal congestion or isolated markets;
+        coupled pairs move as one system.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <p className="text-xs text-red-400 font-medium mb-2">Most decoupled (arbitrage candidates)</p>
+          {decoupled.map((row) => (
+            <CorrelationBar key={`${row.zone_a}-${row.zone_b}`} row={row} flip />
+          ))}
+        </div>
+        <div>
+          <p className="text-xs text-green-400 font-medium mb-2">Most coupled (moving as one)</p>
+          {coupled.map((row) => (
+            <CorrelationBar key={`${row.zone_a}-${row.zone_b}`} row={row} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function MultiZoneSection({ window: w }: { window: Window }) {
   const [spreadKey, setSpreadKey] = useState<SpreadKey>('css')
 
@@ -634,6 +708,8 @@ function SpreadsDashboard() {
           </div>
 
           <MultiZoneSection window={window} />
+
+          <ZoneDecouplingSection />
 
           <div className="bg-card border border-border rounded-lg p-4">
             <SpreadExplainer />

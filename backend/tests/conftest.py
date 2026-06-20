@@ -472,6 +472,26 @@ def _seed_db(path: str) -> None:
         mz_rows,
     )
 
+    # 30-day zone price correlation matrix
+    conn.execute("""
+        CREATE TABLE power_correlation_30d (
+            zone_a VARCHAR, zone_b VARCHAR, correlation REAL
+        )
+    """)
+    corr_zones = ["AT", "BE", "CH", "DE-LU", "FR", "IT-NORD", "NL", "ES", "PL", "SE-1"]
+    import itertools
+    for za, zb in itertools.combinations(corr_zones, 2):
+        # Vary correlation: geographically close zones are more correlated
+        if {za, zb} == {"FR", "SE-1"}:
+            r = -0.24
+        elif za in {"SE-1"} or zb in {"SE-1"}:
+            r = round(0.1 + hash(za + zb) % 50 / 100, 3)
+        else:
+            r = round(0.7 + hash(za + zb) % 25 / 100, 3)
+        conn.execute(
+            "INSERT INTO power_correlation_30d VALUES (?, ?, ?)", [za, zb, r]
+        )
+
     # TTF forward curve
     conn.execute("""
         CREATE TABLE ttf_curve_latest (
