@@ -1395,10 +1395,48 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
-  const [spreadCountry, setSpreadCountry] = useState<string>('IT')
+  // Fetch power map to derive the country with the biggest live congestion spread
+  const { data: powerMapData } = useQuery({
+    queryKey: ['power-map'],
+    queryFn: api.powerMap,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const [spreadCountry, setSpreadCountry] = useState<string | null>(null)
+
+  // Compute country with biggest intrazone spread from today's power_latest
+  const bestSpreadCountry = useMemo(() => {
+    const rows = powerMapData?.rows ?? []
+    if (!rows.length) return 'IT'
+    const byZone: Record<string, number | null> = {}
+    for (const r of rows) byZone[r.zone] = r.base_eur ?? null
+    const refs: [string, string, string[]][] = [
+      ['IT', 'IT-NORD', ['IT-CNOR', 'IT-CSUD', 'IT-SUD', 'IT-SICI', 'IT-SARD', 'IT-CALA']],
+      ['NO', 'NO-5',    ['NO-1', 'NO-2', 'NO-3', 'NO-4']],
+      ['SE', 'SE-3',    ['SE-1', 'SE-2', 'SE-4']],
+      ['DK', 'DK-1',   ['DK-2']],
+    ]
+    let best = 'IT'
+    let max = 0
+    for (const [country, ref, others] of refs) {
+      const rp = byZone[ref]
+      if (rp == null) continue
+      for (const z of others) {
+        const zp = byZone[z]
+        if (zp == null) continue
+        const abs = Math.abs(zp - rp)
+        if (abs > max) { max = abs; best = country }
+      }
+    }
+    return best
+  }, [powerMapData])
+
+  // User override takes precedence; otherwise auto-select the most congested country
+  const effectiveSpreadCountry = spreadCountry ?? bestSpreadCountry
+
   const { data: crossZoneSpreadData } = useQuery({
-    queryKey: ['power-cross-zone-spreads', spreadCountry],
-    queryFn: () => api.powerCrossZoneSpreads(spreadCountry),
+    queryKey: ['power-cross-zone-spreads', effectiveSpreadCountry],
+    queryFn: () => api.powerCrossZoneSpreads(effectiveSpreadCountry),
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -1461,11 +1499,11 @@ function GenerationTrends() {
       {(zoneTtfCorrData?.rows.length ?? 0) > 0 && <ZoneTtfCorrChart rows={zoneTtfCorrData!.rows} />}
       {(forecastAccData?.rows.length ?? 0) > 0 && <ForecastAccuracyChart rows={forecastAccData!.rows} />}
       <CrossZoneSpreadChart
-        country={spreadCountry}
+        country={effectiveSpreadCountry}
         onCountryChange={setSpreadCountry}
         rows={crossZoneSpreadData?.rows ?? []}
         zones={crossZoneSpreadData?.zones ?? []}
-        refZone={crossZoneSpreadData?.ref_zone ?? COUNTRY_REF[spreadCountry]}
+        refZone={crossZoneSpreadData?.ref_zone ?? COUNTRY_REF[effectiveSpreadCountry]}
       />
 
       <div className="mb-4">
