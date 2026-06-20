@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import pandas as pd
 
-# Same pairs as market-data/config.py ENTSO_E_BORDERS, restricted to the 7
-# zones that have power_daily data (the core CWE + Alpine bloc).
+# Price divergence pairs - mirrors ENTSO_E_BORDERS plus the new Nordic borders.
+# power_daily now covers all 45 zones so any pair with data in both zones works.
 BORDER_PAIRS: list[tuple[str, str]] = [
+    # Core CWE / CH / Alpine
     ("FR", "DE-LU"),
     ("FR", "CH"),
     ("DE-LU", "CH"),
@@ -27,6 +28,31 @@ BORDER_PAIRS: list[tuple[str, str]] = [
     ("CH", "AT"),
     ("CH", "IT-NORD"),
     ("AT", "IT-NORD"),
+    # Norwegian internal corridors
+    ("NO-1", "NO-2"),
+    ("NO-1", "NO-5"),
+    ("NO-2", "NO-5"),
+    ("NO-3", "NO-5"),
+    ("NO-4", "NO-3"),
+    # Norwegian exports
+    ("NO-2", "DK-1"),
+    ("NO-5", "NL"),
+    ("NO-2", "DE-LU"),
+    # Swedish internal cascade
+    ("SE-1", "SE-2"),
+    ("SE-2", "SE-3"),
+    ("SE-3", "SE-4"),
+    # Swedish / Danish cross-border
+    ("SE-4", "DK-2"),
+    ("SE-4", "DE-LU"),
+    ("DK-1", "DK-2"),
+    ("DK-1", "DE-LU"),
+    ("DK-2", "DE-LU"),
+    # Nordic - Baltic
+    ("SE-1", "FI"),
+    ("NO-1", "SE-3"),
+    ("SE-3", "LT"),
+    ("EE", "FI"),
 ]
 
 _EMPTY_COLS = ["from_zone", "to_zone", "price_date", "from_price", "to_price", "diff_eur_mwh"]

@@ -5,11 +5,14 @@ import { utilizationColor, priceDivergenceColor, zoneName } from '@/lib/scales'
 import type { CongestionRow, BorderFlowRow, DivergenceLatestRow } from '@/lib/api'
 
 export const ZONE_CENTROIDS: Record<string, [number, number]> = {
+  // Core CWE + Alpine
   'AT':      [47.5, 14.5],
   'BE':      [50.5,  4.5],
   'CH':      [46.8,  8.3],
   'DE-LU':   [51.0, 10.0],
   'FR':      [46.5,  2.5],
+  'NL':      [52.3,  5.3],
+  // Italian zones
   'IT-NORD': [45.5, 10.5],
   'IT-CNOR': [43.5, 11.0],
   'IT-CSUD': [41.5, 14.5],
@@ -17,7 +20,40 @@ export const ZONE_CENTROIDS: Record<string, [number, number]> = {
   'IT-CALA': [38.9, 16.3],
   'IT-SICI': [37.5, 14.0],
   'IT-SARD': [40.1,  9.0],
-  'NL':      [52.3,  5.3],
+  // Norwegian zones
+  'NO-1':    [59.9, 10.8],  // Oslo / east Norway
+  'NO-2':    [58.5,  7.5],  // Kristiansand / southwest
+  'NO-3':    [62.5,  8.5],  // Molde / mid-west
+  'NO-4':    [68.5, 17.5],  // Tromsoe / north
+  'NO-5':    [60.5,  6.0],  // Bergen / west
+  // Swedish zones
+  'SE-1':    [65.5, 22.0],  // Luleaa / far north
+  'SE-2':    [62.5, 17.0],  // Sundsvall / north
+  'SE-3':    [59.5, 16.5],  // Stockholm / central
+  'SE-4':    [56.0, 14.0],  // Malmoe / south
+  // Danish zones
+  'DK-1':    [56.0,  9.5],  // Jutland / west
+  'DK-2':    [55.5, 12.0],  // Copenhagen / east
+  // Nordic and Baltic
+  'FI':      [64.0, 26.0],
+  'EE':      [58.5, 25.0],
+  'LV':      [56.8, 24.7],
+  'LT':      [55.9, 23.9],
+  // Western Europe
+  'IE-SEM':  [53.5, -7.5],
+  'ES':      [40.0, -3.7],
+  'PT':      [39.5, -8.0],
+  // Central and Eastern Europe
+  'PL':      [51.9, 19.4],
+  'CZ':      [49.7, 15.5],
+  'SK':      [48.7, 19.5],
+  'HU':      [47.2, 19.4],
+  'RO':      [45.9, 24.7],
+  'BG':      [42.7, 25.5],
+  'GR':      [38.5, 22.0],
+  'SI':      [46.1, 14.8],
+  'HR':      [45.1, 15.7],
+  // Western Balkans
   'AL':      [41.1, 20.2],
   'ME':      [42.8, 19.3],
   'MK':      [41.6, 21.7],
