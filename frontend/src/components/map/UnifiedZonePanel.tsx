@@ -6,6 +6,7 @@ import {
   AreaChart,
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   ComposedChart,
   Line,
@@ -550,6 +551,9 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
           )}
         </div>
 
+        {/* Duck curve: monthly peak vs off-peak spread trend */}
+        {allDaily.length > 30 && <DuckCurveChart daily={allDaily} />}
+
         {/* 30-day price correlation with other zones */}
         {corrData && <ZoneCorrelationChart zone={zone} rows={corrData.rows} />}
 
@@ -1043,4 +1047,62 @@ function buildDailyBandData(
     _band_base: d.min_eur,
     _band_height: d.min_eur != null && d.max_eur != null ? d.max_eur - d.min_eur : null,
   }))
+}
+
+function buildDuckCurveMonthly(
+  daily: { price_date: string; peak_eur: number | null; offpeak_eur: number | null }[],
+): { month: string; spread: number }[] {
+  const buckets = new Map<string, { sum: number; n: number }>()
+  for (const d of daily) {
+    if (d.peak_eur == null || d.offpeak_eur == null) continue
+    const month = d.price_date.slice(0, 7)
+    const bucket = buckets.get(month) ?? { sum: 0, n: 0 }
+    bucket.sum += d.peak_eur - d.offpeak_eur
+    bucket.n++
+    buckets.set(month, bucket)
+  }
+  return [...buckets.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, { sum, n }]) => ({ month, spread: parseFloat((sum / n).toFixed(1)) }))
+}
+
+function DuckCurveChart({ daily }: { daily: { price_date: string; peak_eur: number | null; offpeak_eur: number | null }[] }) {
+  const data = useMemo(() => buildDuckCurveMonthly(daily), [daily])
+  if (data.length < 3) return null
+  const hasPeakData = data.some((d) => d.spread !== 0)
+  if (!hasPeakData) return null
+
+  return (
+    <div className="px-3 pb-3">
+      <p className="text-xs text-muted-foreground mb-1">Monthly avg peak - off-peak spread (€/MWh)</p>
+      <ResponsiveContainer width="100%" height={80}>
+        <BarChart data={data} margin={{ top: 2, right: 4, bottom: 14, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="month"
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            interval={Math.floor(data.length / 8)}
+            tickFormatter={(v) => (v as string).slice(2)}
+          />
+          <YAxis tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} width={28} />
+          <ReferenceLine y={0} stroke="#475569" strokeWidth={1} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown) => [
+              typeof v === 'number' ? `${v > 0 ? '+' : ''}${v.toFixed(1)} €/MWh` : '--',
+              'Peak vs off-peak',
+            ]}
+            labelFormatter={(l) => String(l)}
+          />
+          <Bar dataKey="spread" radius={[1, 1, 0, 0]}>
+            {data.map((entry, index) => (
+              <Cell key={index} fill={entry.spread < 0 ? '#818cf8' : '#f59e0b'} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+      <p className="text-[10px] text-muted-foreground">Amber = peak &gt; off-peak (traditional). Purple = solar duck curve (peak &lt; off-peak).</p>
+    </div>
+  )
 }
