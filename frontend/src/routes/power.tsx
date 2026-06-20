@@ -434,14 +434,14 @@ function MapDashboard() {
               <button
                 className="clickable flex items-baseline gap-1 hover:opacity-80 transition-opacity cursor-pointer"
                 onClick={() => handleSelectZone(congestionHotspot.zone)}
-                title={`Click to open ${congestionHotspot.zone} zone panel`}
+                title={`${congestionHotspot.zone} vs reference ${congestionHotspot.ref}: ${congestionHotspot.spread > 0 ? '+' : ''}${congestionHotspot.spread} EUR/MWh. Click to open zone panel.`}
               >
                 <span className="text-muted-foreground text-xs">top congestion</span>
                 <span
                   className="font-medium"
                   style={{ color: Math.abs(congestionHotspot.spread) > 20 ? '#f87171' : Math.abs(congestionHotspot.spread) > 8 ? '#fbbf24' : '#94a3b8' }}
                 >
-                  {congestionHotspot.zone} {congestionHotspot.spread > 0 ? '+' : ''}{congestionHotspot.spread} €
+                  {congestionHotspot.zone} vs {congestionHotspot.ref}: {congestionHotspot.spread > 0 ? '+' : ''}{congestionHotspot.spread} €
                 </span>
               </button>
             )}
