@@ -1,5 +1,13 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 25: live congestion hotspot chip on /map
+
+**New feature:** When viewing /map in price mode, the top-center stat strip now shows a second chip: "top congestion - ZONE +/-N EUR". Finds the zone with the largest absolute deviation from its country reference (IT-NORD, NO-5, SE-3, DK-1) across all 45 zones. Red if >20 EUR/MWh, amber if >8 EUR/MWh. Pure frontend computation from existing powerData.rows, zero new API calls. Today: NO-2 vs NO-5 at +52€ (severe north-south Norway bottleneck), SE-2 vs SE-3 at -38€ (Swedish hydro surplus). StatChip updated to accept optional `valueColor` prop.
+
+**Artifacts:** `frontend/src/routes/power.tsx` (congestionHotspot useMemo, StatChip valueColor prop, chip in stat strip).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 24: intrazone price spread chart
 
 **New feature:** Cross-zone price spread series on /generation. New `GET /api/power/cross-zone-spreads?country=IT|NO|SE|DK` computes the trailing 90-day daily spread of each sub-zone vs the country reference zone (IT-NORD for Italy, NO-5 for Norway, SE-3 for Sweden, DK-1 for Denmark). CrossZoneSpreadChart shows persistent congestion signals: today NO-2 (Oslo) is +52 EUR/MWh vs NO-5 due to a north-south bottleneck; IT-SARD is -4 EUR/MWh vs IT-NORD showing island surplus. Country tabs (Italy/Norway/Sweden/Denmark) switch context. Reference line at zero, color per sub-zone, tooltip with +/- EUR/MWh format.
