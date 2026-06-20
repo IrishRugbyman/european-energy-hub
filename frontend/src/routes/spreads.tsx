@@ -466,7 +466,11 @@ function ZoneSpreadYoYChart({
   )
 }
 
+type CouplingView = 'pairs' | 'zones'
+
 function ZoneDecouplingSection() {
+  const [view, setView] = useState<CouplingView>('pairs')
+
   const { data, isLoading } = useQuery({
     queryKey: ['power-correlations'],
     queryFn: api.powerCorrelations,
@@ -480,6 +484,21 @@ function ZoneDecouplingSection() {
       decoupled: sorted.slice(0, 8),
       coupled: sorted.slice(-8).reverse(),
     }
+  }, [data])
+
+  const zoneCentrality = useMemo(() => {
+    const rows = (data?.rows ?? []).filter((r): r is ZoneCorrelationRow & { correlation: number } => r.correlation != null)
+    const sums: Record<string, { sum: number; n: number }> = {}
+    for (const r of rows) {
+      for (const z of [r.zone_a, r.zone_b]) {
+        if (!sums[z]) sums[z] = { sum: 0, n: 0 }
+        sums[z].sum += r.correlation
+        sums[z].n += 1
+      }
+    }
+    return Object.entries(sums)
+      .map(([zone, { sum, n }]) => ({ zone, avg: sum / n }))
+      .sort((a, b) => b.avg - a.avg)
   }, [data])
 
   if (isLoading) return null
@@ -515,27 +534,71 @@ function ZoneDecouplingSection() {
     )
   }
 
+  const maxAvg = zoneCentrality.length ? zoneCentrality[0].avg : 1
+
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-1">Zone Market Coupling - 30 day</h2>
-      <p className="text-xs text-muted-foreground mb-4">
-        Pearson correlation of daily base prices. Decoupled pairs signal congestion or isolated markets;
-        coupled pairs move as one system.
-      </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
-          <p className="text-xs text-red-400 font-medium mb-2">Most decoupled (arbitrage candidates)</p>
-          {decoupled.map((row) => (
-            <CorrelationBar key={`${row.zone_a}-${row.zone_b}`} row={row} flip />
-          ))}
-        </div>
-        <div>
-          <p className="text-xs text-green-400 font-medium mb-2">Most coupled (moving as one)</p>
-          {coupled.map((row) => (
-            <CorrelationBar key={`${row.zone_a}-${row.zone_b}`} row={row} />
+      <div className="flex items-center gap-3 mb-1">
+        <h2 className="text-sm font-medium text-muted-foreground">Zone Market Coupling - 30 day</h2>
+        <div className="flex items-center gap-1 ml-auto">
+          {(['pairs', 'zones'] as CouplingView[]).map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v)}
+              className={`px-2 py-0.5 rounded text-xs ${
+                v === view
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {v === 'pairs' ? 'Pairs' : 'Zones'}
+            </button>
           ))}
         </div>
       </div>
+      <p className="text-xs text-muted-foreground mb-4">
+        {view === 'pairs'
+          ? 'Pearson correlation of daily base prices. Decoupled pairs signal congestion or isolated markets; coupled pairs move as one system.'
+          : 'Average correlation of each zone to all other zones. Low = island or peninsula grid (IE-SEM, Iberia); high = central European mesh.'}
+      </p>
+
+      {view === 'pairs' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <p className="text-xs text-red-400 font-medium mb-2">Most decoupled (arbitrage candidates)</p>
+            {decoupled.map((row) => (
+              <CorrelationBar key={`${row.zone_a}-${row.zone_b}`} row={row} flip />
+            ))}
+          </div>
+          <div>
+            <p className="text-xs text-green-400 font-medium mb-2">Most coupled (moving as one)</p>
+            {coupled.map((row) => (
+              <CorrelationBar key={`${row.zone_a}-${row.zone_b}`} row={row} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {zoneCentrality.map(({ zone, avg }) => {
+            const barW = maxAvg > 0 ? (avg / maxAvg) * 100 : 0
+            const color = avg < 0.35 ? '#f87171' : avg < 0.6 ? '#fbbf24' : '#4ade80'
+            return (
+              <div key={zone} className="flex items-center gap-2">
+                <span className="text-xs font-mono text-muted-foreground w-14 shrink-0 text-right">{zone}</span>
+                <div className="flex-1 h-3 bg-secondary rounded-sm overflow-hidden">
+                  <div
+                    className="h-full rounded-sm transition-all"
+                    style={{ width: `${Math.max(barW, 1)}%`, background: color, opacity: 0.85 }}
+                  />
+                </div>
+                <span className="text-xs font-mono w-10 shrink-0" style={{ color }}>
+                  {avg.toFixed(2)}
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
