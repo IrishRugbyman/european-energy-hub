@@ -16,7 +16,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -457,6 +457,62 @@ function ZoneDecouplingSection() {
   )
 }
 
+function congestionColor(pct: number | null): string {
+  if (pct == null) return '#475569'
+  if (pct >= 100) return '#f87171'
+  if (pct >= 80) return '#fbbf24'
+  return '#4ade80'
+}
+
+function CongestionRankingSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['power-congestion'],
+    queryFn: api.powerCongestion,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const sorted = useMemo<CongestionRow[]>(() => {
+    const rows = data?.rows ?? []
+    return [...rows].sort((a, b) => (b.utilization_pct ?? 0) - (a.utilization_pct ?? 0))
+  }, [data])
+
+  if (isLoading || sorted.length === 0) return null
+  const maxUtil = Math.max(...sorted.map((r) => r.utilization_pct ?? 0), 1)
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-4 mb-1">
+        <h2 className="text-sm font-medium text-muted-foreground">NTC utilization ranking</h2>
+        {data?.as_of && (
+          <span className="ml-auto text-xs text-muted-foreground">{data.as_of}</span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Scheduled flow as % of net transfer capacity. Red = over 100% (NTC breach), amber = congested (&gt;= 80%).
+      </p>
+      <div className="space-y-1">
+        {sorted.map((r) => {
+          const pct = r.utilization_pct ?? 0
+          const barW = Math.min(100, (pct / Math.max(maxUtil, 100)) * 100)
+          const color = congestionColor(pct)
+          const label = `${r.from_zone}→${r.to_zone}`
+          return (
+            <div key={label} className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground w-20 shrink-0 text-right">{label}</span>
+              <div className="flex-1 h-3 bg-secondary rounded-sm overflow-hidden">
+                <div className="h-full rounded-sm" style={{ width: `${barW}%`, background: color }} />
+              </div>
+              <span className="text-xs tabular-nums w-10 shrink-0 text-right" style={{ color }}>
+                {pct.toFixed(0)}%
+              </span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function MultiZoneSection({ window: w }: { window: Window }) {
   const [spreadKey, setSpreadKey] = useState<SpreadKey>('css')
 
@@ -710,6 +766,8 @@ function SpreadsDashboard() {
           <MultiZoneSection window={window} />
 
           <ZoneDecouplingSection />
+
+          <CongestionRankingSection />
 
           <div className="bg-card border border-border rounded-lg p-4">
             <SpreadExplainer />
