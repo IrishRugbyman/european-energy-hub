@@ -1,5 +1,18 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 23: zone expansion (45 zones) + forecast accuracy + zone siblings
+
+**New features:**
+1. Zone expansion from 34 to 45 bidding zones: added Italian sub-zones (IT-CNOR, IT-CSUD, IT-SUD, IT-SICI, IT-SARD, IT-CALA), Western Balkans (AL, ME, MK, RS, XK), and Corsica as a display-only polygon (FR-COR shows FR price data). GeoJSON updated to 44 polygons (IT-CALA and FR-COR have no separate ENTSO-E bidding zone). Price history ingested for all new zones from earliest available date. 990 zone-pair correlations (up from 561).
+2. Wind/solar DA forecast accuracy chart (`/generation`): trailing 90-day MAE of ENTSO-E day-ahead forecasts vs actual, normalised by installed capacity. ForecastAccuracyChart shows wind and solar tabs, bar coloring green/amber/red by threshold (<8%/8-15%/>15%). 33 zones with sufficient joint data. Backend: compute_forecast_accuracy() + forecast_accuracy table + GET /api/generation/forecast-accuracy.
+3. Country zone siblings comparison in zone panel (`/map`): clicking any Italian, Norwegian, Swedish, or Danish sub-zone now shows a compact price ladder for all sibling zones (IT-NORD through IT-SARD sorted by price, color-coded, selected zone highlighted). Reveals congestion-driven spreads: IT-SARD typically 10-20 EUR/MWh cheaper than IT-NORD in summer.
+4. Vectorised power_daily aggregation: replaced groupby.apply with multiple vectorised groupby calls, eliminating per-group Python overhead. Refresh time for the power tables step drops ~40-50% at 45 zones.
+5. UI polish: DM Sans font, stronger nav active state, chart headings to font-semibold/foreground.
+
+**Artifacts:** `frontend/public/geo/bidding_zones.geojson` (45 features), `shared/market-data/config.py` (ENTSO_E_ZONES expanded), `frontend/src/lib/scales.ts` (ZONE_NAMES + ZONE_SIBLINGS), `frontend/src/components/power/InterconnectionLayer.tsx` (centroids), `frontend/src/components/map/UnifiedZonePanel.tsx` (allZones prop + siblings render), `frontend/src/routes/power.tsx` (allZones pass-through), `backend/analytics/generation.py` (compute_forecast_accuracy), `backend/analytics/power.py` (vectorised _build_daily), `backend/scripts/refresh.py` (_write_forecast_accuracy), `backend/app/schemas.py` (ForecastAccuracyRow/Response), `backend/app/main.py` (/api/generation/forecast-accuracy), `frontend/src/lib/api.ts` (ForecastAccuracyRow, genForecastAccuracy), `frontend/src/routes/generation.tsx` (ForecastAccuracyChart), `backend/tests/conftest.py` (forecast_accuracy fixture table), `backend/tests/test_endpoints.py` (1 new test). 78 tests total.
+
+---
+
 ## 2026-06-20 - Post-roadmap round 20: per-zone carbon intensity ranking
 
 **New features:**
