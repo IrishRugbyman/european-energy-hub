@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
   ComposedChart,
+  LineChart,
   BarChart,
   Bar,
   Cell,
@@ -724,6 +725,126 @@ function FuelSwitchContext({ rows }: { rows: SpreadsDailyPoint[] }) {
   )
 }
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+type SpreadField = 'css' | 'cds' | 'fss'
+const SPREAD_FIELD_LABELS: Record<SpreadField, string> = { css: 'CSS', cds: 'CDS', fss: 'FSS' }
+
+function SpreadMonthlySeasonalityChart({ rows }: { rows: SpreadsDailyPoint[] }) {
+  const [field, setField] = useState<SpreadField>('css')
+
+  const { chartData, years } = useMemo(() => {
+    const sums: Record<number, Record<number, { sum: number; n: number }>> = {}
+    for (const r of rows) {
+      const v = r[field]
+      if (v == null) continue
+      const yr = parseInt(r.price_date.slice(0, 4), 10)
+      const mo = parseInt(r.price_date.slice(5, 7), 10)
+      if (!sums[yr]) sums[yr] = {}
+      if (!sums[yr][mo]) sums[yr][mo] = { sum: 0, n: 0 }
+      sums[yr][mo].sum += v
+      sums[yr][mo].n += 1
+    }
+
+    const allYears = Object.keys(sums)
+      .map(Number)
+      .filter((yr) => {
+        const months = Object.keys(sums[yr]).length
+        return months >= 3
+      })
+      .sort()
+
+    const data = MONTH_ABBR.map((abbr, i) => {
+      const mo = i + 1
+      const entry: Record<string, string | number | null> = { month: abbr }
+      for (const yr of allYears) {
+        const bucket = sums[yr]?.[mo]
+        entry[String(yr)] = bucket && bucket.n >= 10 ? Math.round(bucket.sum / bucket.n) : null
+      }
+      return entry
+    })
+
+    return { chartData: data, years: allYears }
+  }, [rows, field])
+
+  if (!chartData.length || !years.length) return null
+
+  const curYear = new Date().getFullYear()
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h2 className="text-sm font-medium text-muted-foreground">
+          Spread monthly seasonality - DE-LU (€/MWh)
+        </h2>
+        <div className="flex items-center gap-1 ml-auto">
+          {(['css', 'cds', 'fss'] as SpreadField[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setField(f)}
+              className={`px-2 py-0.5 rounded text-xs ${
+                f === field
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {SPREAD_FIELD_LABELS[f]}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Average {SPREAD_FIELD_LABELS[field]} by calendar month, per year. Reveals seasonal
+        patterns and how the 2022 energy crisis distorted normal spread dynamics.
+      </p>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={chartData} margin={{ top: 4, right: 12, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="month" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => `${v}`}
+            unit=" €"
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => [
+              v != null ? `${Number(v).toFixed(0)} €/MWh` : '--',
+              name != null ? String(name) : '',
+            ]}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+          {years.map((yr) => (
+            <Line
+              key={yr}
+              type="monotone"
+              dataKey={String(yr)}
+              stroke={SPREAD_YOY_YEAR_COLORS[yr] ?? '#94a3b8'}
+              strokeWidth={yr === curYear ? 2 : 1.5}
+              dot={false}
+              strokeDasharray={yr === curYear ? undefined : undefined}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap items-center gap-3 mt-2 text-xs text-muted-foreground">
+        {years.map((yr) => (
+          <span key={yr} className="flex items-center gap-1">
+            <span
+              className="inline-block w-5 h-0.5 rounded-full"
+              style={{ background: SPREAD_YOY_YEAR_COLORS[yr] ?? '#94a3b8' }}
+            />
+            {yr === curYear ? `${yr} YTD` : yr}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function SpreadsDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [showDisruption, setShowDisruption] = useState(false)
@@ -852,6 +973,8 @@ function SpreadsDashboard() {
           <ZoneDecouplingSection />
 
           <CongestionRankingSection />
+
+          <SpreadMonthlySeasonalityChart rows={rows} />
 
           <div className="bg-card border border-border rounded-lg p-4">
             <SpreadExplainer />
