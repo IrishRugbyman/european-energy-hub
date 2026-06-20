@@ -113,6 +113,8 @@ from .schemas import (
     PowerCorrelationResponse,
     TtfCurveSnapshotRow,
     TtfCurveSnapshotsResponse,
+    CapacityAnnualRow,
+    CapacityAnnualResponse,
 )
 
 
@@ -2212,3 +2214,37 @@ def power_hourly_profile_eu():
         for r in df.itertuples()
     ]
     return EuDuckCurveResponse(rows=rows)
+
+
+@app.get("/api/generation/capacity-annual", response_model=CapacityAnnualResponse)
+def generation_capacity_annual():
+    """EU-27 aggregate installed wind + solar capacity by year (GW)."""
+    df = db.query("""
+        WITH zone_annual AS (
+            SELECT zone,
+                   YEAR(gen_date) AS yr,
+                   FIRST(wind_installed_mw  ORDER BY gen_date) AS wind_mw,
+                   FIRST(solar_installed_mw ORDER BY gen_date) AS solar_mw
+            FROM capacity_factors_daily
+            GROUP BY zone, YEAR(gen_date)
+        )
+        SELECT yr,
+               ROUND(SUM(wind_mw)  / 1000.0, 1) AS wind_gw,
+               ROUND(SUM(solar_mw) / 1000.0, 1) AS solar_gw,
+               COUNT(DISTINCT zone)              AS n_zones
+        FROM zone_annual
+        GROUP BY yr
+        ORDER BY yr
+    """)
+    if df is None or df.empty:
+        return CapacityAnnualResponse(rows=[])
+    rows = [
+        CapacityAnnualRow(
+            yr=int(r.yr),
+            wind_gw=float(r.wind_gw),
+            solar_gw=float(r.solar_gw),
+            n_zones=int(r.n_zones),
+        )
+        for r in df.itertuples()
+    ]
+    return CapacityAnnualResponse(rows=rows)

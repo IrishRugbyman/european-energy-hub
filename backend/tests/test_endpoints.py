@@ -764,3 +764,18 @@ def test_power_hourly_profile_eu(client):
         assert 0 <= row["hour"] <= 23
         assert "avg_eur" in row
         assert "neg_pct" in row
+
+
+def test_generation_capacity_annual(client):
+    """generation/capacity-annual returns annual GW rows with correct schema."""
+    r = client.get("/api/generation/capacity-annual")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    for row in data["rows"]:
+        assert "yr" in row
+        assert "wind_gw" in row
+        assert "solar_gw" in row
+        assert "n_zones" in row
+        assert row["wind_gw"] > 0
+        assert row["solar_gw"] > 0

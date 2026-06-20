@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -186,6 +186,63 @@ function EuFuelMixChart({ rows }: { rows: EuAnnualFuelRow[] }) {
             {f}
           </span>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function EuCapacityChart({ rows }: { rows: CapacityAnnualRow[] }) {
+  if (rows.length === 0) return null
+  const data = rows.map((r) => ({
+    year: String(r.yr),
+    wind: r.wind_gw,
+    solar: r.solar_gw,
+    total: parseFloat((r.wind_gw + r.solar_gw).toFixed(1)),
+  }))
+  const first = rows[0]
+  const last = rows[rows.length - 1]
+  const solarGrowthPct = Math.round(((last.solar_gw - first.solar_gw) / first.solar_gw) * 100)
+  const windGrowthPct = Math.round(((last.wind_gw - first.wind_gw) / first.wind_gw) * 100)
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h2 className="text-sm font-medium text-muted-foreground">EU-27 Installed Renewable Capacity - Annual (GW)</h2>
+        <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded">
+          Solar +{solarGrowthPct}% since {first.yr}
+        </span>
+        <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded">
+          Wind +{windGrowthPct}% since {first.yr}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        ENTSO-E installed capacity across {last.n_zones} zones. {last.yr}: {last.wind_gw} GW wind + {last.solar_gw} GW solar = {(last.wind_gw + last.solar_gw).toFixed(1)} GW total.
+      </p>
+      <ResponsiveContainer width="100%" height={160}>
+        <BarChart data={data} margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="year" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            width={36}
+            unit=" GW"
+            tickFormatter={(v) => String(v)}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => [`${v as number} GW`, String(name)]}
+          />
+          <Bar dataKey="wind" stackId="a" fill="#06b6d4" isAnimationActive={false} name="wind" />
+          <Bar dataKey="solar" stackId="a" fill="#fbbf24" isAnimationActive={false} name="solar" />
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex gap-3 mt-2">
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="w-2.5 h-2.5 rounded-sm inline-block bg-cyan-400" /> wind
+        </span>
+        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="w-2.5 h-2.5 rounded-sm inline-block bg-amber-400" /> solar
+        </span>
       </div>
     </div>
   )
@@ -629,6 +686,12 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: capacityData } = useQuery({
+    queryKey: ['gen-capacity-annual'],
+    queryFn: api.genCapacityAnnual,
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -673,6 +736,7 @@ function GenerationTrends() {
     <div className="p-4 h-full overflow-y-auto">
       {(euHourlyData?.rows.length ?? 0) > 0 && <EuGenHourlyChart rows={euHourlyData!.rows} />}
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
+      {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
       {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}

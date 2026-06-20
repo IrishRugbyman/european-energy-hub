@@ -697,6 +697,17 @@ export interface EuDuckCurveResponse {
   rows: EuDuckCurvePoint[]
 }
 
+export interface CapacityAnnualRow {
+  yr: number
+  wind_gw: number
+  solar_gw: number
+  n_zones: number
+}
+
+export interface CapacityAnnualResponse {
+  rows: CapacityAnnualRow[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -754,4 +765,5 @@ export const api = {
   powerCorrelations: () => get<PowerCorrelationResponse>('/power/correlations'),
   pricesCurveSnapshots: () => get<TtfCurveSnapshotsResponse>('/prices/curve/snapshots'),
   imbalanceMonthly: () => get<ImbalanceMonthlyResponse>('/imbalance/monthly'),
+  genCapacityAnnual: () => get<CapacityAnnualResponse>('/generation/capacity-annual'),
 }

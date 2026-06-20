@@ -738,3 +738,14 @@ class EuDuckCurvePoint(BaseModel):
 
 class EuDuckCurveResponse(BaseModel):
     rows: list[EuDuckCurvePoint]
+
+
+class CapacityAnnualRow(BaseModel):
+    yr: int
+    wind_gw: float
+    solar_gw: float
+    n_zones: int
+
+
+class CapacityAnnualResponse(BaseModel):
+    rows: list[CapacityAnnualRow]
