@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
-import { useMemo } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint } from '@/lib/api'
+import { useMemo, useState } from 'react'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area,
   XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
@@ -248,6 +248,82 @@ function EuCarbonIntensityChart({ rows }: { rows: EuCiDailyPoint[] }) {
   )
 }
 
+const ZONE_LABELS: Record<string, string> = {
+  'AT': 'Austria', 'BE': 'Belgium', 'BG': 'Bulgaria', 'CZ': 'Czechia', 'DE-LU': 'Germany',
+  'DK-1': 'DK West', 'DK-2': 'DK East', 'EE': 'Estonia', 'ES': 'Spain', 'FI': 'Finland',
+  'FR': 'France', 'GR': 'Greece', 'HR': 'Croatia', 'HU': 'Hungary', 'IE-SEM': 'Ireland',
+  'IT-NORD': 'Italy N', 'LT': 'Lithuania', 'LV': 'Latvia', 'NL': 'Netherlands',
+  'NO-1': 'Norway S', 'NO-2': 'Norway SW', 'NO-3': 'Norway MW', 'NO-4': 'Norway N',
+  'NO-5': 'Norway W', 'PL': 'Poland', 'PT': 'Portugal', 'RO': 'Romania', 'SE-1': 'Sweden N',
+  'SE-2': 'Sweden NC', 'SE-3': 'Sweden SC', 'SE-4': 'Sweden S', 'SI': 'Slovenia', 'SK': 'Slovakia',
+}
+
+function ZoneCfChart({ rows }: { rows: ZoneCfRow[] }) {
+  const [mode, setMode] = useState<'wind' | 'solar'>('wind')
+
+  const chartData = useMemo(() => {
+    return [...rows]
+      .filter((r) => (mode === 'wind' ? (r.wind_installed_mw ?? 0) > 500 : (r.solar_installed_mw ?? 0) > 500))
+      .sort((a, b) => {
+        const av = mode === 'wind' ? (a.wind_cf ?? 0) : (a.solar_cf ?? 0)
+        const bv = mode === 'wind' ? (b.wind_cf ?? 0) : (b.solar_cf ?? 0)
+        return bv - av
+      })
+      .map((r) => ({
+        zone: ZONE_LABELS[r.zone] ?? r.zone,
+        value: mode === 'wind' ? r.wind_cf : r.solar_cf,
+        installed: mode === 'wind' ? (r.wind_installed_mw ?? 0) / 1000 : (r.solar_installed_mw ?? 0) / 1000,
+      }))
+  }, [rows, mode])
+
+  const color = mode === 'wind' ? '#38bdf8' : '#fbbf24'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-medium text-muted-foreground">Zone Capacity Factors - Latest Day (%)</h2>
+        <div className="flex gap-1 ml-auto">
+          {(['wind', 'solar'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              className={`px-2 py-0.5 rounded text-xs ${m === mode ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
+            >
+              {m === 'wind' ? 'Wind' : 'Solar'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Actual generation / installed capacity. Zones with &lt;500 MW installed excluded.
+      </p>
+      <ResponsiveContainer width="100%" height={Math.max(chartData.length * 18, 160)}>
+        <BarChart data={chartData} layout="vertical" margin={{ top: 2, right: 40, bottom: 2, left: 64 }}>
+          <XAxis type="number" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} unit="%" domain={[0, 100]} />
+          <YAxis type="category" dataKey="zone" tick={{ fontSize: 9, fill: '#94a3b8' }} tickLine={false} width={60} />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v, _name, props) => {
+              const n = typeof v === 'number' ? v : null
+              const installed = (props.payload as { installed: number }).installed
+              return [
+                n != null ? `${n.toFixed(1)}% CF  (${installed.toFixed(1)} GW installed)` : '--',
+                mode === 'wind' ? 'Wind CF' : 'Solar CF',
+              ]
+            }}
+            cursor={{ fill: 'rgba(255,255,255,0.04)' }}
+          />
+          <Bar dataKey="value" fill={color} fillOpacity={0.8} radius={[0, 2, 2, 0]} isAnimationActive={false}>
+            {chartData.map((_, i) => (
+              <Bar key={i} dataKey="value" fill={color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -270,6 +346,12 @@ function GenerationTrends() {
   const { data: euCiData } = useQuery({
     queryKey: ['gen-eu-ci'],
     queryFn: api.genEuCarbonIntensity,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: zoneCfData } = useQuery({
+    queryKey: ['gen-zones-cf'],
+    queryFn: api.genZonesCf,
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -318,6 +400,7 @@ function GenerationTrends() {
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
+      {(zoneCfData?.rows.length ?? 0) > 0 && <ZoneCfChart rows={zoneCfData!.rows} />}
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>

@@ -29,6 +29,10 @@ export interface GasPacePoint {
   full_pct: number | null
   avg5: number | null
   projected: number | null
+  net_inj_gwh_d: number | null
+  seas_inj_avg: number | null
+  seas_inj_p25: number | null
+  seas_inj_p75: number | null
 }
 
 export interface GasPaceStats {
@@ -609,6 +613,20 @@ export interface EuCfLatestResponse {
   solar_cf_month_pct_rank: number | null
 }
 
+export interface ZoneCfRow {
+  zone: string
+  gen_date: string
+  wind_cf: number | null
+  solar_cf: number | null
+  wind_installed_mw: number | null
+  solar_installed_mw: number | null
+}
+
+export interface ZoneCfResponse {
+  gen_date: string | null
+  rows: ZoneCfRow[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -652,6 +670,7 @@ export const api = {
   genEuMonthly: () => get<GenMonthlyResponse>('/generation/eu/monthly'),
   genEuCfLatest: () => get<EuCfLatestResponse>('/generation/eu/cf-latest'),
   genEuCarbonIntensity: () => get<EuCiDailyResponse>('/generation/eu/carbon-intensity'),
+  genZonesCf: () => get<ZoneCfResponse>('/generation/zones/cf'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

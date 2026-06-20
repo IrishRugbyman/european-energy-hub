@@ -2,6 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import {
+  Area,
   Bar,
   BarChart,
   Cell,
@@ -236,17 +237,43 @@ function GasDashboard() {
   )
 }
 
+type PaceChartMode = 'fill' | 'rate'
+
 function PaceWidget({ eu }: { eu: GasPaceStats }) {
+  const [chartMode, setChartMode] = useState<PaceChartMode>('fill')
   const onTrack = eu.on_track
   const statusColor = onTrack === true ? '#22c55e' : onTrack === false ? '#f87171' : '#6b7280'
   const statusLabel = onTrack === true ? 'On track' : onTrack === false ? 'Behind' : '--'
 
-  const chartData = eu.history.map((h) => ({
-    gas_day: h.gas_day.slice(5),
-    fill: h.full_pct != null ? Number(h.full_pct.toFixed(1)) : null,
-    avg5: h.avg5 != null ? Number(h.avg5.toFixed(1)) : null,
-    projected: h.projected != null ? Number(h.projected.toFixed(1)) : null,
-  }))
+  const fillChartData = eu.history
+    .filter((h) => h.gas_day >= (eu.current_date.slice(0, 7) + '-01').slice(0, 7) ||
+      h.full_pct != null || h.projected != null)
+    .map((h) => ({
+      gas_day: h.gas_day.slice(5),
+      fill: h.full_pct != null ? Number(h.full_pct.toFixed(1)) : null,
+      avg5: h.avg5 != null ? Number(h.avg5.toFixed(1)) : null,
+      projected: h.projected != null ? Number(h.projected.toFixed(1)) : null,
+    }))
+
+  // Injection rate chart: only actual days (no projected), TWh/d scale
+  const rateChartData = eu.history
+    .filter((h) => h.net_inj_gwh_d != null)
+    .map((h) => ({
+      gas_day: h.gas_day.slice(5),
+      net_twh: h.net_inj_gwh_d != null ? h.net_inj_gwh_d / 1000 : null,
+      seas_avg: h.seas_inj_avg != null ? h.seas_inj_avg / 1000 : null,
+      band: h.seas_inj_p25 != null && h.seas_inj_p75 != null
+        ? [h.seas_inj_p25 / 1000, h.seas_inj_p75 / 1000] as [number, number]
+        : null,
+    }))
+    // Flatten band into recharts Area format
+    .map((d) => ({
+      gas_day: d.gas_day,
+      net_twh: d.net_twh,
+      seas_avg: d.seas_avg,
+      band_lo: d.band ? d.band[0] : null,
+      band_hi: d.band ? d.band[1] : null,
+    }))
 
   const reqRate = eu.required_gwh_per_day
   const curRate = eu.current_rate_gwh_per_day
@@ -257,10 +284,8 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
   const niPct = eu.next_interim_pct
   const niReq = eu.next_interim_required_gwh_d
 
-  // How far above/below seasonal norm is current injection?
   const vsNorm = curRate != null && seasAvg != null ? curRate - seasAvg : null
   const vsNormColor = vsNorm == null ? '#6b7280' : vsNorm >= 0 ? '#22c55e' : '#f87171'
-  // Is the interim target achievable?
   const niOnTrack = niReq != null && curRate != null ? curRate >= niReq : null
   const niColor = niOnTrack === true ? '#22c55e' : niOnTrack === false ? '#f87171' : '#6b7280'
 
@@ -269,7 +294,24 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
       {/* Title row */}
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-medium text-muted-foreground">EU storage pace</span>
-        <span className="text-xs font-semibold" style={{ color: statusColor }}>{statusLabel}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-semibold" style={{ color: statusColor }}>{statusLabel}</span>
+          <div className="flex gap-0.5">
+            {(['fill', 'rate'] as PaceChartMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setChartMode(m)}
+                className={`px-1 py-0.5 rounded text-[9px] leading-none ${
+                  m === chartMode
+                    ? 'bg-primary/20 text-primary'
+                    : 'text-muted-foreground/60 hover:text-muted-foreground'
+                }`}
+              >
+                {m === 'fill' ? '%' : 'Rate'}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
       {/* Nov 1 target */}
       <div className="flex items-center justify-between text-xs mb-0.5">
@@ -288,7 +330,7 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
           <span className="text-muted-foreground">{niReq != null ? `need ${(niReq / 1000).toFixed(1)} TWh/d` : ''}</span>
         </div>
       )}
-      {/* Seasonal norm compact row */}
+      {/* Seasonal norm */}
       {seasAvg != null && (
         <div className="text-xs text-muted-foreground mb-1">
           vs norm{' '}
@@ -298,42 +340,64 @@ function PaceWidget({ eu }: { eu: GasPaceStats }) {
           {' '}(avg {(seasAvg / 1000).toFixed(1)}, p25-p75: {seasP25 != null ? (seasP25 / 1000).toFixed(1) : '--'}-{seasP75 != null ? (seasP75 / 1000).toFixed(1) : '--'})
         </div>
       )}
-      <ResponsiveContainer width="100%" height={80}>
-        <ComposedChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
-          <XAxis
-            dataKey="gas_day"
-            tick={{ fontSize: 8, fill: '#64748b' }}
-            tickLine={false}
-            interval={Math.floor(chartData.length / 4)}
-          />
-          <YAxis
-            tick={{ fontSize: 8, fill: '#64748b' }}
-            tickLine={false}
-            width={24}
-            domain={[0, 100]}
-            tickFormatter={(v) => `${v as number}%`}
-            ticks={[0, 25, 50, 75, 90, 100]}
-          />
-          <Tooltip
-            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 9 }}
-            formatter={(v, name) => {
-              const n = typeof v === 'number' ? v : null
-              const label = name === 'fill' ? 'Actual' : name === 'avg5' ? '5yr avg' : 'Projected'
-              return n != null ? [`${n.toFixed(1)}%`, label] : ['--', label]
-            }}
-            labelFormatter={(l) => String(l)}
-          />
-          <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="4 2" strokeWidth={1} />
-          <Line type="monotone" dataKey="avg5" stroke="#64748b" strokeWidth={1} dot={false} strokeDasharray="2 2" connectNulls name="avg5" />
-          <Line type="monotone" dataKey="fill" stroke="#38bdf8" strokeWidth={1.5} dot={false} connectNulls name="fill" />
-          <Line type="monotone" dataKey="projected" stroke={statusColor} strokeWidth={1.5} dot={false} strokeDasharray="3 2" connectNulls name="projected" />
-        </ComposedChart>
-      </ResponsiveContainer>
-      <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-sky-400" /><span>Actual</span></div>
-        <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-slate-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg,#64748b 0,#64748b 2px,transparent 2px,transparent 4px)' }} /><span>5yr avg</span></div>
-        <div className="flex items-center gap-1"><div className="w-3 h-0.5" style={{ backgroundColor: statusColor }} /><span>Pace</span></div>
-      </div>
+
+      {chartMode === 'fill' ? (
+        <>
+          <ResponsiveContainer width="100%" height={80}>
+            <ComposedChart data={fillChartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
+              <XAxis dataKey="gas_day" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} interval={Math.floor(fillChartData.length / 4)} />
+              <YAxis tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} width={24} domain={[0, 100]} tickFormatter={(v) => `${v as number}%`} ticks={[0, 25, 50, 75, 90, 100]} />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 9 }}
+                formatter={(v, name) => {
+                  const n = typeof v === 'number' ? v : null
+                  const label = name === 'fill' ? 'Actual' : name === 'avg5' ? '5yr avg' : 'Projected'
+                  return n != null ? [`${n.toFixed(1)}%`, label] : ['--', label]
+                }}
+                labelFormatter={(l) => String(l)}
+              />
+              <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="4 2" strokeWidth={1} />
+              <Line type="monotone" dataKey="avg5" stroke="#64748b" strokeWidth={1} dot={false} strokeDasharray="2 2" connectNulls name="avg5" />
+              <Line type="monotone" dataKey="fill" stroke="#38bdf8" strokeWidth={1.5} dot={false} connectNulls name="fill" />
+              <Line type="monotone" dataKey="projected" stroke={statusColor} strokeWidth={1.5} dot={false} strokeDasharray="3 2" connectNulls name="projected" />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-sky-400" /><span>Actual</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-slate-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg,#64748b 0,#64748b 2px,transparent 2px,transparent 4px)' }} /><span>5yr avg</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-0.5" style={{ backgroundColor: statusColor }} /><span>Pace</span></div>
+          </div>
+        </>
+      ) : (
+        <>
+          <ResponsiveContainer width="100%" height={80}>
+            <ComposedChart data={rateChartData} margin={{ top: 2, right: 2, bottom: 0, left: 0 }}>
+              <XAxis dataKey="gas_day" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} interval={Math.floor(rateChartData.length / 4)} />
+              <YAxis tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} width={26} tickFormatter={(v) => `${(v as number).toFixed(0)}`} unit=" T" />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 9 }}
+                formatter={(v, name) => {
+                  const n = typeof v === 'number' ? v : null
+                  const labels: Record<string, string> = { net_twh: 'Net inj.', seas_avg: '5yr avg', band_lo: 'p25', band_hi: 'p75' }
+                  return n != null ? [`${n.toFixed(2)} TWh/d`, labels[String(name)] ?? String(name)] : ['--', String(name)]
+                }}
+                labelFormatter={(l) => String(l)}
+              />
+              <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 2" strokeWidth={1} />
+              {/* p25-p75 shaded band */}
+              <Area dataKey="band_hi" stroke="none" fill="#334155" fillOpacity={0.4} dot={false} connectNulls legendType="none" />
+              <Area dataKey="band_lo" stroke="none" fill="#0f172a" fillOpacity={1} dot={false} connectNulls legendType="none" />
+              <Line type="monotone" dataKey="seas_avg" stroke="#64748b" strokeWidth={1} dot={false} strokeDasharray="2 2" connectNulls name="seas_avg" />
+              <Line type="monotone" dataKey="net_twh" stroke="#38bdf8" strokeWidth={1.5} dot={false} connectNulls name="net_twh" />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-sky-400" /><span>Net inj.</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-0.5 bg-slate-500" style={{ backgroundImage: 'repeating-linear-gradient(90deg,#64748b 0,#64748b 2px,transparent 2px,transparent 4px)' }} /><span>5yr avg</span></div>
+            <div className="flex items-center gap-1"><div className="w-3 h-1 rounded-sm bg-slate-700/70" /><span>p25-p75</span></div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

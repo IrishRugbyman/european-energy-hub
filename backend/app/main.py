@@ -67,6 +67,8 @@ from .schemas import (
     EuCiDailyPoint,
     EuCiDailyResponse,
     EuCfLatestResponse,
+    ZoneCfRow,
+    ZoneCfResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -416,20 +418,26 @@ def gas_pace_to_target():
     current 7-day avg net injection rate, whether on track, and a 90-day history
     with 5yr seasonal avg band and projected trajectory to Nov 1.
     """
-    # Last 90 days of EU history + seasonal band
+    # Last 180 days of EU history + fill% seasonal band + injection rate seasonal band
     hist_df = db.query("""
         SELECT h.gas_day::VARCHAR AS gas_day,
                h.full_pct,
                h.injection,
                h.withdrawal,
                h.working_gas_volume,
-               s.avg5
+               s.avg5,
+               si.avg_gwh_d  AS seas_inj_avg,
+               si.p25_gwh_d  AS seas_inj_p25,
+               si.p75_gwh_d  AS seas_inj_p75
         FROM storage_history h
         LEFT JOIN storage_seasonal s
           ON s.country = 'EU'
          AND s.doy = DAYOFYEAR(h.gas_day)
+        LEFT JOIN storage_injection_seasonal si
+          ON si.country = 'EU'
+         AND si.doy = DAYOFYEAR(h.gas_day)
         WHERE h.country = 'EU'
-          AND h.gas_day >= current_date - INTERVAL '90 days'
+          AND h.gas_day >= current_date - INTERVAL '180 days'
         ORDER BY h.gas_day
     """)
     if hist_df is None or hist_df.empty:
@@ -475,14 +483,21 @@ def gas_pace_to_target():
     )
     on_track = (days_at_current <= days_to_target) if days_at_current is not None else None
 
-    # Build history list (actual fill + seasonal avg5)
+    # Build history list (actual fill + seasonal avg5 + injection rate + seasonal band)
     history: list[GasPacePoint] = []
     for r in hist_df.itertuples():
+        inj = _float(getattr(r, "injection", None)) or 0.0
+        wd = _float(getattr(r, "withdrawal", None)) or 0.0
+        net = inj - wd
         history.append(GasPacePoint(
             gas_day=str(r.gas_day),
             full_pct=_float(r.full_pct),
             avg5=_float(r.avg5),
             projected=None,
+            net_inj_gwh_d=round(net, 1) if (inj or wd) else None,
+            seas_inj_avg=_float(getattr(r, "seas_inj_avg", None)),
+            seas_inj_p25=_float(getattr(r, "seas_inj_p25", None)),
+            seas_inj_p75=_float(getattr(r, "seas_inj_p75", None)),
         ))
 
     # Append projected trajectory from current date to Nov 1 at current rate
@@ -1755,6 +1770,42 @@ def generation_eu_cf_latest():
         wind_cf_month_pct_rank=round((wind_rank or 0.0) * 100, 0),
         solar_cf_month_pct_rank=round((solar_rank or 0.0) * 100, 0),
     )
+
+
+@app.get("/api/generation/zones/cf", response_model=ZoneCfResponse)
+def generation_zones_cf():
+    """Per-zone wind and solar capacity factor for the most recent date with data."""
+    df = db.query("""
+        WITH latest AS (
+            SELECT MAX(gen_date) AS d FROM capacity_factors_daily
+        )
+        SELECT c.zone,
+               c.gen_date::VARCHAR AS gen_date,
+               c.wind_cf,
+               c.solar_cf,
+               c.wind_installed_mw,
+               c.solar_installed_mw
+        FROM capacity_factors_daily c
+        JOIN latest ON c.gen_date = latest.d
+        WHERE c.wind_installed_mw > 0 OR c.solar_installed_mw > 0
+        ORDER BY (c.wind_cf * c.wind_installed_mw + c.solar_cf * c.solar_installed_mw)
+               / NULLIF(c.wind_installed_mw + c.solar_installed_mw, 0) DESC
+    """)
+    if df is None or df.empty:
+        return ZoneCfResponse(gen_date=None, rows=[])
+    gen_date = str(df.iloc[0]["gen_date"])
+    rows = [
+        ZoneCfRow(
+            zone=str(r["zone"]),
+            gen_date=str(r["gen_date"]),
+            wind_cf=round(_float(r["wind_cf"]) * 100, 1) if _float(r["wind_cf"]) is not None else None,
+            solar_cf=round(_float(r["solar_cf"]) * 100, 1) if _float(r["solar_cf"]) is not None else None,
+            wind_installed_mw=_float(r["wind_installed_mw"]),
+            solar_installed_mw=_float(r["solar_installed_mw"]),
+        )
+        for _, r in df.iterrows()
+    ]
+    return ZoneCfResponse(gen_date=gen_date, rows=rows)
 
 
 @app.get("/api/generation/eu/carbon-intensity", response_model=EuCiDailyResponse)

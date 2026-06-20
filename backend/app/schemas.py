@@ -45,6 +45,10 @@ class GasPacePoint(BaseModel):
     full_pct: float | None = None
     avg5: float | None = None
     projected: float | None = None
+    net_inj_gwh_d: float | None = None
+    seas_inj_avg: float | None = None
+    seas_inj_p25: float | None = None
+    seas_inj_p75: float | None = None
 
 
 class GasPaceStats(BaseModel):
@@ -648,3 +652,17 @@ class EuCfLatestResponse(BaseModel):
     solar_cf_month_avg: float | None
     wind_cf_month_pct_rank: float | None
     solar_cf_month_pct_rank: float | None
+
+
+class ZoneCfRow(BaseModel):
+    zone: str
+    gen_date: str
+    wind_cf: float | None
+    solar_cf: float | None
+    wind_installed_mw: float | None
+    solar_installed_mw: float | None
+
+
+class ZoneCfResponse(BaseModel):
+    gen_date: str | None
+    rows: list[ZoneCfRow]
