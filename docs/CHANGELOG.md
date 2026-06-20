@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 18: cross-zone hourly DA price profile comparison
+
+**New features:**
+1. Cross-zone hourly price profile comparison chart (`/generation`): new `GET /api/power/hourly-profiles-all` returns 30-day trailing average DA price by hour for all 34 zones (816 rows). `ZoneHourlyComparisonChart` overlays multiple zone curves - toggle any zone on/off with per-zone color coded buttons. Default: DE-LU, FR, ES, NO-2. Placed immediately after the EU duck curve chart, showing that DE-LU has a deep solar trough (16 EUR/MWh at 13:00 vs 149 EUR/MWh at 19:00), ES is even deeper, FR is flat (nuclear), and NO-2 (hydro) holds high prices in evening heating hours. 84 tests (1 new).
+
+**Artifacts:** `backend/app/schemas.py` (ZoneHourlyProfileRow, ZoneHourlyProfilesResponse), `backend/app/main.py` (/api/power/hourly-profiles-all), `frontend/src/lib/api.ts` (ZoneHourlyProfileRow, powerHourlyProfilesAll), `frontend/src/routes/generation.tsx` (ZoneHourlyComparisonChart, ZONE_PROFILE_COLORS, hourlyProfilesData query), `backend/tests/test_endpoints.py` (1 new test).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 17: zone grid integration ranking + spread monthly seasonality
 
 **New features:**
