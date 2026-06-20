@@ -383,6 +383,88 @@ function LatestSnapshotChart({
   )
 }
 
+const SPREAD_YOY_YEAR_COLORS: Record<number, string> = {
+  2021: '#475569',
+  2022: '#f97316',
+  2023: '#facc15',
+  2024: '#38bdf8',
+  2025: '#4ade80',
+  2026: '#c084fc',
+}
+
+function ZoneSpreadYoYChart({
+  rows,
+  zones,
+  spreadKey,
+}: {
+  rows: MultiZoneSpreadRow[]
+  zones: string[]
+  spreadKey: SpreadKey
+}) {
+  const { chartData, years } = useMemo(() => {
+    const sums: Record<string, Record<number, { sum: number; n: number }>> = {}
+    for (const r of rows) {
+      const v = r[spreadKey]
+      if (v == null) continue
+      const yr = parseInt(r.price_date.slice(0, 4), 10)
+      if (!sums[r.zone]) sums[r.zone] = {}
+      if (!sums[r.zone][yr]) sums[r.zone][yr] = { sum: 0, n: 0 }
+      sums[r.zone][yr].sum += v
+      sums[r.zone][yr].n += 1
+    }
+    const allYears = [...new Set(Object.values(sums).flatMap((m) => Object.keys(m).map(Number)))].sort()
+    const data = zones.map((zone) => {
+      const entry: Record<string, string | number | null> = { zone: ZONE_LABELS[zone] ?? zone }
+      for (const yr of allYears) {
+        const bucket = sums[zone]?.[yr]
+        entry[String(yr)] = bucket && bucket.n > 0 ? Math.round(bucket.sum / bucket.n) : null
+      }
+      return entry
+    })
+    return { chartData: data, years: allYears }
+  }, [rows, zones, spreadKey])
+
+  if (!chartData.length) return null
+
+  return (
+    <div className="mt-4">
+      <p className="text-xs text-muted-foreground mb-2">Annual average (€/MWh) - zone vs year</p>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 4, left: 0 }} barCategoryGap="22%" barGap={1}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis dataKey="zone" tick={{ fontSize: 10, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v: number) => `${v}`}
+            unit=" €"
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => [
+              v != null ? `${Number(v).toFixed(0)} €/MWh` : '--',
+              name != null ? String(name) : '',
+            ]}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+          {years.map((yr) => (
+            <Bar key={yr} dataKey={String(yr)} fill={SPREAD_YOY_YEAR_COLORS[yr] ?? '#94a3b8'} radius={[2, 2, 0, 0]} />
+          ))}
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap items-center gap-3 mt-1 text-xs text-muted-foreground">
+        {years.map((yr) => (
+          <span key={yr} className="flex items-center gap-1">
+            <span className="inline-block w-3 h-2 rounded-sm" style={{ background: SPREAD_YOY_YEAR_COLORS[yr] ?? '#94a3b8' }} />
+            {yr === new Date().getFullYear() ? `${yr} YTD` : yr}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function ZoneDecouplingSection() {
   const { data, isLoading } = useQuery({
     queryKey: ['power-correlations'],
@@ -568,6 +650,8 @@ function MultiZoneSection({ window: w }: { window: Window }) {
         <p className="text-xs text-muted-foreground mb-2">History</p>
         <MultiZoneChart rows={rows} zones={zones} spreadKey={spreadKey} window={w} />
       </div>
+
+      <ZoneSpreadYoYChart rows={rows} zones={zones} spreadKey={spreadKey} />
     </div>
   )
 }
