@@ -1,10 +1,11 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  ScatterChart, Scatter,
+  XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
 
 export const Route = createFileRoute('/generation')({
@@ -320,6 +321,114 @@ function ZoneCfChart({ rows }: { rows: ZoneCfRow[] }) {
   )
 }
 
+const YEAR_DOT_COLORS: Record<number, string> = {
+  2024: '#64748b',
+  2025: '#3b82f6',
+  2026: '#f59e0b',
+}
+
+function EuPriceReScatter({ rows }: { rows: EuPriceRePoint[] }) {
+  // Group by year and build scatter series
+  const byYear = useMemo(() => {
+    const groups: Record<number, { re_pct: number; eu_avg_eur: number; price_date: string }[]> = {}
+    for (const r of rows) {
+      if (r.re_pct == null || r.eu_avg_eur == null) continue
+      const yr = parseInt(r.price_date.slice(0, 4))
+      if (!groups[yr]) groups[yr] = []
+      groups[yr].push({ re_pct: r.re_pct, eu_avg_eur: r.eu_avg_eur, price_date: r.price_date })
+    }
+    return groups
+  }, [rows])
+
+  const years = Object.keys(byYear).map(Number).sort()
+
+  // Compute Pearson correlation
+  const corr = useMemo(() => {
+    const valid = rows.filter((r) => r.re_pct != null && r.eu_avg_eur != null)
+    if (valid.length < 5) return null
+    const xs = valid.map((r) => r.re_pct as number)
+    const ys = valid.map((r) => r.eu_avg_eur as number)
+    const mx = xs.reduce((a, b) => a + b) / xs.length
+    const my = ys.reduce((a, b) => a + b) / ys.length
+    const num = xs.reduce((acc, x, i) => acc + (x - mx) * (ys[i] - my), 0)
+    const den = Math.sqrt(xs.reduce((a, x) => a + (x - mx) ** 2, 0) * ys.reduce((a, y) => a + (y - my) ** 2, 0))
+    return den > 0 ? num / den : null
+  }, [rows])
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-2">
+        <h2 className="text-sm font-medium text-muted-foreground">Merit Order Effect: RE% vs EU Avg Price</h2>
+        {corr != null && (
+          <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded" style={{ color: corr < -0.3 ? '#f87171' : '#64748b' }}>
+            r = {corr.toFixed(2)}
+          </span>
+        )}
+        <div className="ml-auto flex gap-3">
+          {years.map((yr) => (
+            <span key={yr} className="flex items-center gap-1 text-xs text-muted-foreground">
+              <span className="w-2 h-2 rounded-full inline-block" style={{ background: YEAR_DOT_COLORS[yr] ?? '#94a3b8' }} />
+              {yr}
+            </span>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        Each dot = one day. X = EU renewable % (wind+solar+hydro), Y = EU avg day-ahead base price.
+      </p>
+      <ResponsiveContainer width="100%" height={240}>
+        <ScatterChart margin={{ top: 4, right: 16, bottom: 20, left: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            type="number"
+            dataKey="re_pct"
+            name="RE%"
+            unit="%"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            label={{ value: 'Renewable %', position: 'insideBottomRight', offset: -4, style: { fontSize: 9, fill: '#64748b' } }}
+            domain={[0, 100]}
+          />
+          <YAxis
+            type="number"
+            dataKey="eu_avg_eur"
+            name="Price"
+            unit=" €"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+          />
+          <ZAxis range={[12, 12]} />
+          <Tooltip
+            cursor={{ strokeDasharray: '3 3', stroke: '#475569' }}
+            content={({ payload }) => {
+              if (!payload?.length) return null
+              const d = payload[0]?.payload as { re_pct: number; eu_avg_eur: number; price_date: string }
+              return (
+                <div className="bg-card border border-border rounded px-2 py-1.5 text-xs shadow">
+                  <p className="text-muted-foreground">{d.price_date}</p>
+                  <p>RE: <span className="text-foreground font-medium">{d.re_pct.toFixed(1)}%</span></p>
+                  <p>Price: <span className="text-foreground font-medium">{d.eu_avg_eur.toFixed(1)} €/MWh</span></p>
+                </div>
+              )
+            }}
+          />
+          {years.map((yr) => (
+            <Scatter
+              key={yr}
+              name={String(yr)}
+              data={byYear[yr]}
+              fill={YEAR_DOT_COLORS[yr] ?? '#94a3b8'}
+              fillOpacity={0.55}
+            />
+          ))}
+        </ScatterChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -348,6 +457,12 @@ function GenerationTrends() {
   const { data: zoneCfData } = useQuery({
     queryKey: ['gen-zones-cf'],
     queryFn: api.genZonesCf,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: priceReData } = useQuery({
+    queryKey: ['gen-eu-price-re'],
+    queryFn: api.genEuPriceRe,
     staleTime: 6 * 60 * 60 * 1000,
   })
 
@@ -397,6 +512,7 @@ function GenerationTrends() {
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
       {(zoneCfData?.rows.length ?? 0) > 0 && <ZoneCfChart rows={zoneCfData!.rows} />}
+      {(priceReData?.rows.length ?? 0) > 0 && <EuPriceReScatter rows={priceReData!.rows} />}
 
       <div className="mb-4">
         <h1 className="text-base font-semibold">Renewable Generation Trends</h1>

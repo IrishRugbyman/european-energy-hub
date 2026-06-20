@@ -666,3 +666,13 @@ class ZoneCfRow(BaseModel):
 class ZoneCfResponse(BaseModel):
     gen_date: str | None
     rows: list[ZoneCfRow]
+
+
+class EuPriceRePoint(BaseModel):
+    price_date: str
+    eu_avg_eur: float | None
+    re_pct: float | None
+
+
+class EuPriceReResponse(BaseModel):
+    rows: list[EuPriceRePoint]

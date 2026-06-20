@@ -69,6 +69,8 @@ from .schemas import (
     EuCfLatestResponse,
     ZoneCfRow,
     ZoneCfResponse,
+    EuPriceRePoint,
+    EuPriceReResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -1806,6 +1808,49 @@ def generation_zones_cf():
         for _, r in df.iterrows()
     ]
     return ZoneCfResponse(gen_date=gen_date, rows=rows)
+
+
+@app.get("/api/generation/eu/price-re", response_model=EuPriceReResponse)
+def generation_eu_price_re():
+    """EU daily average power price vs EU renewable penetration (merit order effect).
+
+    Simple average across all zones with >=10 zones reporting that day.
+    RE% = (wind + solar + hydro) / total, weighted by each zone's total_mw.
+    """
+    df = db.query("""
+        WITH power_avg AS (
+            SELECT price_date,
+                   AVG(base_eur) AS eu_avg_eur
+            FROM power_daily
+            WHERE base_eur IS NOT NULL
+            GROUP BY price_date
+            HAVING COUNT(DISTINCT zone) >= 10
+        ),
+        gen_re AS (
+            SELECT gen_date,
+                   SUM(wind + solar + hydro) / NULLIF(SUM(total_mw), 0) * 100 AS re_pct
+            FROM generation_daily
+            GROUP BY gen_date
+            HAVING COUNT(DISTINCT zone) >= 10
+        )
+        SELECT p.price_date::VARCHAR AS price_date,
+               p.eu_avg_eur,
+               g.re_pct
+        FROM power_avg p
+        JOIN gen_re g ON g.gen_date = p.price_date
+        ORDER BY p.price_date
+    """)
+    if df is None or df.empty:
+        return EuPriceReResponse(rows=[])
+    rows = [
+        EuPriceRePoint(
+            price_date=str(r["price_date"]),
+            eu_avg_eur=round(_float(r["eu_avg_eur"]) or 0.0, 1),
+            re_pct=round(_float(r["re_pct"]) or 0.0, 1),
+        )
+        for _, r in df.iterrows()
+    ]
+    return EuPriceReResponse(rows=rows)
 
 
 @app.get("/api/generation/eu/carbon-intensity", response_model=EuCiDailyResponse)

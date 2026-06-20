@@ -627,6 +627,16 @@ export interface ZoneCfResponse {
   rows: ZoneCfRow[]
 }
 
+export interface EuPriceRePoint {
+  price_date: string
+  eu_avg_eur: number | null
+  re_pct: number | null
+}
+
+export interface EuPriceReResponse {
+  rows: EuPriceRePoint[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -671,6 +681,7 @@ export const api = {
   genEuCfLatest: () => get<EuCfLatestResponse>('/generation/eu/cf-latest'),
   genEuCarbonIntensity: () => get<EuCiDailyResponse>('/generation/eu/carbon-intensity'),
   genZonesCf: () => get<ZoneCfResponse>('/generation/zones/cf'),
+  genEuPriceRe: () => get<EuPriceReResponse>('/generation/eu/price-re'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),
