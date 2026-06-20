@@ -11,7 +11,18 @@ export const ZONE_CENTROIDS: Record<string, [number, number]> = {
   'DE-LU':   [51.0, 10.0],
   'FR':      [46.5,  2.5],
   'IT-NORD': [45.5, 10.5],
+  'IT-CNOR': [43.5, 11.0],
+  'IT-CSUD': [41.5, 14.5],
+  'IT-SUD':  [40.5, 16.5],
+  'IT-CALA': [38.9, 16.3],
+  'IT-SICI': [37.5, 14.0],
+  'IT-SARD': [40.1,  9.0],
   'NL':      [52.3,  5.3],
+  'AL':      [41.1, 20.2],
+  'ME':      [42.8, 19.3],
+  'MK':      [41.6, 21.7],
+  'RS':      [44.0, 21.0],
+  'XK':      [42.6, 21.2],
 }
 
 export interface BorderKey {

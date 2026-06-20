@@ -45,8 +45,8 @@ from analytics.flows import build_flows_tables
 def run_ingest(fetcher: str) -> bool:
     """Run market-data ingest.py for one fetcher. Returns True if OK."""
     try:
-        # entso-e-gen-full fetches up to 34 zones incrementally; allow 2 hours
-        fetch_timeout = 7200 if "gen-full" in fetcher else 600
+        # entso-e-gen-full fetches up to 45 zones incrementally; allow 3 hours
+        fetch_timeout = 10800 if "gen-full" in fetcher else 600
         result = subprocess.run(
             [str(MARKET_DATA_VENV), "ingest.py", fetcher],
             cwd=str(MARKET_DATA_DIR),

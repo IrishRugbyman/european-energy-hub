@@ -198,9 +198,10 @@ function EuroChoroLayer({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const f = (layer as any).feature as Feature
       const zone: string = f?.properties?.['zone'] ?? ''
-      const isSelected = zone === selected
+      const dataZone: string = f?.properties?.['displayAs'] ?? zone
+      const isSelected = dataZone === selected
       ;(layer as L.Path).setStyle({
-        fillColor: zoneColor(metric, powerByZone[zone], genByZone[zone]),
+        fillColor: zoneColor(metric, powerByZone[dataZone], genByZone[dataZone]),
         fillOpacity: isSelected ? 0.95 : CHOROPLETH_FILL_OPACITY,
         color: isSelected ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: isSelected ? 2 : CHOROPLETH_STROKE_WIDTH,
@@ -222,21 +223,23 @@ function createLayer(
   return L.geoJSON(geo, {
     style: (feature: Feature | undefined): PathOptions => {
       const zone = feature?.properties?.['zone'] ?? ''
+      const dataZone = feature?.properties?.['displayAs'] ?? zone
       const sel = selectedRef.current
       return {
-        fillColor: zoneColor(metricRef.current, powerRef.current[zone], genRef.current[zone]),
-        fillOpacity: zone === sel ? 0.95 : CHOROPLETH_FILL_OPACITY,
-        color: zone === sel ? '#38bdf8' : CHOROPLETH_STROKE,
-        weight: zone === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
+        fillColor: zoneColor(metricRef.current, powerRef.current[dataZone], genRef.current[dataZone]),
+        fillOpacity: dataZone === sel ? 0.95 : CHOROPLETH_FILL_OPACITY,
+        color: dataZone === sel ? '#38bdf8' : CHOROPLETH_STROKE,
+        weight: dataZone === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
       }
     },
     onEachFeature: (feature: Feature, layer: Layer) => {
       const zone = feature?.properties?.['zone'] ?? ''
+      const dataZone = feature?.properties?.['displayAs'] ?? zone
 
       layer.on({
         click: (e: LeafletMouseEvent) => {
           L.DomEvent.stopPropagation(e)
-          onSelect(zone === selectedRef.current ? null : zone)
+          onSelect(dataZone === selectedRef.current ? null : dataZone)
         },
         mouseover: (e: LeafletMouseEvent) => {
           ;(e.target as L.Path).setStyle({ weight: 2, color: '#94a3b8' })
@@ -245,7 +248,7 @@ function createLayer(
           L.popup({ closeButton: false })
             .setLatLng(e.latlng)
             .setContent(
-              tooltipContent(zone, powerRef.current[zone], genRef.current[zone], metricRef.current),
+              tooltipContent(zone, powerRef.current[dataZone], genRef.current[dataZone], metricRef.current),
             )
             .openOn(m)
         },
