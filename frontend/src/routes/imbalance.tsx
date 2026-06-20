@@ -266,6 +266,9 @@ function ImbalanceDashboard() {
           <ImbalanceYoYChart rows={monthlyData!.rows} />
         )}
 
+        {/* Extreme reBAP events */}
+        {daily.length > 0 && <ExtremeEvents daily={daily} />}
+
         {/* Battery oracle dispatch */}
         {dispatchData && <BatteryDispatchPanel hourly={dispatchData.hourly} summary={dispatchData.summary} />}
 
@@ -362,6 +365,58 @@ function ImbalanceYoYChart({ rows }: { rows: ImbalanceMonthlyRow[] }) {
       <p className="text-xs text-muted-foreground mt-1">
         Monthly mean reBAP price. Current year is partial (YTD average). Higher = tighter balancing markets.
       </p>
+    </div>
+  )
+}
+
+function ExtremeEvents({ daily }: { daily: ImbalanceDailyPoint[] }) {
+  const top = useMemo(() => {
+    return [...daily]
+      .filter((d) => d.max_eur != null)
+      .sort((a, b) => (b.max_eur ?? 0) - (a.max_eur ?? 0))
+      .slice(0, 10)
+  }, [daily])
+
+  if (top.length === 0) return null
+
+  const fmtEur = (v: number | null) => (v != null ? `${v.toFixed(0)} €` : '--')
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-3">Top 10 extreme reBAP days (by intraday max)</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left py-1.5 font-normal text-muted-foreground">Date</th>
+              <th className="text-right py-1.5 font-normal text-muted-foreground">Daily mean</th>
+              <th className="text-right py-1.5 font-normal text-muted-foreground">Intraday max</th>
+              <th className="text-left py-1.5 font-normal text-muted-foreground pl-3">Severity</th>
+            </tr>
+          </thead>
+          <tbody>
+            {top.map((d, i) => {
+              const max = d.max_eur ?? 0
+              const color = max >= 500 ? '#f87171' : max >= 300 ? '#f59e0b' : '#94a3b8'
+              const barW = Math.round((max / (top[0].max_eur ?? 1)) * 100)
+              return (
+                <tr key={d.price_date} className="border-b border-border/40">
+                  <td className="py-1.5 font-mono text-foreground">
+                    {i === 0 && <span className="text-[10px] text-red-400 mr-1">max</span>}
+                    {d.price_date}
+                  </td>
+                  <td className="py-1.5 text-right text-muted-foreground">{fmtEur(d.mean_eur)}/MWh</td>
+                  <td className="py-1.5 text-right font-semibold" style={{ color }}>{fmtEur(d.max_eur)}/MWh</td>
+                  <td className="py-1.5 pl-3">
+                    <div className="h-2 rounded-sm" style={{ width: `${barW}%`, background: color, maxWidth: 80, minWidth: 4 }} />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-[10px] text-muted-foreground mt-2">Based on 2-year daily history. Max = highest single 15-min interval in the day.</p>
     </div>
   )
 }
