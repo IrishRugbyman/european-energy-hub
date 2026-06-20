@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 10: EU duck curve hourly price profile
+
+**New features:**
+1. EU-34 duck curve chart (`/generation`): `GET /api/power/hourly-profile-eu` aggregates `power_hourly_profiles` across all 34 zones (simple AVG per hour). New `EuDuckCurveChart` shows the classic duck curve shape: prices at 87-97 EUR/MWh from midnight to 7am, plunging to 28-40 EUR/MWh at solar peak (12:00-14:00), then recovering to 123-133 EUR/MWh at evening peak (19:00-21:00). Red bars show negative price frequency: 22% of hours at 13:00 UTC are negative (solar oversupply). Badges show "Trough: 13:00 (28 €/MWh)" and "Peak neg: 13:00 (22% hrs)". Data: 30-day trailing average, all 34 bidding zones, 24 hourly buckets. 73 tests.
+
+**Artifacts:** `backend/app/schemas.py` (EuDuckCurvePoint/Response), `backend/app/main.py` (/api/power/hourly-profile-eu), `frontend/src/lib/api.ts`, `frontend/src/routes/generation.tsx` (EuDuckCurveChart + duckCurveData query), `backend/tests/test_endpoints.py`.
+
+---
+
 ## 2026-06-20 - Post-roadmap round 9: duck curve chart, gas target lines, test coverage
 
 **New features:**
