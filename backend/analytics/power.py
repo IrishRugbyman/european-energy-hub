@@ -64,44 +64,63 @@ def _build_daily(df: pd.DataFrame) -> pd.DataFrame:
     Peak = hours 08-19 inclusive (hour-beginning convention: 08:00-19:00,
     i.e. the 12 hours from start-of-hour-8 through end-of-hour-18).
     Offpeak = remaining 12 hours.
+
+    Uses fully vectorized groupby aggregations (no apply) for scale.
     """
     df = df.copy()
     df["price_date"] = df["ts"].dt.date
     df["hour"] = df["ts"].dt.hour
-    # Peak: hours 8 through 19 (08:00 to 19:00 start-of-hour, 12 hours)
     df["is_peak"] = df["hour"].between(8, 19)
 
     cutoff = pd.Timestamp.now().normalize() - pd.Timedelta(days=2 * 365 + 35)
+    df = df[df["ts"] >= cutoff]
 
-    agg = (
-        df[df["ts"] >= cutoff]
-        .groupby(["zone", "price_date"])
-        .apply(_daily_agg, include_groups=False)
-        .reset_index()
-    )
+    key = ["zone", "price_date"]
 
-    return agg.rename(columns={"price_date": "price_date"})
+    # Base, min, max, range - all rows
+    base = df.groupby(key)["price_eur_mwh"].agg(
+        count="count", base_eur="mean", min_eur="min", max_eur="max"
+    ).reset_index()
+    base["day_range_eur"] = (base["max_eur"] - base["min_eur"]).round(2)
+    base["min_eur"] = base["min_eur"].round(2)
+    base["max_eur"] = base["max_eur"].round(2)
+    # Mask out rows with fewer than 20 observations (incomplete days)
+    sparse = base["count"] < 20
+    for col in ("base_eur", "min_eur", "max_eur", "day_range_eur"):
+        base.loc[sparse, col] = None
+    base.drop(columns=["count"], inplace=True)
 
+    # Peak mean - filter first, then groupby
+    peak_df = df[df["is_peak"]]
+    peak = peak_df.groupby(key)["price_eur_mwh"].agg(pk_count="count", peak_eur="mean").reset_index()
+    peak.loc[peak["pk_count"] < 8, "peak_eur"] = None
+    peak.drop(columns=["pk_count"], inplace=True)
 
-def _daily_agg(g: pd.DataFrame) -> pd.Series:
-    peak = g.loc[g["is_peak"], "price_eur_mwh"]
-    offpeak = g.loc[~g["is_peak"], "price_eur_mwh"]
-    prices = g["price_eur_mwh"]
-    n = len(g)
-    has_data = n >= 20
-    # Count distinct clock-hours with a negative price; robust to sub-hourly resolution.
-    neg_mask = prices < 0
-    neg_hours_val = int(g.loc[neg_mask, "ts"].dt.floor("h").nunique()) if neg_mask.any() else 0
-    # Key order must match the power_daily DuckDB schema: base, peak, offpeak, day_range, neg_hours, min, max
-    return pd.Series({
-        "base_eur":     prices.mean() if has_data else None,
-        "peak_eur":     peak.mean() if len(peak) >= 8 else None,
-        "offpeak_eur":  offpeak.mean() if len(offpeak) >= 8 else None,
-        "day_range_eur": round(float(prices.max() - prices.min()), 2) if has_data else None,
-        "neg_hours":    neg_hours_val,
-        "min_eur":      round(float(prices.min()), 2) if has_data else None,
-        "max_eur":      round(float(prices.max()), 2) if has_data else None,
-    })
+    # Offpeak mean
+    offpeak_df = df[~df["is_peak"]]
+    offpeak = offpeak_df.groupby(key)["price_eur_mwh"].agg(op_count="count", offpeak_eur="mean").reset_index()
+    offpeak.loc[offpeak["op_count"] < 8, "offpeak_eur"] = None
+    offpeak.drop(columns=["op_count"], inplace=True)
+
+    # Negative-price hours: deduplicate to floor-hour level per (zone, date, hour)
+    neg = df[df["price_eur_mwh"] < 0].copy()
+    if not neg.empty:
+        neg["neg_hour"] = neg["ts"].dt.floor("h")
+        neg_cnt = (
+            neg.groupby(key + ["neg_hour"]).size().reset_index(name="_n")
+            .groupby(key).size().reset_index(name="neg_hours")
+        )
+    else:
+        neg_cnt = base[key].copy()
+        neg_cnt["neg_hours"] = 0
+
+    # Merge everything
+    agg = base.merge(peak, on=key, how="left")
+    agg = agg.merge(offpeak, on=key, how="left")
+    agg = agg.merge(neg_cnt, on=key, how="left")
+    agg["neg_hours"] = agg["neg_hours"].fillna(0).astype(int)
+
+    return agg
 
 
 def _build_hourly_recent(df: pd.DataFrame) -> pd.DataFrame:

@@ -328,7 +328,7 @@ function ImbalanceYoYChart({ rows }: { rows: ImbalanceMonthlyRow[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center gap-4 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Monthly avg reBAP - year on year (€/MWh)</h2>
+        <h2 className="text-sm font-semibold text-foreground">Monthly avg reBAP - year on year (€/MWh)</h2>
         <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
           {years.map((yr) => (
             <span key={yr} className="flex items-center gap-1">
@@ -383,7 +383,7 @@ function ExtremeEvents({ daily }: { daily: ImbalanceDailyPoint[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">Top 10 extreme reBAP days (by intraday max)</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-3">Top 10 extreme reBAP days (by intraday max)</h2>
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>

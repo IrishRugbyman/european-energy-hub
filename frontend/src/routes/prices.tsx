@@ -221,7 +221,7 @@ function CorrelationMatrix({ rows }: { rows: PricesDailyPoint[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">90-day rolling correlation</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-3">90-day rolling correlation</h2>
       <div className="grid grid-cols-3 gap-3">
         {pairs.map(({ label, r }) => {
           const color = correlationColor(r)
@@ -261,7 +261,7 @@ function TtfEuaScatter({ rows }: { rows: PricesDailyPoint[] }) {
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
-      <h2 className="text-sm font-medium text-muted-foreground mb-3">TTF vs EUA scatter (trailing 12 months)</h2>
+      <h2 className="text-sm font-semibold text-foreground mb-3">TTF vs EUA scatter (trailing 12 months)</h2>
       <ResponsiveContainer width="100%" height={260}>
         <ScatterChart margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
@@ -334,7 +334,7 @@ function TtfSeasonality({ months }: { months: TtfSeasonalMonth[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">
+        <h2 className="text-sm font-semibold text-foreground">
           TTF monthly seasonality - IQR box (€/MWh, historical 2019-present)
         </h2>
         <span className="text-xs text-muted-foreground">axis capped at {Y_CAP}</span>
@@ -434,7 +434,7 @@ function TtfNbpSpread({ rows }: { rows: PricesDailyPoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center gap-4 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">TTF minus NBP basis (€/MWh, trailing 2Y)</h2>
+        <h2 className="text-sm font-semibold text-foreground">TTF minus NBP basis (€/MWh, trailing 2Y)</h2>
         <span className="text-xs text-muted-foreground ml-auto">
           Latest: <span className="font-semibold text-foreground">{latestSpread != null ? `${latestSpread > 0 ? '+' : ''}${latestSpread.toFixed(2)}` : '--'}</span>
           {' '}&bull;{' '}2Y avg: <span className="font-semibold text-foreground">{`${avg > 0 ? '+' : ''}${avg.toFixed(2)}`}</span>
@@ -489,7 +489,7 @@ function TtfHhSpread({ rows }: { rows: PricesDailyPoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center gap-4 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">TTF minus Henry Hub LNG spread (€/MWh, trailing 2Y)</h2>
+        <h2 className="text-sm font-semibold text-foreground">TTF minus Henry Hub LNG spread (€/MWh, trailing 2Y)</h2>
         <span className="text-xs text-muted-foreground ml-auto">
           Latest: <span className="font-semibold text-foreground">{latestSpread != null ? `${latestSpread > 0 ? '+' : ''}${latestSpread.toFixed(2)}` : '--'}</span>
           {' '}&bull;{' '}2Y avg: <span className="font-semibold text-foreground">{`${avg > 0 ? '+' : ''}${avg.toFixed(2)}`}</span>
@@ -582,7 +582,7 @@ function TtfCurveShift({ snapshots }: { snapshots: TtfCurveSnapshotRow[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center gap-4 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">TTF curve shift (€/MWh)</h2>
+        <h2 className="text-sm font-semibold text-foreground">TTF curve shift (€/MWh)</h2>
         <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
           {availableLabels.map((label) => (
             <span key={label} className="flex items-center gap-1">
@@ -649,7 +649,7 @@ function TtfForwardCurve({ rows }: { rows: TtfCurvePoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center gap-4 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">TTF forward curve (€/MWh)</h2>
+        <h2 className="text-sm font-semibold text-foreground">TTF forward curve (€/MWh)</h2>
         <div className="flex items-center gap-3 ml-auto text-xs text-muted-foreground">
           {[
             { label: 'Quarterly', color: TENOR_COLORS.Q1 },
@@ -734,7 +734,7 @@ function PriceRegimeCharts({ rows }: { rows: PriceRegimePoint[] }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Price Regime</h2>
+        <h2 className="text-sm font-semibold text-foreground">Price Regime</h2>
         <div className="flex items-center gap-1">
           {(['1Y', '2Y', '5Y', 'ALL'] as Window[]).map((w) => (
             <button
@@ -892,7 +892,7 @@ function PowerMonthlyHeatmap({ data }: { data: PowerMonthlyResponse }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex flex-wrap items-center gap-3 mb-3">
-        <h2 className="text-sm font-medium text-muted-foreground">Zone Power Prices - Monthly (€/MWh)</h2>
+        <h2 className="text-sm font-semibold text-foreground">Zone Power Prices - Monthly (€/MWh)</h2>
         <div className="flex items-center gap-1 ml-auto">
           {(['price', 'negpct'] as const).map((m) => (
             <button
@@ -1090,7 +1090,7 @@ function PricesDashboard() {
       {rows.length > 0 && (
         <div className="space-y-4">
           <div className="bg-card border border-border rounded-lg p-4">
-            <h2 className="text-sm font-medium text-muted-foreground mb-3">
+            <h2 className="text-sm font-semibold text-foreground mb-3">
               Commodity Prices{indexed ? ' - Indexed to 100 at window start' : ''}
             </h2>
             <PricesChart rows={rows} window={window} indexed={indexed} />

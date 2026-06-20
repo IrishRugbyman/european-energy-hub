@@ -539,7 +539,7 @@ function ZoneDecouplingSection() {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex items-center gap-3 mb-1">
-        <h2 className="text-sm font-medium text-muted-foreground">Zone Market Coupling - 30 day</h2>
+        <h2 className="text-sm font-semibold text-foreground">Zone Market Coupling - 30 day</h2>
         <div className="flex items-center gap-1 ml-auto">
           {(['pairs', 'zones'] as CouplingView[]).map((v) => (
             <button
@@ -628,7 +628,7 @@ function CongestionRankingSection() {
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex items-center gap-4 mb-1">
-        <h2 className="text-sm font-medium text-muted-foreground">NTC utilization ranking</h2>
+        <h2 className="text-sm font-semibold text-foreground">NTC utilization ranking</h2>
         {data?.as_of && (
           <span className="ml-auto text-xs text-muted-foreground">{data.as_of}</span>
         )}
@@ -683,7 +683,7 @@ function MultiZoneSection({ window: w }: { window: Window }) {
   return (
     <div className="bg-card border border-border rounded-lg p-4">
       <div className="flex flex-wrap items-center gap-3 mb-4">
-        <h2 className="text-sm font-medium text-muted-foreground">Multi-Zone Comparison (€/MWh)</h2>
+        <h2 className="text-sm font-semibold text-foreground">Multi-Zone Comparison (€/MWh)</h2>
         <div className="flex items-center gap-1 ml-auto">
           {SPREAD_TABS.map((t) => (
             <button
@@ -837,7 +837,7 @@ function SpreadMonthlySeasonalityChart({ rows }: { rows: SpreadsDailyPoint[] }) 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex flex-wrap items-center gap-3 mb-1">
-        <h2 className="text-sm font-medium text-muted-foreground">
+        <h2 className="text-sm font-semibold text-foreground">
           Spread monthly seasonality - DE-LU (€/MWh)
         </h2>
         <div className="flex items-center gap-1 ml-auto">
@@ -1004,7 +1004,7 @@ function SpreadsDashboard() {
         <>
           <div className="bg-card border border-border rounded-lg p-4 mb-4">
             <div className="flex items-center gap-3 mb-3">
-              <h2 className="text-sm font-medium text-muted-foreground">
+              <h2 className="text-sm font-semibold text-foreground">
                 Spark / Dark / Fuel-Switch Spreads - DE-LU (€/MWh)
               </h2>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">

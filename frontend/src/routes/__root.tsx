@@ -20,17 +20,17 @@ function Root() {
 
   return (
     <div className="flex flex-col h-full">
-      <header className="flex items-center gap-6 px-4 py-2 border-b border-border bg-card shrink-0 z-50">
-        <Link to="/" className="font-semibold text-sm text-foreground hover:text-primary transition-colors tracking-tight">
+      <header className="flex items-center gap-6 px-4 py-2.5 border-b border-border bg-card shrink-0 z-50">
+        <Link to="/" className="font-semibold text-base text-foreground hover:text-primary transition-colors tracking-tight shrink-0">
           Energy Hub
         </Link>
-        <nav className="flex items-center gap-1">
+        <nav className="flex items-center gap-0.5">
           {NAV.map(({ to, label, icon: Icon, enabled }) =>
             enabled ? (
               <Link
                 key={to}
                 to={to}
-                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors [&.active]:text-primary [&.active]:bg-secondary"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors [&.active]:text-primary [&.active]:bg-primary/10 [&.active]:font-medium"
               >
                 <Icon className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{label}</span>
@@ -56,7 +56,7 @@ function Root() {
             <Info className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">About</span>
           </button>
-          <span className="hidden sm:block text-border">|</span>
+          <span className="hidden sm:block text-muted-foreground/30">|</span>
           <a href="https://freight.lbzgiu.xyz" className="hidden sm:block hover:text-foreground transition-colors">
             freight.lbzgiu.xyz
           </a>
