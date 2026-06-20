@@ -706,3 +706,20 @@ class PowerMonthlyResponse(BaseModel):
     zones: list[str]
     months: list[str]
     cells: list[PowerMonthlyCell]
+
+
+class EuGenHourlyPoint(BaseModel):
+    ts: str
+    wind: float | None = None
+    solar: float | None = None
+    hydro: float | None = None
+    nuclear: float | None = None
+    gas: float | None = None
+    coal: float | None = None
+    biomass: float | None = None
+    other_fuel: float | None = None
+    n_zones: int | None = None
+
+
+class EuGenHourlyResponse(BaseModel):
+    rows: list[EuGenHourlyPoint]

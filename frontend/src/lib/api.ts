@@ -667,6 +667,23 @@ export interface PowerMonthlyResponse {
   cells: PowerMonthlyCell[]
 }
 
+export interface EuGenHourlyPoint {
+  ts: string
+  wind: number | null
+  solar: number | null
+  hydro: number | null
+  nuclear: number | null
+  gas: number | null
+  coal: number | null
+  biomass: number | null
+  other_fuel: number | null
+  n_zones: number | null
+}
+
+export interface EuGenHourlyResponse {
+  rows: EuGenHourlyPoint[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -714,6 +731,7 @@ export const api = {
   genEuPriceRe: () => get<EuPriceReResponse>('/generation/eu/price-re'),
   gasCountryCompare: () => get<StorageCountryResponse>('/gas/country-compare'),
   powerMonthly: () => get<PowerMonthlyResponse>('/power/monthly'),
+  genEuHourly: () => get<EuGenHourlyResponse>('/generation/eu/hourly'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

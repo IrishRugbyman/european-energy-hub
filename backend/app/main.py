@@ -75,6 +75,8 @@ from .schemas import (
     StorageCountryResponse,
     PowerMonthlyCell,
     PowerMonthlyResponse,
+    EuGenHourlyPoint,
+    EuGenHourlyResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -2120,3 +2122,61 @@ def imbalance_dispatch():
         summary=summary,
         hourly=hourly,
     )
+
+
+@app.get("/api/generation/eu/hourly", response_model=EuGenHourlyResponse)
+def generation_eu_hourly():
+    """EU-34 aggregate generation by fuel type, last 48h at hourly resolution.
+
+    Averages 15-min actuals per zone per hour then sums across zones.
+    Only hours with >= 28 zones reporting are included (filters early/late incomplete hours).
+    """
+    df = db.query("""
+        WITH hourly_zone AS (
+            SELECT zone,
+                   DATE_TRUNC('hour', ts AT TIME ZONE 'UTC') AS hour_utc,
+                   AVG(wind)     AS wind,
+                   AVG(solar)    AS solar,
+                   AVG(hydro)    AS hydro,
+                   AVG(nuclear)  AS nuclear,
+                   AVG(gas)      AS gas,
+                   AVG(coal)     AS coal,
+                   AVG(biomass)  AS biomass,
+                   AVG(geothermal + oil + other) AS other
+            FROM generation_hourly_recent
+            WHERE ts >= (SELECT MAX(ts) - INTERVAL 48 HOURS FROM generation_hourly_recent)
+            GROUP BY zone, DATE_TRUNC('hour', ts AT TIME ZONE 'UTC')
+        )
+        SELECT STRFTIME(hour_utc, '%Y-%m-%dT%H:00Z') AS ts,
+               ROUND(SUM(wind), 0)     AS wind,
+               ROUND(SUM(solar), 0)    AS solar,
+               ROUND(SUM(hydro), 0)    AS hydro,
+               ROUND(SUM(nuclear), 0)  AS nuclear,
+               ROUND(SUM(gas), 0)      AS gas,
+               ROUND(SUM(coal), 0)     AS coal,
+               ROUND(SUM(biomass), 0)  AS biomass,
+               ROUND(SUM(other), 0)    AS other_fuel,
+               COUNT(DISTINCT zone)    AS n_zones
+        FROM hourly_zone
+        GROUP BY hour_utc
+        HAVING COUNT(DISTINCT zone) >= 28
+        ORDER BY hour_utc
+    """)
+    if df is None or df.empty:
+        return EuGenHourlyResponse(rows=[])
+    rows = [
+        EuGenHourlyPoint(
+            ts=str(r.ts),
+            wind=_float(r.wind),
+            solar=_float(r.solar),
+            hydro=_float(r.hydro),
+            nuclear=_float(r.nuclear),
+            gas=_float(r.gas),
+            coal=_float(r.coal),
+            biomass=_float(r.biomass),
+            other_fuel=_float(r.other_fuel),
+            n_zones=int(r.n_zones) if r.n_zones is not None else None,
+        )
+        for r in df.itertuples()
+    ]
+    return EuGenHourlyResponse(rows=rows)

@@ -1,9 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint } from '@/lib/api'
 import {
-  BarChart, Bar, LineChart, Line, ComposedChart, Area,
+  BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
   XAxis, YAxis, ZAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
 } from 'recharts'
@@ -43,6 +43,102 @@ const FUEL_COLORS: Record<string, string> = {
   coal: '#78716c',
   biomass: '#4ade80',
   other: '#475569',
+  other_fuel: '#475569',
+}
+
+const EU_HOURLY_FUEL_ORDER: (keyof EuGenHourlyPoint & string)[] = [
+  'nuclear', 'hydro', 'wind', 'solar', 'biomass', 'gas', 'coal', 'other_fuel',
+]
+
+function EuGenHourlyChart({ rows }: { rows: EuGenHourlyPoint[] }) {
+  // Build tick marks: show every 6h
+  const ticks = useMemo(() => {
+    return rows.filter((r) => {
+      const h = parseInt(r.ts.slice(11, 13))
+      return h % 6 === 0
+    }).map((r) => r.ts)
+  }, [rows])
+
+  // Compute latest total for stat
+  const last = rows[rows.length - 1]
+  const lastTotal = last
+    ? EU_HOURLY_FUEL_ORDER.reduce((s, f) => s + (last[f] as number | null ?? 0), 0)
+    : null
+  const lastRePct = last && lastTotal
+    ? (((last.wind ?? 0) + (last.solar ?? 0) + (last.hydro ?? 0)) / lastTotal) * 100
+    : null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-4 mb-2">
+        <h2 className="text-sm font-medium text-muted-foreground">EU-34 Real-time Generation Stack (MW) - last 48h</h2>
+        {lastRePct != null && (
+          <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-foreground">
+            RE% now: {lastRePct.toFixed(0)}%
+          </span>
+        )}
+        {lastTotal != null && (
+          <span className="text-xs text-muted-foreground">
+            Total: {Math.round(lastTotal / 1000)}k MW
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        15-min actuals averaged per hour, summed across all reporting zones. Requires 28+ zones.
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <AreaChart data={rows} margin={{ top: 4, right: 8, bottom: 20, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="ts"
+            ticks={ticks}
+            tickFormatter={(v: string) => v.slice(8, 13).replace('T', ' ')}
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            interval={0}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `${Math.round(v / 1000)}k`}
+            width={30}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            labelFormatter={(l) => String(l).slice(0, 16).replace('T', ' ')}
+            formatter={(v, name) => [
+              typeof v === 'number' ? `${Math.round(v as number).toLocaleString()} MW` : '--',
+              String(name) === 'other_fuel' ? 'other' : String(name),
+            ]}
+          />
+          {EU_HOURLY_FUEL_ORDER.map((fuel) => (
+            <Area
+              key={fuel}
+              type="monotone"
+              dataKey={fuel}
+              stackId="gen"
+              stroke={FUEL_COLORS[fuel as keyof typeof FUEL_COLORS] ?? '#64748b'}
+              fill={FUEL_COLORS[fuel as keyof typeof FUEL_COLORS] ?? '#64748b'}
+              fillOpacity={0.85}
+              strokeWidth={0}
+              dot={false}
+              isAnimationActive={false}
+              name={fuel}
+            />
+          ))}
+        </AreaChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-3 mt-2">
+        {EU_HOURLY_FUEL_ORDER.map((f) => (
+          <span key={f} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="w-2.5 h-2.5 rounded-sm inline-block" style={{ background: FUEL_COLORS[f as keyof typeof FUEL_COLORS] ?? '#64748b' }} />
+            {f === 'other_fuel' ? 'other' : f}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
 }
 
 function EuFuelMixChart({ rows }: { rows: EuAnnualFuelRow[] }) {
@@ -436,6 +532,13 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: euHourlyData } = useQuery({
+    queryKey: ['gen-eu-hourly'],
+    queryFn: api.genEuHourly,
+    staleTime: 30 * 60 * 1000,
+    refetchInterval: 30 * 60 * 1000,
+  })
+
   const { data: euFuelData } = useQuery({
     queryKey: ['gen-eu-annual'],
     queryFn: api.genEuAnnual,
@@ -508,6 +611,7 @@ function GenerationTrends() {
 
   return (
     <div className="p-4 h-full overflow-y-auto">
+      {(euHourlyData?.rows.length ?? 0) > 0 && <EuGenHourlyChart rows={euHourlyData!.rows} />}
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
