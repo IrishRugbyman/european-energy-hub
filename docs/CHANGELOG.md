@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 15: EU fuel mix seasonality chart
+
+**New features:**
+1. EU-34 monthly fuel mix seasonality (`/generation`): new `GET /api/generation/eu/monthly-fuel-mix` returns average % share of each fuel type by calendar month (2022+). `MonthlyFuelMixSeasonality` stacked area chart shows solar peaking at ~18% in Jun-Aug, wind at ~21% in Dec-Jan, and nuclear flat at ~24% year-round. Gas and coal peak in winter heating season. Placed immediately after the annual EuFuelMixChart. 83 tests (1 new).
+
+**Artifacts:** `backend/app/schemas.py` (MonthlyFuelMixRow/Response), `backend/app/main.py` (/api/generation/eu/monthly-fuel-mix), `frontend/src/lib/api.ts` (MonthlyFuelMixRow, genEuMonthlyFuelMix), `frontend/src/routes/generation.tsx` (MonthlyFuelMixSeasonality, monthlyFuelMixData query), `backend/tests/test_endpoints.py` (1 new test).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 14: per-zone merit-order correlation
 
 **New features:**
