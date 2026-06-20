@@ -1,5 +1,14 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 14: per-zone merit-order correlation
+
+**New features:**
+1. Per-zone merit-order correlation chart (`/generation`): new `GET /api/generation/zone-price-re-corr` computes 1-year trailing Pearson r between daily base price and renewable % for each zone (joins `power_daily` + `generation_daily`). `ZonePriceReCorrChart` shows a diverging bar chart: DE-LU at -0.80 (strongest RE price suppression), ES -0.77, GR -0.74. Norwegian hydro zones show positive r (NO-5: +0.69) because demand seasonality dominates supply. Placed after the EU RE% vs price scatter. 82 tests (2 new).
+
+**Artifacts:** `backend/app/schemas.py` (ZonePriceReCorrRow/Response), `backend/app/main.py` (/api/generation/zone-price-re-corr), `frontend/src/lib/api.ts` (ZonePriceReCorrRow, genZonePriceReCorr), `frontend/src/routes/generation.tsx` (ZonePriceReCorrChart, priceReCorrData query), `backend/tests/test_endpoints.py` (2 new tests).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 13: zone neg-price ranking, NTC congestion panel, YoY spreads chart
 
 **New features:**
