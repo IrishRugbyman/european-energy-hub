@@ -5,9 +5,11 @@ import {
   Area,
   Bar,
   BarChart,
+  CartesianGrid,
   Cell,
   ComposedChart,
   Line,
+  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -15,7 +17,7 @@ import {
   YAxis,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow } from '@/lib/api'
+import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow } from '@/lib/api'
 import { GasMap, type GasColorMode } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
@@ -431,7 +433,96 @@ function StatChip({
   )
 }
 
-type RankingsView = 'table' | 'chart' | 'pace'
+const COUNTRY_COLORS: Record<string, string> = {
+  EU: '#60a5fa',   // blue
+  DE: '#f59e0b',   // amber
+  FR: '#ef4444',   // red
+  NL: '#a78bfa',   // purple
+  AT: '#34d399',   // green
+  IT: '#fb923c',   // orange
+  ES: '#facc15',   // yellow
+}
+
+const COMPARE_COUNTRIES: (keyof StorageCountryRow & string)[] = ['EU', 'DE', 'FR', 'NL', 'AT', 'IT', 'ES']
+
+function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
+  // Build tick marks: show first of each month
+  const ticks = useMemo(() => {
+    return rows.filter((r) => r.gas_day.slice(8) === '01').map((r) => r.gas_day)
+  }, [rows])
+
+  return (
+    <div>
+      <p className="text-xs text-muted-foreground mb-1">Storage fill % - last 365 days</p>
+      <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-2">
+        <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+          <span className="w-5 h-px inline-block border-t-2 border-dashed border-[#334155]" /> EU 5yr avg
+        </span>
+        {COMPARE_COUNTRIES.map((cc) => (
+          <span key={cc} className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <span className="w-3 h-0.5 rounded inline-block" style={{ background: COUNTRY_COLORS[cc] }} />
+            {cc}
+          </span>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 20, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="gas_day"
+            ticks={ticks}
+            tickFormatter={(v: string) => v.slice(5, 7) + '/' + v.slice(2, 4)}
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            interval={0}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `${v}%`}
+            domain={['auto', 'auto']}
+            width={32}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            labelFormatter={(l) => String(l)}
+            formatter={(v, name) => [
+              typeof v === 'number' ? `${v.toFixed(1)}%` : '--',
+              String(name) === 'EU_avg5' ? 'EU avg5' : String(name),
+            ]}
+          />
+          {/* EU 5yr avg as dashed reference */}
+          <Line
+            dataKey="EU_avg5"
+            stroke="#334155"
+            strokeWidth={1}
+            strokeDasharray="4 2"
+            dot={false}
+            isAnimationActive={false}
+            name="EU_avg5"
+          />
+          {COMPARE_COUNTRIES.map((cc) => (
+            <Line
+              key={cc}
+              dataKey={cc}
+              stroke={COUNTRY_COLORS[cc]}
+              strokeWidth={cc === 'EU' ? 2 : 1.2}
+              dot={false}
+              isAnimationActive={false}
+              name={cc}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <p className="text-xs text-muted-foreground mt-1">
+        DE, FR, NL, AT, IT, ES + EU aggregate. EU dashed line = 5yr seasonal avg.
+      </p>
+    </div>
+  )
+}
+
+type RankingsView = 'table' | 'chart' | 'pace' | 'compare'
 
 function StorageRankings({
   rows,
@@ -450,6 +541,13 @@ function StorageRankings({
     queryFn: api.gasPaceCountries,
     staleTime: 60 * 60 * 1000,
     enabled: view === 'pace',
+  })
+
+  const { data: compareData } = useQuery({
+    queryKey: ['gas-country-compare'],
+    queryFn: api.gasCountryCompare,
+    staleTime: 60 * 60 * 1000,
+    enabled: view === 'compare',
   })
 
   const sorted = useMemo(() => {
@@ -484,7 +582,7 @@ function StorageRankings({
         <div className="flex items-center gap-2">
           {/* Table/Chart toggle */}
           <div className="flex rounded border border-border overflow-hidden text-xs">
-            {([['table', 'Table'], ['chart', 'vs avg'], ['pace', 'Pace']] as [RankingsView, string][]).map(([v, label]) => (
+            {([['table', 'Table'], ['chart', 'vs avg'], ['pace', 'Pace'], ['compare', 'Trend']] as [RankingsView, string][]).map(([v, label]) => (
               <button
                 key={v}
                 onClick={() => setView(v)}
@@ -556,6 +654,14 @@ function StorageRankings({
               <PaceComparisonChart rows={paceData.rows} onSelect={onSelect} />
               <p className="text-xs text-muted-foreground px-4 pb-2">Click a row to open country detail</p>
             </>
+          )}
+        </div>
+      ) : view === 'compare' ? (
+        <div className="flex-1 overflow-y-auto p-3">
+          {!compareData ? (
+            <div className="flex items-center justify-center h-24 text-muted-foreground text-xs">Loading...</div>
+          ) : (
+            <StorageCountryCompare rows={compareData.rows} />
           )}
         </div>
       ) : (

@@ -637,6 +637,22 @@ export interface EuPriceReResponse {
   rows: EuPriceRePoint[]
 }
 
+export interface StorageCountryRow {
+  gas_day: string
+  EU: number | null
+  EU_avg5: number | null
+  DE: number | null
+  FR: number | null
+  NL: number | null
+  AT: number | null
+  IT: number | null
+  ES: number | null
+}
+
+export interface StorageCountryResponse {
+  rows: StorageCountryRow[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -682,6 +698,7 @@ export const api = {
   genEuCarbonIntensity: () => get<EuCiDailyResponse>('/generation/eu/carbon-intensity'),
   genZonesCf: () => get<ZoneCfResponse>('/generation/zones/cf'),
   genEuPriceRe: () => get<EuPriceReResponse>('/generation/eu/price-re'),
+  gasCountryCompare: () => get<StorageCountryResponse>('/gas/country-compare'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),

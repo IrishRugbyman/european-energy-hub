@@ -71,6 +71,8 @@ from .schemas import (
     ZoneCfResponse,
     EuPriceRePoint,
     EuPriceReResponse,
+    StorageCountryRow,
+    StorageCountryResponse,
     ImbalanceMonthlyRow,
     ImbalanceMonthlyResponse,
     ImbalanceRecentPoint,
@@ -627,6 +629,50 @@ def gas_pace_countries():
         ))
 
     return GasPaceCountriesResponse(target_date=nov1.isoformat(), rows=rows)
+
+
+@app.get("/api/gas/country-compare", response_model=StorageCountryResponse)
+def gas_country_compare():
+    """365-day storage fill% for DE, FR, NL, AT, IT, ES + EU (wide format).
+
+    Returns one row per gas_day with per-country fill% columns.
+    EU_avg5 is the 5-year seasonal average for the EU aggregate.
+    """
+    df = db.query("""
+        SELECT sh.gas_day::VARCHAR AS gas_day,
+               MAX(CASE WHEN sh.country = 'EU' THEN sh.full_pct END) AS EU,
+               MAX(CASE WHEN sh.country = 'EU' THEN ss.avg5      END) AS EU_avg5,
+               MAX(CASE WHEN sh.country = 'DE' THEN sh.full_pct END) AS DE,
+               MAX(CASE WHEN sh.country = 'FR' THEN sh.full_pct END) AS FR,
+               MAX(CASE WHEN sh.country = 'NL' THEN sh.full_pct END) AS NL,
+               MAX(CASE WHEN sh.country = 'AT' THEN sh.full_pct END) AS AT,
+               MAX(CASE WHEN sh.country = 'IT' THEN sh.full_pct END) AS IT,
+               MAX(CASE WHEN sh.country = 'ES' THEN sh.full_pct END) AS ES
+        FROM storage_history sh
+        JOIN storage_seasonal ss
+          ON ss.country = sh.country AND ss.doy = DAYOFYEAR(sh.gas_day::DATE)
+        WHERE sh.country IN ('DE', 'FR', 'IT', 'NL', 'ES', 'AT', 'EU')
+          AND sh.gas_day >= (SELECT MAX(gas_day) - INTERVAL 365 DAYS FROM storage_history)
+        GROUP BY sh.gas_day
+        ORDER BY sh.gas_day
+    """)
+    if df is None or df.empty:
+        return StorageCountryResponse(rows=[])
+    rows = [
+        StorageCountryRow(
+            gas_day=str(r["gas_day"]),
+            EU=round(_float(r["EU"]) or 0.0, 1) if r["EU"] is not None else None,
+            EU_avg5=round(_float(r["EU_avg5"]) or 0.0, 1) if r["EU_avg5"] is not None else None,
+            DE=round(_float(r["DE"]) or 0.0, 1) if r["DE"] is not None else None,
+            FR=round(_float(r["FR"]) or 0.0, 1) if r["FR"] is not None else None,
+            NL=round(_float(r["NL"]) or 0.0, 1) if r["NL"] is not None else None,
+            AT=round(_float(r["AT"]) or 0.0, 1) if r["AT"] is not None else None,
+            IT=round(_float(r["IT"]) or 0.0, 1) if r["IT"] is not None else None,
+            ES=round(_float(r["ES"]) or 0.0, 1) if r["ES"] is not None else None,
+        )
+        for _, r in df.iterrows()
+    ]
+    return StorageCountryResponse(rows=rows)
 
 
 @app.get("/api/power/congestion", response_model=CongestionResponse)

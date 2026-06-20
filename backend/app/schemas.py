@@ -676,3 +676,19 @@ class EuPriceRePoint(BaseModel):
 
 class EuPriceReResponse(BaseModel):
     rows: list[EuPriceRePoint]
+
+
+class StorageCountryRow(BaseModel):
+    gas_day: str
+    EU: float | None = None
+    EU_avg5: float | None = None
+    DE: float | None = None
+    FR: float | None = None
+    NL: float | None = None
+    AT: float | None = None
+    IT: float | None = None
+    ES: float | None = None
+
+
+class StorageCountryResponse(BaseModel):
+    rows: list[StorageCountryRow]
