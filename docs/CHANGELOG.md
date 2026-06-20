@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 26: Nordic/Baltic border flows + full zone centroid coverage
+
+**New features:**
+1. Nordic/Baltic border flows: expanded ENTSO_E_BORDERS in market-data/config.py from 12 to 34 pairs, adding all key Norwegian intrazone corridors (NO-1/NO-2/NO-3/NO-4/NO-5), NordLink HVDC (NO-2 to DE-LU), NorNed (NO-5 to NL), Swedish internal cascade (SE-1 through SE-4), Baltic Cable (SE-4 to DE-LU), Danish interconnections (DK-1/DK-2 to DE-LU), and Nordic-Baltic links (EE-FI EstLink, SE-1-FI, SE-3-LT NordBalt, NO-1-SE-3 Hasle). 90-day window ingested.
+2. Full zone centroid coverage: ZONE_CENTROIDS in InterconnectionLayer.tsx now covers all 45 zones (was 18). Previous gap meant flow arrows were silently dropped for any pair involving NO/SE/DK/FI/EE/LV/LT/PL/CZ and other expansion zones - the `if (!fromCoord || !toCoord) continue` guard discarded them without error.
+3. Nordic divergence alerts: BORDER_PAIRS in divergence.py extended to match the new border set. Price-spread coloring on the interconnections layer now shows Norwegian and Swedish congestion corridors (today: SE-2 to SE-3 at -38 EUR/MWh, NO-2 to NO-5 at +52 EUR/MWh).
+4. IT-CALA siblings fix: all Italian zones' ZONE_SIBLINGS arrays now include IT-CALA. Clicking IT-CALA previously showed no highlighted row since it was absent from every sibling list including its own.
+
+**Artifacts:** `shared/market-data/config.py` (ENTSO_E_BORDERS 12->34 pairs), `backend/analytics/divergence.py` (BORDER_PAIRS 12->33 pairs), `frontend/src/components/power/InterconnectionLayer.tsx` (ZONE_CENTROIDS 18->45 zones), `frontend/src/lib/scales.ts` (IT_SIBLINGS constant includes IT-CALA).
+
+---
+
 ## 2026-06-20 - Post-roadmap round 25: live congestion hotspot chip + smart spread country
 
 **New features:**
