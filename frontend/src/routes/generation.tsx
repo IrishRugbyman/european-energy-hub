@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -875,6 +875,112 @@ function EuDuckCurveChart({ rows }: { rows: EuDuckCurvePoint[] }) {
   )
 }
 
+const ZONE_PROFILE_COLORS: Record<string, string> = {
+  'DE-LU': '#60a5fa',
+  'FR':    '#4ade80',
+  'ES':    '#f97316',
+  'NO-2':  '#a78bfa',
+  'IT-NORD': '#facc15',
+  'NL':    '#38bdf8',
+}
+const ZONE_PROFILE_DEFAULT = ['DE-LU', 'FR', 'ES', 'NO-2']
+
+function ZoneHourlyComparisonChart({ rows }: { rows: ZoneHourlyProfileRow[] }) {
+  const allZones = useMemo(() => [...new Set(rows.map((r) => r.zone))].sort(), [rows])
+  const [selected, setSelected] = useState<string[]>(ZONE_PROFILE_DEFAULT)
+
+  const byZone = useMemo(() => {
+    const m: Record<string, ZoneHourlyProfileRow[]> = {}
+    for (const r of rows) {
+      if (!m[r.zone]) m[r.zone] = []
+      m[r.zone].push(r)
+    }
+    return m
+  }, [rows])
+
+  const chartData = useMemo(() => {
+    return Array.from({ length: 24 }, (_, h) => {
+      const entry: Record<string, number | null> = { hour: h }
+      for (const z of selected) {
+        entry[z] = byZone[z]?.find((r) => r.hour === h)?.avg_eur ?? null
+      }
+      return entry
+    })
+  }, [byZone, selected])
+
+  const toggle = (z: string) =>
+    setSelected((prev) =>
+      prev.includes(z) ? (prev.length > 1 ? prev.filter((x) => x !== z) : prev) : [...prev, z]
+    )
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <h2 className="text-sm font-medium text-muted-foreground mb-1">
+        Zone hourly DA price profile - 30-day average (€/MWh)
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Average price by hour of day, trailing 30 days. The solar duck curve depth varies by zone:
+        DE-LU/ES have a deep midday trough; nuclear-dominated FR has a flatter profile; NO-2 (hydro)
+        stays high during heating hours.
+      </p>
+      <div className="flex flex-wrap gap-1 mb-3">
+        {allZones.map((z) => (
+          <button
+            key={z}
+            onClick={() => toggle(z)}
+            className={`px-1.5 py-0.5 rounded text-xs transition-colors ${
+              selected.includes(z)
+                ? 'text-background font-medium'
+                : 'bg-secondary text-muted-foreground hover:text-foreground'
+            }`}
+            style={selected.includes(z) ? { background: ZONE_PROFILE_COLORS[z] ?? '#94a3b8' } : undefined}
+          >
+            {z}
+          </button>
+        ))}
+      </div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={chartData} margin={{ top: 4, right: 12, bottom: 4, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+          <XAxis
+            dataKey="hour"
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(h: number) => `${String(h).padStart(2, '0')}:00`}
+            ticks={[0, 4, 8, 12, 16, 20, 23]}
+          />
+          <YAxis
+            tick={{ fontSize: 10, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            unit=" €"
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+            formatter={(v: unknown, name: string | number | undefined) => [
+              v != null ? `${Number(v).toFixed(1)} €/MWh` : '--',
+              name != null ? String(name) : '',
+            ]}
+            labelFormatter={(h: unknown) => `${String(Number(h)).padStart(2, '0')}:00`}
+          />
+          <ReferenceLine y={0} stroke="#475569" strokeDasharray="4 2" />
+          {selected.map((z) => (
+            <Line
+              key={z}
+              type="monotone"
+              dataKey={z}
+              stroke={ZONE_PROFILE_COLORS[z] ?? '#94a3b8'}
+              strokeWidth={2}
+              dot={false}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -955,6 +1061,12 @@ function GenerationTrends() {
     staleTime: 24 * 60 * 60 * 1000,
   })
 
+  const { data: hourlyProfilesData } = useQuery({
+    queryKey: ['power-hourly-profiles-all'],
+    queryFn: api.powerHourlyProfilesAll,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -1006,6 +1118,7 @@ function GenerationTrends() {
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
       {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}
+      {(hourlyProfilesData?.rows.length ?? 0) > 0 && <ZoneHourlyComparisonChart rows={hourlyProfilesData!.rows} />}
       {(zoneCfData?.rows.length ?? 0) > 0 && <ZoneCfChart rows={zoneCfData!.rows} />}
       {(priceReData?.rows.length ?? 0) > 0 && <EuPriceReScatter rows={priceReData!.rows} />}
       {(priceReCorrData?.rows.length ?? 0) > 0 && <ZonePriceReCorrChart rows={priceReCorrData!.rows} />}

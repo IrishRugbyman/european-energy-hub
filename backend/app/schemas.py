@@ -812,3 +812,14 @@ class MonthlyFuelMixRow(BaseModel):
 
 class MonthlyFuelMixResponse(BaseModel):
     rows: list[MonthlyFuelMixRow]
+
+
+class ZoneHourlyProfileRow(BaseModel):
+    zone: str
+    hour: int
+    avg_eur: float | None
+    neg_pct: float | None
+
+
+class ZoneHourlyProfilesResponse(BaseModel):
+    rows: list[ZoneHourlyProfileRow]

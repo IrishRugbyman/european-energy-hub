@@ -125,6 +125,8 @@ from .schemas import (
     ZonePriceReCorrResponse,
     MonthlyFuelMixRow,
     MonthlyFuelMixResponse,
+    ZoneHourlyProfileRow,
+    ZoneHourlyProfilesResponse,
 )
 
 
@@ -2409,3 +2411,28 @@ def generation_eu_monthly_fuel_mix():
         for r in df.itertuples()
     ]
     return MonthlyFuelMixResponse(rows=rows)
+
+
+@app.get("/api/power/hourly-profiles-all", response_model=ZoneHourlyProfilesResponse)
+def power_hourly_profiles_all():
+    """30-day trailing hourly average DA price and neg-price % for all 34 zones (816 rows)."""
+    df = db.query("""
+        SELECT zone,
+               hour,
+               ROUND(avg_eur, 1)  AS avg_eur,
+               ROUND(neg_pct, 1)  AS neg_pct
+        FROM power_hourly_profiles
+        ORDER BY zone, hour
+    """)
+    if df is None or df.empty:
+        return ZoneHourlyProfilesResponse(rows=[])
+    rows = [
+        ZoneHourlyProfileRow(
+            zone=str(r.zone),
+            hour=int(r.hour),
+            avg_eur=_float(r.avg_eur),
+            neg_pct=_float(r.neg_pct),
+        )
+        for r in df.itertuples()
+    ]
+    return ZoneHourlyProfilesResponse(rows=rows)

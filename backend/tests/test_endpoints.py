@@ -920,3 +920,22 @@ def test_generation_eu_monthly_fuel_mix(client):
         total = sum(row[k] for k in ("solar_pct", "wind_pct", "nuclear_pct", "hydro_pct",
                                       "gas_pct", "coal_pct", "biomass_pct", "other_pct"))
         assert 90 <= total <= 110, f"fuel shares sum to {total}, expected ~100"
+
+
+def test_power_hourly_profiles_all(client):
+    """power/hourly-profiles-all returns 24 rows per zone."""
+    r = client.get("/api/power/hourly-profiles-all")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    rows = data["rows"]
+    assert len(rows) > 0
+    zones = {row["zone"] for row in rows}
+    assert "DE-LU" in zones and "FR" in zones
+    for row in rows:
+        assert 0 <= row["hour"] <= 23
+    # Each zone should have exactly 24 hourly entries
+    de_rows = [r for r in rows if r["zone"] == "DE-LU"]
+    assert len(de_rows) == 24
+    hours = sorted(r["hour"] for r in de_rows)
+    assert hours == list(range(24))
