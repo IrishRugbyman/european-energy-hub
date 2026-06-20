@@ -445,19 +445,75 @@ const COUNTRY_COLORS: Record<string, string> = {
 
 const COMPARE_COUNTRIES: (keyof StorageCountryRow & string)[] = ['EU', 'DE', 'FR', 'NL', 'AT', 'IT', 'ES']
 
+function buildEuProjection(rows: StorageCountryRow[]): { gas_day: string; EU_proj: number | null }[] {
+  // Compute EU injection rate from last 7 days, project to Nov 1
+  if (rows.length < 8) return []
+  const last = rows[rows.length - 1]
+  const week = rows[rows.length - 8]
+  const euNow = last.EU
+  const euWeekAgo = week.EU
+  if (euNow == null || euWeekAgo == null) return []
+  const rate7d = (euNow - euWeekAgo) / 7 // pct/day
+  // Only project if currently injecting (positive rate)
+  if (rate7d <= 0) return []
+  const startDate = new Date(last.gas_day + 'T00:00:00Z')
+  const targetDate = new Date(`${startDate.getUTCFullYear()}-11-01T00:00:00Z`)
+  if (startDate >= targetDate) return []
+  const result: { gas_day: string; EU_proj: number | null }[] = []
+  let fill = euNow
+  const d = new Date(startDate)
+  while (d <= targetDate) {
+    const dayStr = d.toISOString().slice(0, 10)
+    result.push({ gas_day: dayStr, EU_proj: Math.min(fill, 100) })
+    fill += rate7d
+    d.setUTCDate(d.getUTCDate() + 1)
+  }
+  return result
+}
+
 function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
-  // Build tick marks: show first of each month
-  const ticks = useMemo(() => {
-    return rows.filter((r) => r.gas_day.slice(8) === '01').map((r) => r.gas_day)
+  // Build tick marks: show first of each month (including future months)
+  const { combined, projTicks } = useMemo(() => {
+    const proj = buildEuProjection(rows)
+    const lastHistDate = rows[rows.length - 1]?.gas_day ?? ''
+    const futureProj = proj.filter((p) => p.gas_day > lastHistDate)
+    // Build combined dataset: historical rows get EU_proj=null; future rows have only EU_proj set
+    const hist = rows.map((r) => ({ ...r, EU_proj: null as number | null }))
+    // Patch last historical row to connect the line
+    if (hist.length > 0 && proj.length > 0) {
+      hist[hist.length - 1] = { ...hist[hist.length - 1], EU_proj: hist[hist.length - 1].EU }
+    }
+    const future = futureProj.map((p) => ({
+      gas_day: p.gas_day,
+      EU: null as number | null,
+      EU_avg5: null as number | null,
+      EU_proj: p.EU_proj,
+      DE: null as number | null,
+      FR: null as number | null,
+      NL: null as number | null,
+      AT: null as number | null,
+      IT: null as number | null,
+      ES: null as number | null,
+    }))
+    const all = [...hist, ...future]
+    const ticks = all.filter((r) => r.gas_day.slice(8) === '01').map((r) => r.gas_day)
+    return { combined: all, projTicks: ticks }
   }, [rows])
+
+  const hasProjection = combined.some((r) => r.EU_proj != null && (r as {EU: number | null}).EU == null)
 
   return (
     <div>
-      <p className="text-xs text-muted-foreground mb-1">Storage fill % - last 365 days</p>
+      <p className="text-xs text-muted-foreground mb-1">Storage fill % - last 365 days + EU projection to Nov 1</p>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5 mb-2">
         <span className="text-[10px] text-muted-foreground flex items-center gap-1">
           <span className="w-5 h-px inline-block border-t-2 border-dashed border-[#334155]" /> EU 5yr avg
         </span>
+        {hasProjection && (
+          <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+            <span className="w-5 h-px inline-block border-t border-dashed border-blue-400 opacity-70" /> EU proj.
+          </span>
+        )}
         {COMPARE_COUNTRIES.map((cc) => (
           <span key={cc} className="text-[10px] text-muted-foreground flex items-center gap-1">
             <span className="w-3 h-0.5 rounded inline-block" style={{ background: COUNTRY_COLORS[cc] }} />
@@ -466,11 +522,11 @@ function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
         ))}
       </div>
       <ResponsiveContainer width="100%" height={220}>
-        <LineChart data={rows} margin={{ top: 4, right: 8, bottom: 20, left: 0 }}>
+        <LineChart data={combined} margin={{ top: 4, right: 8, bottom: 20, left: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
           <XAxis
             dataKey="gas_day"
-            ticks={ticks}
+            ticks={projTicks}
             tickFormatter={(v: string) => v.slice(5, 7) + '/' + v.slice(2, 4)}
             tick={{ fontSize: 8, fill: '#64748b' }}
             tickLine={false}
@@ -487,10 +543,12 @@ function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
           <Tooltip
             contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
             labelFormatter={(l) => String(l)}
-            formatter={(v, name) => [
-              typeof v === 'number' ? `${v.toFixed(1)}%` : '--',
-              String(name) === 'EU_avg5' ? 'EU avg5' : String(name),
-            ]}
+            formatter={(v, name) => {
+              const n = typeof v === 'number' ? v : null
+              const label = String(name) === 'EU_avg5' ? 'EU avg5'
+                : String(name) === 'EU_proj' ? 'EU (proj)' : String(name)
+              return [n != null ? `${n.toFixed(1)}%` : '--', label]
+            }}
           />
           {/* Winter target reference lines */}
           <ReferenceLine y={90} stroke="#22c55e" strokeDasharray="4 2" strokeWidth={1}
@@ -509,6 +567,20 @@ function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
             isAnimationActive={false}
             name="EU_avg5"
           />
+          {/* EU projected trajectory at current injection rate */}
+          {hasProjection && (
+            <Line
+              dataKey="EU_proj"
+              stroke="#60a5fa"
+              strokeWidth={1.5}
+              strokeDasharray="6 3"
+              strokeOpacity={0.7}
+              dot={false}
+              isAnimationActive={false}
+              name="EU_proj"
+              connectNulls
+            />
+          )}
           {COMPARE_COUNTRIES.map((cc) => (
             <Line
               key={cc}
@@ -523,7 +595,7 @@ function StorageCountryCompare({ rows }: { rows: StorageCountryRow[] }) {
         </LineChart>
       </ResponsiveContainer>
       <p className="text-xs text-muted-foreground mt-1">
-        DE, FR, NL, AT, IT, ES + EU aggregate. EU dashed line = 5yr seasonal avg.
+        DE, FR, NL, AT, IT, ES + EU aggregate. EU dashed = 5yr avg. Blue dotted = EU projection at 7d injection rate.
       </p>
     </div>
   )
