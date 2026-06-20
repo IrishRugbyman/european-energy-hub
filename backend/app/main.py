@@ -115,6 +115,8 @@ from .schemas import (
     TtfCurveSnapshotsResponse,
     CapacityAnnualRow,
     CapacityAnnualResponse,
+    NegHoursMonthlyRow,
+    NegHoursMonthlyResponse,
 )
 
 
@@ -2248,3 +2250,33 @@ def generation_capacity_annual():
         for r in df.itertuples()
     ]
     return CapacityAnnualResponse(rows=rows)
+
+
+@app.get("/api/power/neg-hours-monthly", response_model=NegHoursMonthlyResponse)
+def power_neg_hours_monthly():
+    """Monthly negative price hour % for ES, FR, DE-LU, NL and EU average."""
+    df = db.query("""
+        SELECT DATE_TRUNC('month', price_date)::DATE::VARCHAR AS month,
+               ROUND(AVG(neg_hours) / 24.0 * 100, 1)                                      AS eu_avg,
+               ROUND(AVG(CASE WHEN zone = 'ES'    THEN neg_hours END) / 24.0 * 100, 1)    AS es,
+               ROUND(AVG(CASE WHEN zone = 'FR'    THEN neg_hours END) / 24.0 * 100, 1)    AS fr,
+               ROUND(AVG(CASE WHEN zone = 'DE-LU' THEN neg_hours END) / 24.0 * 100, 1)    AS de,
+               ROUND(AVG(CASE WHEN zone = 'NL'    THEN neg_hours END) / 24.0 * 100, 1)    AS nl
+        FROM power_daily
+        GROUP BY DATE_TRUNC('month', price_date)
+        ORDER BY 1
+    """)
+    if df is None or df.empty:
+        return NegHoursMonthlyResponse(rows=[])
+    rows = [
+        NegHoursMonthlyRow(
+            month=str(r.month)[:7],
+            eu_avg=_float(r.eu_avg),
+            es=_float(r.es),
+            fr=_float(r.fr),
+            de=_float(r.de),
+            nl=_float(r.nl),
+        )
+        for r in df.itertuples()
+    ]
+    return NegHoursMonthlyResponse(rows=rows)

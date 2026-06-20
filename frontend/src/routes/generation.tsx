@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow } from '@/lib/api'
 import {
   BarChart, Bar, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -243,6 +243,90 @@ function EuCapacityChart({ rows }: { rows: CapacityAnnualRow[] }) {
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <span className="w-2.5 h-2.5 rounded-sm inline-block bg-amber-400" /> solar
         </span>
+      </div>
+    </div>
+  )
+}
+
+const NEG_ZONE_COLORS: Record<string, string> = {
+  es: '#f59e0b',
+  fr: '#60a5fa',
+  de: '#4ade80',
+  nl: '#a78bfa',
+  eu_avg: '#94a3b8',
+}
+
+function NegHoursMonthlyChart({ rows }: { rows: NegHoursMonthlyRow[] }) {
+  if (rows.length === 0) return null
+  const data = rows.map((r) => ({
+    month: r.month.slice(2),  // "2025-04" -> "25-04"
+    eu_avg: r.eu_avg,
+    es: r.es,
+    fr: r.fr,
+    de: r.de,
+    nl: r.nl,
+  }))
+  // Find peak month for ES
+  const peakEs = rows.reduce((a, b) => (b.es ?? 0) > (a.es ?? 0) ? b : a, rows[0])
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h2 className="text-sm font-medium text-muted-foreground">Negative Price Hour Frequency - Monthly (%)</h2>
+        {(peakEs.es ?? 0) > 0 && (
+          <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded">
+            ES peak: {peakEs.es}% ({peakEs.month})
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        % of hours per month where day-ahead price &lt; 0. Rising as solar capacity saturates the midday merit order.
+      </p>
+      <ResponsiveContainer width="100%" height={160}>
+        <LineChart data={data} margin={{ top: 4, right: 8, bottom: 16, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="month"
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            interval={2}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            width={28}
+            unit="%"
+            domain={[0, 'auto']}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v: unknown, name: unknown) => [
+              typeof v === 'number' ? `${v.toFixed(1)}%` : '--',
+              String(name).replace('eu_avg', 'EU avg').toUpperCase(),
+            ]}
+            labelFormatter={(l) => String(l)}
+          />
+          {(['es', 'fr', 'de', 'nl', 'eu_avg'] as const).map((k) => (
+            <Line
+              key={k}
+              dataKey={k}
+              stroke={NEG_ZONE_COLORS[k]}
+              strokeWidth={k === 'eu_avg' ? 1 : 1.5}
+              strokeDasharray={k === 'eu_avg' ? '4 2' : undefined}
+              dot={false}
+              isAnimationActive={false}
+              name={k}
+              connectNulls
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-3 mt-2">
+        {([['es', 'ES'], ['fr', 'FR'], ['de', 'DE-LU'], ['nl', 'NL'], ['eu_avg', 'EU avg']] as const).map(([k, label]) => (
+          <span key={k} className="flex items-center gap-1 text-xs text-muted-foreground">
+            <span className="w-3 h-0.5 rounded inline-block" style={{ background: NEG_ZONE_COLORS[k], opacity: k === 'eu_avg' ? 0.6 : 1 }} />
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   )
@@ -692,6 +776,12 @@ function GenerationTrends() {
     staleTime: 24 * 60 * 60 * 1000,
   })
 
+  const { data: negHoursData } = useQuery({
+    queryKey: ['power-neg-hours-monthly'],
+    queryFn: api.powerNegHoursMonthly,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Build lookup: zone -> year -> renewable_pct
   const lookup = useMemo(() => {
     const m: Record<string, Record<number, number | null>> = {}
@@ -737,6 +827,7 @@ function GenerationTrends() {
       {(euHourlyData?.rows.length ?? 0) > 0 && <EuGenHourlyChart rows={euHourlyData!.rows} />}
       {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
       {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
+      {(negHoursData?.rows.length ?? 0) > 0 && <NegHoursMonthlyChart rows={negHoursData!.rows} />}
       {(euMonthlyData?.rows.length ?? 0) > 0 && <GenMonthlyChart rows={euMonthlyData!.rows} />}
       {(euCiData?.rows.length ?? 0) > 0 && <EuCarbonIntensityChart rows={euCiData!.rows} />}
       {(duckCurveData?.rows.length ?? 0) > 0 && <EuDuckCurveChart rows={duckCurveData!.rows} />}

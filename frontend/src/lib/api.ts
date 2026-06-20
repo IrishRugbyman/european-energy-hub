@@ -708,6 +708,19 @@ export interface CapacityAnnualResponse {
   rows: CapacityAnnualRow[]
 }
 
+export interface NegHoursMonthlyRow {
+  month: string
+  eu_avg: number | null
+  es: number | null
+  fr: number | null
+  de: number | null
+  nl: number | null
+}
+
+export interface NegHoursMonthlyResponse {
+  rows: NegHoursMonthlyRow[]
+}
+
 export interface ImbalanceMonthlyRow {
   year: number
   month: number
@@ -766,4 +779,5 @@ export const api = {
   pricesCurveSnapshots: () => get<TtfCurveSnapshotsResponse>('/prices/curve/snapshots'),
   imbalanceMonthly: () => get<ImbalanceMonthlyResponse>('/imbalance/monthly'),
   genCapacityAnnual: () => get<CapacityAnnualResponse>('/generation/capacity-annual'),
+  powerNegHoursMonthly: () => get<NegHoursMonthlyResponse>('/power/neg-hours-monthly'),
 }

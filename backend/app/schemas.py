@@ -749,3 +749,16 @@ class CapacityAnnualRow(BaseModel):
 
 class CapacityAnnualResponse(BaseModel):
     rows: list[CapacityAnnualRow]
+
+
+class NegHoursMonthlyRow(BaseModel):
+    month: str
+    eu_avg: float | None = None
+    es: float | None = None
+    fr: float | None = None
+    de: float | None = None
+    nl: float | None = None
+
+
+class NegHoursMonthlyResponse(BaseModel):
+    rows: list[NegHoursMonthlyRow]

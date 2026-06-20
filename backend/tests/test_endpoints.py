@@ -779,3 +779,19 @@ def test_generation_capacity_annual(client):
         assert "n_zones" in row
         assert row["wind_gw"] > 0
         assert row["solar_gw"] > 0
+
+
+def test_power_neg_hours_monthly(client):
+    """power/neg-hours-monthly returns monthly rows with zone columns."""
+    r = client.get("/api/power/neg-hours-monthly")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    for row in data["rows"]:
+        assert "month" in row
+        assert len(row["month"]) == 7  # "YYYY-MM"
+        assert "eu_avg" in row
+        assert "es" in row
+        assert "fr" in row
+        assert "de" in row
+        assert "nl" in row
