@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-20 - Post-roadmap round 9: duck curve chart, gas target lines, test coverage
+
+**New features:**
+1. Duck curve monthly bar chart in zone panel (`/map`): zone Price tab now shows a monthly peak-vs-offpeak spread bar chart (amber = peak > offpeak = traditional; purple = peak < offpeak = solar duck curve). Uses existing `power_daily` data already returned by `/api/power/zone/{zone_id}`. Shows duck curve intensifying year-over-year: DE-LU April spread went from -32 EUR/MWh (2025) to -47 EUR/MWh (2026).
+2. Gas storage target reference lines (`/gas`): multi-country storage "Trend" compare chart now shows horizontal reference lines at 90% (Nov 1 EU target, green) and 75% (Sep 1 interim target, amber). Makes it immediately clear which countries are on track and how far behind.
+3. Tests: added 5 tests for round 8 endpoints (country-compare, power-monthly, gen-hourly, price-re, zones-cf). Total: 72 tests.
+
+**Bugs fixed:**
+- Duplicate `TtfCurvePoint` schema class (added inadvertently to bottom of schemas.py) overrode the original definition and caused `test_prices_curve` to fail with missing `sort_key` field.
+
+**Artifacts:** `frontend/src/components/map/UnifiedZonePanel.tsx` (DuckCurveChart, buildDuckCurveMonthly, Cell import), `frontend/src/routes/gas.tsx` (ReferenceLine 90%/75%), `backend/app/schemas.py` (removed duplicate), `backend/tests/test_endpoints.py`.
+
+---
+
 ## 2026-06-20 - Post-roadmap round 8: injection rate charts, zone CF bar chart, merit order scatter, multi-country storage trend, monthly power heatmap
 
 **New features:**
