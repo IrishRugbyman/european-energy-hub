@@ -223,24 +223,7 @@ quantiles). Components per dashboard under `src/components/gas/` and
 
 - Phase 24 - Pipeline disruption context on /spreads and /gas [COMPLETE 2026-06-19]
 
-## Phase 25 - UGS facilities layer on /gas
-
-Show individual underground gas storage (UGS) facilities as circle markers on the /gas choropleth map.
-
-### Tasks
-
-- [ ] `analytics/gas.py` - add `build_facilities_table()` reading `storage_facilities_wm` where `facility_type='ugs'`; return DataFrame with id, name, operator, country, lat, lon, capacity_twh
-- [ ] `scripts/refresh.py` - call `build_facilities_table()`, add `_write_facilities()`, write `storage_facilities` table to energy_hub.duckdb
-- [ ] `app/schemas.py` - add `StorageFacilityItem` model (id, name, operator, country, lat, lon, capacity_twh)
-- [ ] `app/main.py` - add `GET /api/gas/facilities` endpoint reading `storage_facilities` table
-- [ ] `frontend/src/lib/api.ts` - add `gasFacilities()` query function and `StorageFacilityItem` type
-- [ ] `frontend/src/components/gas/StorageFacilitiesLayer.tsx` - Leaflet `CircleMarker` layer; circle radius = `sqrt(capacity_twh) * 1.2` (capped 4-20px); color from country fill % via `gasFillColor`; tooltip shows name, capacity TWh, operator, country
-- [ ] `frontend/src/components/gas/GasMap.tsx` - accept `showFacilities` + `facilityRows` props, render `StorageFacilitiesLayer`
-- [ ] `frontend/src/routes/gas.tsx` - add "Facilities" toggle button next to Flows toggle; wire `useQuery` for `gasFacilities`; pass to `GasMap`
-
-### Outcome
-
-56 European UGS facilities rendered as proportional circles on the /gas map. Color matches the country choropleth fill %. Toggle off by default. Tooltip on hover: facility name, operator, capacity (TWh), country. No new data fetch needed - coordinates and capacity already in `storage_facilities_wm`.
+- Phase 25 - UGS facilities layer on /gas [COMPLETE 2026-06-22]
 
 ---
 
