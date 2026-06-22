@@ -227,35 +227,7 @@ quantiles). Components per dashboard under `src/components/gas/` and
 
 ---
 
-## Phase 26 - Per-facility fill data from AGSI (facility-level time series)
-
-Upgrade the facilities layer with real per-facility fill % instead of the country aggregate.
-
-### Context
-
-Phase 25 colors facility circles by their country's aggregate fill %. AGSI+ exposes per-facility
-time series via the same API (127 facility EIC codes in `agsi/agsi_dataproviders.json`). This phase
-fetches that data, stores it in a new `gas_storage_facility` table, and uses it to color the circles
-with actual per-facility fill data.
-
-### Tasks
-
-- [ ] `market-data/fetchers/agsi.py` - add `fetch_facilities(from_date, to_date)` that loops all
-  DSR-type entries in `agsi_dataproviders.json` and upserts into a new `gas_storage_facility(gas_day, eic, full_pct, injection, withdrawal, working_gas_volume)` table
-- [ ] `market-data/ingest.py` - wire `agsi-facilities` fetcher, run backfill from 2022-01-01
-- [ ] `market-data/loaders/gas.py` - add `load_gas_storage_facilities(eics, start, end)` loader
-- [ ] `market-data/db.py` - add `init_schema` for `gas_storage_facility`
-- [ ] `analytics/gas.py` - extend `build_facilities_table()` to LEFT JOIN facility fill from
-  `gas_storage_facility` (latest gas_day per EIC); match by EIC stored in `storage_facilities_wm`
-- [ ] `app/schemas.py` - add `fill_pct: float | None` to `StorageFacilityItem`
-- [ ] `app/main.py` - `/api/gas/facilities` already serves the field (no route change)
-- [ ] `components/gas/StorageFacilitiesLayer.tsx` - use `fac.fill_pct` if non-null, else fall back
-  to country fill %
-
-### Outcome
-
-Facility circles colored by actual facility fill % where AGSI discloses it (most European UGS).
-Tooltip shows per-facility fill as a primary stat, with country aggregate as a secondary fallback.
+- Phase 26 - Per-facility fill data from AGSI [COMPLETE 2026-06-22]
 
 ---
 
