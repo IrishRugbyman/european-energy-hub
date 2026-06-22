@@ -46,6 +46,7 @@ class StorageFacilityItem(BaseModel):
     lat: float
     lon: float
     capacity_twh: float | None = None
+    fill_pct: float | None = None
 
 
 class StorageFacilitiesResponse(BaseModel):

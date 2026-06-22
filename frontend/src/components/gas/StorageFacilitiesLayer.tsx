@@ -29,7 +29,9 @@ export function StorageFacilitiesLayer({ facilities, latestByCC }: Props) {
 
     for (const fac of facilities) {
       const row = latestByCC[fac.country]
-      const fill = row?.full_pct ?? null
+      // Use per-facility fill if available (AGSI facility-level), else fall back to country aggregate
+      const fill = fac.fill_pct ?? row?.full_pct ?? null
+      const isFacilityLevel = fac.fill_pct != null
       const color = gasFillColor(fill)
       const r = circleRadius(fac.capacity_twh)
 
@@ -45,7 +47,8 @@ export function StorageFacilitiesLayer({ facilities, latestByCC }: Props) {
       })
 
       const capacityStr = fac.capacity_twh != null ? `${fac.capacity_twh.toFixed(1)} TWh` : 'capacity unknown'
-      const fillStr = fill != null ? `${fill.toFixed(1)}% fill (country)` : 'fill unknown'
+      const fillLabel = isFacilityLevel ? 'facility fill' : 'country fill'
+      const fillStr = fill != null ? `${fill.toFixed(1)}% ${fillLabel}` : 'fill unknown'
       const operatorLine = fac.operator ? `<br/><span style="color:#9ca3af">${fac.operator}</span>` : ''
 
       marker.bindTooltip(

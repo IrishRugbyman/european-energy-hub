@@ -32,6 +32,7 @@ export interface StorageFacilityItem {
   lat: number
   lon: number
   capacity_twh: number | null
+  fill_pct: number | null
 }
 
 export interface StorageFacilitiesResponse {

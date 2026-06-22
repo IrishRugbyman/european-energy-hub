@@ -245,13 +245,15 @@ def _write_facilities(conn: duckdb.DuckDBPyConnection, df) -> None:
             country      VARCHAR,
             lat          REAL,
             lon          REAL,
-            capacity_twh REAL
+            capacity_twh REAL,
+            fill_pct     REAL
         )
     """)
     if not df.empty:
         conn.register("_fac", df)
         conn.execute("INSERT INTO storage_facilities SELECT * FROM _fac")
-    logger.info(f"facilities: {len(df)} UGS sites")
+    n_with_fill = int(df["fill_pct"].notna().sum()) if not df.empty else 0
+    logger.info(f"facilities: {len(df)} UGS sites, {n_with_fill} with per-facility fill")
 
 
 def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

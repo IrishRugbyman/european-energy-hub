@@ -245,7 +245,7 @@ def gas_map():
 def gas_facilities():
     """UGS facility reference data for the /gas map layer."""
     df = db.query(
-        "SELECT id, name, operator, country, lat, lon, capacity_twh FROM storage_facilities ORDER BY country, capacity_twh DESC NULLS LAST"
+        "SELECT id, name, operator, country, lat, lon, capacity_twh, fill_pct FROM storage_facilities ORDER BY country, capacity_twh DESC NULLS LAST"
     )
     if df.empty:
         return StorageFacilitiesResponse(facilities=[])
@@ -258,6 +258,7 @@ def gas_facilities():
             lat=float(r.lat),
             lon=float(r.lon),
             capacity_twh=_float(r.capacity_twh),
+            fill_pct=_float(r.fill_pct),
         )
         for r in df.itertuples()
     ]

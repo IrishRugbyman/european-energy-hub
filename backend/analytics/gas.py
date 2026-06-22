@@ -6,10 +6,16 @@ pure-function transforms on DataFrames.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pandas as pd
 
 from loaders._base import _query, get_read_conn
+from loaders.gas import load_facility_latest
 from loaders.worldmonitor import load_storage_facilities
+
+_WM_TO_AGSI_PATH = Path(__file__).resolve().parent / "wm_to_agsi.json"
 
 
 def build_storage_tables() -> dict[str, pd.DataFrame]:
@@ -201,13 +207,35 @@ def _build_latest(df: pd.DataFrame, seasonal: pd.DataFrame) -> pd.DataFrame:
 def build_facilities_table() -> pd.DataFrame:
     """Return UGS facility reference data for the /gas map layer.
 
-    Reads storage_facilities_wm (facility_type='ugs') from market_data PostgreSQL
-    and returns a DataFrame with id, name, operator, country, lat, lon, capacity_twh.
+    Reads storage_facilities_wm (facility_type='ugs') from market_data PostgreSQL,
+    joins per-facility fill % from gas_storage_facility where an AGSI EIC mapping exists,
+    and returns a DataFrame with id, name, operator, country, lat, lon, capacity_twh, fill_pct.
     """
     df = load_storage_facilities(facility_type="ugs")
     if df.empty:
         return pd.DataFrame(
-            columns=["id", "name", "operator", "country", "lat", "lon", "capacity_twh"]
+            columns=["id", "name", "operator", "country", "lat", "lon", "capacity_twh", "fill_pct"]
         )
     cols = ["id", "name", "operator", "country", "lat", "lon", "capacity_twh"]
-    return df[cols].dropna(subset=["lat", "lon"]).reset_index(drop=True)
+    df = df[cols].dropna(subset=["lat", "lon"]).reset_index(drop=True)
+
+    # Load WM-id -> AGSI EIC mapping
+    with open(_WM_TO_AGSI_PATH) as fh:
+        wm_to_agsi: dict[str, str] = json.load(fh)
+
+    # Map WM ids to EICs; skip facilities without a known EIC
+    df["agsi_eic"] = df["id"].map(wm_to_agsi)
+    eics = df["agsi_eic"].dropna().tolist()
+
+    fill_pct_by_eic: dict[str, float] = {}
+    if eics:
+        try:
+            latest_df = load_facility_latest(eics)
+            for row in latest_df.itertuples():
+                if row.full_pct is not None:
+                    fill_pct_by_eic[row.eic] = float(row.full_pct)
+        except Exception:
+            pass  # fall back to null; frontend uses country fill
+
+    df["fill_pct"] = df["agsi_eic"].map(fill_pct_by_eic)
+    return df.drop(columns=["agsi_eic"])
