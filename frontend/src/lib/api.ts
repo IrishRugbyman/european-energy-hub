@@ -24,6 +24,20 @@ export interface GasMapResponse {
   pipeline_offline_bcm: number | null
 }
 
+export interface StorageFacilityItem {
+  id: string
+  name: string
+  operator: string | null
+  country: string
+  lat: number
+  lon: number
+  capacity_twh: number | null
+}
+
+export interface StorageFacilitiesResponse {
+  facilities: StorageFacilityItem[]
+}
+
 export interface GasPacePoint {
   gas_day: string
   full_pct: number | null
@@ -877,6 +891,7 @@ export const api = {
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
   gasMap: () => get<GasMapResponse>('/gas/map'),
   gasCountry: (cc: string) => get<GasCountryResponse>(`/gas/country/${cc}`),
+  gasFacilities: () => get<StorageFacilitiesResponse>('/gas/facilities'),
   gasFlows: () => get<GasFlowResponse>('/gas/flows'),
   gasFlowsCountry: (cc: string) => get<GasFlowCountryResponse>(`/gas/flows/${cc}`),
   gasPace: () => get<GasPaceResponse>('/gas/pace'),

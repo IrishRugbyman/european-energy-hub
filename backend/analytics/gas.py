@@ -9,6 +9,7 @@ from __future__ import annotations
 import pandas as pd
 
 from loaders._base import _query, get_read_conn
+from loaders.worldmonitor import load_storage_facilities
 
 
 def build_storage_tables() -> dict[str, pd.DataFrame]:
@@ -195,3 +196,18 @@ def _build_latest(df: pd.DataFrame, seasonal: pd.DataFrame) -> pd.DataFrame:
         })
 
     return pd.DataFrame(rows)
+
+
+def build_facilities_table() -> pd.DataFrame:
+    """Return UGS facility reference data for the /gas map layer.
+
+    Reads storage_facilities_wm (facility_type='ugs') from market_data PostgreSQL
+    and returns a DataFrame with id, name, operator, country, lat, lon, capacity_twh.
+    """
+    df = load_storage_facilities(facility_type="ugs")
+    if df.empty:
+        return pd.DataFrame(
+            columns=["id", "name", "operator", "country", "lat", "lon", "capacity_twh"]
+        )
+    cols = ["id", "name", "operator", "country", "lat", "lon", "capacity_twh"]
+    return df[cols].dropna(subset=["lat", "lon"]).reset_index(drop=True)

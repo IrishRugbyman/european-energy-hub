@@ -89,6 +89,8 @@ from .schemas import (
     SeasonalPoint,
     SpreadsDailyPoint,
     SpreadsResponse,
+    StorageFacilitiesResponse,
+    StorageFacilityItem,
     StorageLatestRow,
     MultiZoneSpreadRow,
     MultiZoneSpreadsResponse,
@@ -237,6 +239,29 @@ def gas_map():
         pass
 
     return GasMapResponse(as_of=as_of, rows=rows, pipeline_offline_bcm=pipeline_offline_bcm)
+
+
+@app.get("/api/gas/facilities", response_model=StorageFacilitiesResponse)
+def gas_facilities():
+    """UGS facility reference data for the /gas map layer."""
+    df = db.query(
+        "SELECT id, name, operator, country, lat, lon, capacity_twh FROM storage_facilities ORDER BY country, capacity_twh DESC NULLS LAST"
+    )
+    if df.empty:
+        return StorageFacilitiesResponse(facilities=[])
+    items = [
+        StorageFacilityItem(
+            id=str(r.id),
+            name=str(r.name),
+            operator=str(r.operator) if r.operator and str(r.operator) != "nan" else None,
+            country=str(r.country),
+            lat=float(r.lat),
+            lon=float(r.lon),
+            capacity_twh=_float(r.capacity_twh),
+        )
+        for r in df.itertuples()
+    ]
+    return StorageFacilitiesResponse(facilities=items)
 
 
 @app.get("/api/gas/country/{cc}", response_model=GasCountryResponse)

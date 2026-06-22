@@ -33,7 +33,7 @@ sys.path.insert(0, str(BACKEND_DIR))
 from analytics.battery import build_battery_tables
 from analytics.congestion import build_congestion_tables
 from analytics.divergence import build_divergence_tables
-from analytics.gas import build_storage_tables
+from analytics.gas import build_facilities_table, build_storage_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables, compute_forecast_accuracy
 from analytics.imbalance import build_imbalance_tables
@@ -76,6 +76,9 @@ def rebuild(skip_ingest: bool = False) -> None:
 
     logger.info("Building storage tables from market_data (PostgreSQL)...")
     storage_tables = build_storage_tables()
+
+    logger.info("Building UGS facilities reference table...")
+    facilities_df = build_facilities_table()
 
     logger.info("Building power tables from market_data (PostgreSQL)...")
     power_tables = build_power_tables()
@@ -121,6 +124,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("BEGIN TRANSACTION")
 
         _write_storage(conn, storage_tables)
+        _write_facilities(conn, facilities_df)
         _write_power(conn, power_tables)
         _write_power_correlations(conn, power_corr)
         _write_divergence(conn, divergence_tables)
@@ -230,6 +234,24 @@ def _write_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         f"storage: {len(history)} history rows, {len(seasonal)} seasonal rows, "
         f"{len(latest)} latest rows, {n_inj_seas} injection-seasonal rows"
     )
+
+
+def _write_facilities(conn: duckdb.DuckDBPyConnection, df) -> None:
+    conn.execute("""
+        CREATE OR REPLACE TABLE storage_facilities (
+            id           VARCHAR,
+            name         VARCHAR,
+            operator     VARCHAR,
+            country      VARCHAR,
+            lat          REAL,
+            lon          REAL,
+            capacity_twh REAL
+        )
+    """)
+    if not df.empty:
+        conn.register("_fac", df)
+        conn.execute("INSERT INTO storage_facilities SELECT * FROM _fac")
+    logger.info(f"facilities: {len(df)} UGS sites")
 
 
 def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

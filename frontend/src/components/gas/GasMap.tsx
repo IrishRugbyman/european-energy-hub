@@ -3,8 +3,9 @@ import { MapContainer, TileLayer, Pane, useMap } from 'react-leaflet'
 import { useEffect, useRef, type MutableRefObject } from 'react'
 import type { GeoJsonObject, Feature } from 'geojson'
 import { gasFillColor, gasDeficitColor, CHOROPLETH_FILL_OPACITY, CHOROPLETH_STROKE, CHOROPLETH_STROKE_WIDTH, countryName } from '@/lib/scales'
-import type { StorageLatestRow, GasFlowItem } from '@/lib/api'
+import type { StorageLatestRow, GasFlowItem, StorageFacilityItem } from '@/lib/api'
 import { GasFlowsLayer } from './GasFlowsLayer'
+import { StorageFacilitiesLayer } from './StorageFacilitiesLayer'
 
 // Three-layer approach: no-labels base -> GeoJSON choropleth -> labels on top.
 // This avoids the double-border mismatch between tile country outlines and GeoJSON polygons.
@@ -23,9 +24,11 @@ interface Props {
   flowRows?: GasFlowItem[]
   selectedFlow?: string | null
   onSelectFlow?: (cc: string | null) => void
+  showFacilities?: boolean
+  facilityRows?: StorageFacilityItem[]
 }
 
-export function GasMap({ rows, selected, onSelect, colorMode = 'fill', showFlows = false, flowRows = [], selectedFlow, onSelectFlow }: Props) {
+export function GasMap({ rows, selected, onSelect, colorMode = 'fill', showFlows = false, flowRows = [], selectedFlow, onSelectFlow, showFacilities = false, facilityRows = [] }: Props) {
   const latestByCC: Record<string, StorageLatestRow> = {}
   for (const r of rows) {
     if (r.country !== 'EU') latestByCC[r.country] = r
@@ -53,6 +56,10 @@ export function GasMap({ rows, selected, onSelect, colorMode = 'fill', showFlows
           onSelect={onSelect}
           onSelectFlow={onSelectFlow}
         />
+      )}
+      {/* UGS facility circles - above choropleth, below labels */}
+      {showFacilities && facilityRows.length > 0 && (
+        <StorageFacilitiesLayer facilities={facilityRows} latestByCC={latestByCC} />
       )}
       {/* Labels on top of choropleth fills */}
       <Pane name="labels" style={{ zIndex: 650 }}>

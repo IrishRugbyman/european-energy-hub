@@ -65,6 +65,7 @@ const FLOW_LEGEND = [
 function GasDashboard() {
   const [selected, setSelected] = useState<string | null>(null)
   const [showFlows, setShowFlows] = useState(false)
+  const [showFacilities, setShowFacilities] = useState(false)
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
   const [showRankings, setShowRankings] = useState(false)
   const [colorMode, setColorMode] = useState<GasColorMode>('fill')
@@ -78,6 +79,13 @@ function GasDashboard() {
     queryKey: ['gas-flows'],
     queryFn: api.gasFlows,
     enabled: showFlows,
+  })
+
+  const { data: facilitiesData } = useQuery({
+    queryKey: ['gas-facilities'],
+    queryFn: api.gasFacilities,
+    enabled: showFacilities,
+    staleTime: 24 * 60 * 60 * 1000,
   })
 
   const { data: paceData } = useQuery({
@@ -178,6 +186,17 @@ function GasDashboard() {
         >
           Physical flows
         </button>
+        <button
+          onClick={() => setShowFacilities((v) => !v)}
+          title="Show UGS storage facility locations"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
+            showFacilities
+              ? 'bg-emerald-700 border-emerald-600 text-white'
+              : 'bg-card/90 backdrop-blur border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          Facilities
+        </button>
       </div>
 
       {/* Legend (hidden on mobile, swaps between fill and flow) */}
@@ -202,6 +221,8 @@ function GasDashboard() {
           flowRows={flowsData?.rows ?? []}
           selectedFlow={selectedFlow}
           onSelectFlow={setSelectedFlow}
+          showFacilities={showFacilities}
+          facilityRows={facilitiesData?.facilities ?? []}
         />
       </div>
 

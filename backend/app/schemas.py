@@ -38,6 +38,20 @@ class GasMapResponse(BaseModel):
     pipeline_offline_bcm: float | None = None
 
 
+class StorageFacilityItem(BaseModel):
+    id: str
+    name: str
+    operator: str | None = None
+    country: str
+    lat: float
+    lon: float
+    capacity_twh: float | None = None
+
+
+class StorageFacilitiesResponse(BaseModel):
+    facilities: list[StorageFacilityItem]
+
+
 # Gas pace-to-target
 
 class GasPacePoint(BaseModel):

@@ -221,6 +221,61 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 22 - TTF seasonality strip on /prices (monthly boxplot vs 5yr range) [COMPLETE 2026-06-18]
 - Phase 23 - Power price heatmap calendar on zone drill-down panel [COMPLETE 2026-06-18]
 
+- Phase 24 - Pipeline disruption context on /spreads and /gas [COMPLETE 2026-06-19]
+
+## Phase 25 - UGS facilities layer on /gas
+
+Show individual underground gas storage (UGS) facilities as circle markers on the /gas choropleth map.
+
+### Tasks
+
+- [ ] `analytics/gas.py` - add `build_facilities_table()` reading `storage_facilities_wm` where `facility_type='ugs'`; return DataFrame with id, name, operator, country, lat, lon, capacity_twh
+- [ ] `scripts/refresh.py` - call `build_facilities_table()`, add `_write_facilities()`, write `storage_facilities` table to energy_hub.duckdb
+- [ ] `app/schemas.py` - add `StorageFacilityItem` model (id, name, operator, country, lat, lon, capacity_twh)
+- [ ] `app/main.py` - add `GET /api/gas/facilities` endpoint reading `storage_facilities` table
+- [ ] `frontend/src/lib/api.ts` - add `gasFacilities()` query function and `StorageFacilityItem` type
+- [ ] `frontend/src/components/gas/StorageFacilitiesLayer.tsx` - Leaflet `CircleMarker` layer; circle radius = `sqrt(capacity_twh) * 1.2` (capped 4-20px); color from country fill % via `gasFillColor`; tooltip shows name, capacity TWh, operator, country
+- [ ] `frontend/src/components/gas/GasMap.tsx` - accept `showFacilities` + `facilityRows` props, render `StorageFacilitiesLayer`
+- [ ] `frontend/src/routes/gas.tsx` - add "Facilities" toggle button next to Flows toggle; wire `useQuery` for `gasFacilities`; pass to `GasMap`
+
+### Outcome
+
+56 European UGS facilities rendered as proportional circles on the /gas map. Color matches the country choropleth fill %. Toggle off by default. Tooltip on hover: facility name, operator, capacity (TWh), country. No new data fetch needed - coordinates and capacity already in `storage_facilities_wm`.
+
+---
+
+## Phase 26 - Per-facility fill data from AGSI (facility-level time series)
+
+Upgrade the facilities layer with real per-facility fill % instead of the country aggregate.
+
+### Context
+
+Phase 25 colors facility circles by their country's aggregate fill %. AGSI+ exposes per-facility
+time series via the same API (127 facility EIC codes in `agsi/agsi_dataproviders.json`). This phase
+fetches that data, stores it in a new `gas_storage_facility` table, and uses it to color the circles
+with actual per-facility fill data.
+
+### Tasks
+
+- [ ] `market-data/fetchers/agsi.py` - add `fetch_facilities(from_date, to_date)` that loops all
+  DSR-type entries in `agsi_dataproviders.json` and upserts into a new `gas_storage_facility(gas_day, eic, full_pct, injection, withdrawal, working_gas_volume)` table
+- [ ] `market-data/ingest.py` - wire `agsi-facilities` fetcher, run backfill from 2022-01-01
+- [ ] `market-data/loaders/gas.py` - add `load_gas_storage_facilities(eics, start, end)` loader
+- [ ] `market-data/db.py` - add `init_schema` for `gas_storage_facility`
+- [ ] `analytics/gas.py` - extend `build_facilities_table()` to LEFT JOIN facility fill from
+  `gas_storage_facility` (latest gas_day per EIC); match by EIC stored in `storage_facilities_wm`
+- [ ] `app/schemas.py` - add `fill_pct: float | None` to `StorageFacilityItem`
+- [ ] `app/main.py` - `/api/gas/facilities` already serves the field (no route change)
+- [ ] `components/gas/StorageFacilitiesLayer.tsx` - use `fac.fill_pct` if non-null, else fall back
+  to country fill %
+
+### Outcome
+
+Facility circles colored by actual facility fill % where AGSI discloses it (most European UGS).
+Tooltip shows per-facility fill as a primary stat, with country aggregate as a secondary fallback.
+
+---
+
 ## 9. Build order summary
 
 | Phase | Goal | New duckdb tables | New routes | Sessions |
