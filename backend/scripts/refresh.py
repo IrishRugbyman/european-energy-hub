@@ -40,6 +40,7 @@ from analytics.imbalance import build_imbalance_tables
 from analytics.power import build_power_tables, build_power_correlations
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
+from analytics.us_gas import build_us_storage_tables
 
 
 def run_ingest(fetcher: str) -> bool:
@@ -69,7 +70,7 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "agsi-facilities", "ttf", "nbp", "eia-natgas", "eua-carbon", "coal-api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de", "worldmonitor"]:
+        for fetcher in ["agsi", "agsi-facilities", "ttf", "nbp", "eia-natgas", "eia-natgas-storage", "eua-carbon", "coal-api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de", "worldmonitor"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
@@ -113,6 +114,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building battery oracle dispatch tables...")
     battery_tables = build_battery_tables()
 
+    logger.info("Building US natural gas storage tables from market_data (PostgreSQL)...")
+    us_storage_tables = build_us_storage_tables()
+
     # Write to a fresh temp file so we never contend with the API's read-only
     # thread-local connections on energy_hub.duckdb.  Atomic rename at the end
     # means the API always serves a fully-consistent snapshot.
@@ -137,6 +141,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_congestion(conn, congestion_tables)
         _write_imbalance(conn, imbalance_tables)
         _write_battery(conn, battery_tables)
+        _write_us_storage(conn, us_storage_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -693,6 +698,58 @@ def _write_forecast_accuracy(conn: duckdb.DuckDBPyConnection, df) -> None:  # ty
                 "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
         conn.execute(f"INSERT INTO forecast_accuracy SELECT {', '.join(cols)} FROM _fa")
     logger.info(f"forecast_accuracy: {len(df) if df is not None else 0} rows")
+
+
+def _write_us_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    latest = tables.get("us_storage_latest", None)
+    history = tables.get("us_storage_history", None)
+    seasonal = tables.get("us_storage_seasonal", None)
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE us_storage_latest (
+            region          VARCHAR,
+            week_date       DATE,
+            value_bcf       REAL,
+            week_change_bcf REAL,
+            yoy_bcf         REAL,
+            vs_avg5_bcf     REAL,
+            vs_avg5_pct     REAL,
+            implied_fill_pct REAL,
+            avg5_bcf        REAL,
+            min5_bcf        REAL,
+            max5_bcf        REAL
+        )
+    """)
+    if latest is not None and not latest.empty:
+        conn.register("_usl", latest)
+        conn.execute("INSERT INTO us_storage_latest SELECT * FROM _usl")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE us_storage_history (
+            region     VARCHAR,
+            week_date  DATE,
+            value_bcf  REAL
+        )
+    """)
+    if history is not None and not history.empty:
+        conn.register("_ush", history)
+        conn.execute("INSERT INTO us_storage_history SELECT * FROM _ush")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE us_storage_seasonal (
+            region       VARCHAR,
+            week_of_year SMALLINT,
+            avg5         REAL,
+            min5         REAL,
+            max5         REAL
+        )
+    """)
+    if seasonal is not None and not seasonal.empty:
+        conn.register("_uss", seasonal)
+        conn.execute("INSERT INTO us_storage_seasonal SELECT * FROM _uss")
+
+    n = len(latest) if latest is not None else 0
+    logger.info(f"us_storage: {n} region-latest rows")
 
 
 if __name__ == "__main__":

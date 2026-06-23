@@ -887,6 +887,46 @@ export interface ZoneNetFlowsResponse {
   rows: ZoneNetFlowRow[]
 }
 
+// US natural gas storage (EIA weekly regional)
+
+export interface UsStorageLatestRow {
+  region: string
+  week_date: string
+  value_bcf: number | null
+  week_change_bcf: number | null
+  yoy_bcf: number | null
+  vs_avg5_bcf: number | null
+  vs_avg5_pct: number | null
+  implied_fill_pct: number | null
+  avg5_bcf: number | null
+  min5_bcf: number | null
+  max5_bcf: number | null
+}
+
+export interface UsStorageMapResponse {
+  as_of: string
+  rows: UsStorageLatestRow[]
+}
+
+export interface UsStorageWeekPoint {
+  week_date: string
+  value_bcf: number | null
+}
+
+export interface UsStorageSeasonalPoint {
+  week_of_year: number
+  avg5: number | null
+  min5: number | null
+  max5: number | null
+}
+
+export interface UsStorageRegionResponse {
+  region: string
+  latest: UsStorageLatestRow
+  history: UsStorageWeekPoint[]
+  seasonal: UsStorageSeasonalPoint[]
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -944,4 +984,6 @@ export const api = {
   genZoneCarbonIntensity: () => get<ZoneCarbonIntensityResponse>('/generation/zone-carbon-intensity'),
   genForecastAccuracy: () => get<ForecastAccuracyResponse>('/generation/forecast-accuracy'),
   powerCrossZoneSpreads: (country: string, windowDays?: number) => get<CrossZoneSpreadResponse>(`/power/cross-zone-spreads?country=${country}${windowDays ? `&window_days=${windowDays}` : ''}`),
+  usGasMap: () => get<UsStorageMapResponse>('/us-gas/map'),
+  usGasRegion: (region: string) => get<UsStorageRegionResponse>(`/us-gas/region/${encodeURIComponent(region)}`),
 }

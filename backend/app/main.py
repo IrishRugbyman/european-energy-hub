@@ -141,6 +141,11 @@ from .schemas import (
     BorderFlowHistResponse,
     ZoneNetFlowRow,
     ZoneNetFlowsResponse,
+    UsStorageLatestRow,
+    UsStorageMapResponse,
+    UsStorageWeekPoint,
+    UsStorageSeasonalPoint,
+    UsStorageRegionResponse,
 )
 
 
@@ -2725,4 +2730,127 @@ def power_cross_zone_spreads(country: str = "IT", window_days: int = 90):
         window_days=window_days,
         zones=present_zones,
         rows=rows,
+    )
+
+
+
+
+# ---- US natural gas storage -----------------------------------------------
+
+def _float_us(v) -> float | None:
+    try:
+        f = float(v)
+        return None if (f != f) else round(f, 2)
+    except (TypeError, ValueError):
+        return None
+
+
+@app.get("/api/us-gas/map", response_model=UsStorageMapResponse)
+def us_gas_map():
+    """US EIA regional storage snapshot: all 5 regions + US-48 aggregate."""
+    rows_raw = db.query(
+        """
+        SELECT region, week_date::VARCHAR AS week_date, value_bcf, week_change_bcf,
+               yoy_bcf, vs_avg5_bcf, vs_avg5_pct, implied_fill_pct,
+               avg5_bcf, min5_bcf, max5_bcf
+        FROM us_storage_latest
+        ORDER BY region
+        """
+    )
+
+    rows = [
+        UsStorageLatestRow(
+            region=r.region,
+            week_date=str(r.week_date),
+            value_bcf=_float_us(r.value_bcf),
+            week_change_bcf=_float_us(r.week_change_bcf),
+            yoy_bcf=_float_us(r.yoy_bcf),
+            vs_avg5_bcf=_float_us(r.vs_avg5_bcf),
+            vs_avg5_pct=_float_us(r.vs_avg5_pct),
+            implied_fill_pct=_float_us(r.implied_fill_pct),
+            avg5_bcf=_float_us(r.avg5_bcf),
+            min5_bcf=_float_us(r.min5_bcf),
+            max5_bcf=_float_us(r.max5_bcf),
+        )
+        for r in rows_raw.itertuples()
+    ]
+
+    as_of = _meta_val("refreshed_at_gas") or datetime.now(timezone.utc).isoformat()
+    return UsStorageMapResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/us-gas/region/{region}", response_model=UsStorageRegionResponse)
+def us_gas_region(region: str):
+    """Drill-down: full weekly history + seasonal band for one EIA region."""
+    latest_df = db.query(
+        """
+        SELECT region, week_date::VARCHAR AS week_date, value_bcf, week_change_bcf,
+               yoy_bcf, vs_avg5_bcf, vs_avg5_pct, implied_fill_pct,
+               avg5_bcf, min5_bcf, max5_bcf
+        FROM us_storage_latest
+        WHERE region = ?
+        LIMIT 1
+        """,
+        [region],
+    )
+
+    if latest_df.empty:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"Region '{region}' not found")
+
+    r = latest_df.iloc[0]
+    latest = UsStorageLatestRow(
+        region=str(r["region"]),
+        week_date=str(r["week_date"]),
+        value_bcf=_float_us(r["value_bcf"]),
+        week_change_bcf=_float_us(r["week_change_bcf"]),
+        yoy_bcf=_float_us(r["yoy_bcf"]),
+        vs_avg5_bcf=_float_us(r["vs_avg5_bcf"]),
+        vs_avg5_pct=_float_us(r["vs_avg5_pct"]),
+        implied_fill_pct=_float_us(r["implied_fill_pct"]),
+        avg5_bcf=_float_us(r["avg5_bcf"]),
+        min5_bcf=_float_us(r["min5_bcf"]),
+        max5_bcf=_float_us(r["max5_bcf"]),
+    )
+
+    hist_raw = db.query(
+        """
+        SELECT week_date::VARCHAR AS week_date, value_bcf
+        FROM us_storage_history
+        WHERE region = ?
+        ORDER BY week_date
+        """,
+        [region],
+    )
+
+    history = [
+        UsStorageWeekPoint(week_date=str(h.week_date), value_bcf=_float_us(h.value_bcf))
+        for h in hist_raw.itertuples()
+    ]
+
+    seas_raw = db.query(
+        """
+        SELECT week_of_year, avg5, min5, max5
+        FROM us_storage_seasonal
+        WHERE region = ?
+        ORDER BY week_of_year
+        """,
+        [region],
+    )
+
+    seasonal = [
+        UsStorageSeasonalPoint(
+            week_of_year=int(s.week_of_year),
+            avg5=_float_us(s.avg5),
+            min5=_float_us(s.min5),
+            max5=_float_us(s.max5),
+        )
+        for s in seas_raw.itertuples()
+    ]
+
+    return UsStorageRegionResponse(
+        region=region,
+        latest=latest,
+        history=history,
+        seasonal=seasonal,
     )

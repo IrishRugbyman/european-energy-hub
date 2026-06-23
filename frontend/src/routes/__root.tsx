@@ -1,5 +1,5 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
-import { Flame, Zap, TrendingUp, DollarSign, Activity, Wind, Info, X } from 'lucide-react'
+import { Flame, Zap, TrendingUp, DollarSign, Activity, Wind, Info, X, Globe } from 'lucide-react'
 import { useState } from 'react'
 
 export const Route = createRootRoute({
@@ -7,7 +7,8 @@ export const Route = createRootRoute({
 })
 
 const NAV = [
-  { to: '/gas',        label: 'Gas',        icon: Flame,      enabled: true },
+  { to: '/gas',        label: 'EU Gas',     icon: Flame,      enabled: true },
+  { to: '/us-gas',     label: 'US Gas',     icon: Globe,      enabled: true },
   { to: '/power',      label: 'Power',      icon: Zap,        enabled: true },
   { to: '/generation', label: 'RE Trends',  icon: Wind,       enabled: true },
   { to: '/spreads',    label: 'Spreads',    icon: TrendingUp, enabled: true },
@@ -106,8 +107,12 @@ function AboutModal({ onClose }: { onClose: () => void }) {
           <h3 className="text-xs font-medium text-foreground">Data sources</h3>
           <ul className="text-xs text-muted-foreground space-y-1">
             <li>
-              <span className="text-foreground">Gas storage</span> - AGSI+ (GIE), daily,{' '}
+              <span className="text-foreground">EU gas storage</span> - AGSI+ (GIE), daily,{' '}
               <a href="https://agsi.gie.eu" className="text-primary hover:underline" target="_blank" rel="noreferrer">agsi.gie.eu</a>
+            </li>
+            <li>
+              <span className="text-foreground">US natural gas storage</span> - EIA Weekly Natural Gas Storage Report (Form 912), 5 EIA regions + US-48 aggregate,{' '}
+              <a href="https://www.eia.gov/naturalgas/storage" className="text-primary hover:underline" target="_blank" rel="noreferrer">eia.gov</a>
             </li>
             <li>
               <span className="text-foreground">Power day-ahead prices</span> - ENTSO-E Transparency Platform,{' '}

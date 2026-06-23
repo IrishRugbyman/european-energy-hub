@@ -914,3 +914,43 @@ class CrossZoneSpreadResponse(BaseModel):
     window_days: int
     zones: list[str]
     rows: list[CrossZoneSpreadPoint]
+
+
+# US natural gas storage (EIA weekly regional)
+
+class UsStorageLatestRow(BaseModel):
+    region: str
+    week_date: str
+    value_bcf: float | None
+    week_change_bcf: float | None = None
+    yoy_bcf: float | None = None
+    vs_avg5_bcf: float | None = None
+    vs_avg5_pct: float | None = None
+    implied_fill_pct: float | None = None
+    avg5_bcf: float | None = None
+    min5_bcf: float | None = None
+    max5_bcf: float | None = None
+
+
+class UsStorageMapResponse(BaseModel):
+    as_of: str
+    rows: list[UsStorageLatestRow]
+
+
+class UsStorageWeekPoint(BaseModel):
+    week_date: str
+    value_bcf: float | None
+
+
+class UsStorageSeasonalPoint(BaseModel):
+    week_of_year: int
+    avg5: float | None
+    min5: float | None
+    max5: float | None
+
+
+class UsStorageRegionResponse(BaseModel):
+    region: str
+    latest: UsStorageLatestRow
+    history: list[UsStorageWeekPoint]
+    seasonal: list[UsStorageSeasonalPoint]
