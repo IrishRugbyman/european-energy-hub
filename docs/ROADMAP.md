@@ -256,6 +256,8 @@ quantiles). Components per dashboard under `src/components/gas/` and
 | 22 | TTF seasonality strip on /prices (monthly boxplot) | +1 (ttf_seasonality) | +0 | 1 |
 | 23 | Power price heatmap calendar on zone drill-down | +0 (reuses power_daily) | +0 | 1 |
 
+- Phase 28 - US natural gas storage regional choropleth (/us-gas) [COMPLETE 2026-06-23]
+
 ## Geographic expansion (future)
 
 - US natural gas power plants layer: cleanview.co/power-projects/operating/natural-gas-power-plants/us has a structured directory of operating US NG plants (name, capacity, operator, state). Potential data source for a future /us or /global dashboard alongside EIA-860 for coordinates and CAISO/ERCOT/PJM/MISO for live power prices.
