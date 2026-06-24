@@ -74,8 +74,9 @@ def build_storage_tables() -> dict[str, pd.DataFrame]:
 
     raw["gas_day"] = pd.to_datetime(raw["gas_day"]).dt.date
 
-    # EU aggregate (working-gas-volume weighted fill) - exclude GB (not an EU member)
-    eu = _build_eu_aggregate(raw[raw["country"] != "GB"])
+    # EU+connected aggregate (working-gas-volume weighted fill).
+    # Includes GB (connected via IUK/BBL) and UA; excludes no country.
+    eu = _build_eu_aggregate(raw)
     combined = pd.concat([raw, eu], ignore_index=True)
 
     history = combined[["country", "gas_day", "full_pct", "injection", "withdrawal", "working_gas_volume"]].copy()

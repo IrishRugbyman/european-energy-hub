@@ -6,13 +6,14 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { api, type UsStorageLatestRow } from '@/lib/api'
+import { api, type UsStorageLatestRow, type UsPaceStats } from '@/lib/api'
 import { USGasMap, type UsGasColorMode, vsAvgColor, impliedFillColor } from '@/components/us-gas/USGasMap'
 
 export const Route = createFileRoute('/us-gas')({
@@ -71,6 +72,12 @@ function UsGasDashboard() {
     queryKey: ['us-gas-region', selected],
     queryFn: () => api.usGasRegion(selected!),
     enabled: selected != null && selected !== 'US-48',
+    staleTime: 3 * 60 * 60 * 1000,
+  })
+
+  const { data: paceData } = useQuery({
+    queryKey: ['us-gas-pace'],
+    queryFn: api.usGasPace,
     staleTime: 3 * 60 * 60 * 1000,
   })
 
@@ -148,6 +155,13 @@ function UsGasDashboard() {
         />
       </div>
 
+      {/* Pace-to-target widget */}
+      {paceData?.us48 && (
+        <div className="hidden sm:block absolute top-16 left-3 z-[1000]">
+          <UsPaceWidget pace={paceData.us48} />
+        </div>
+      )}
+
       {/* Legend */}
       <div className="hidden sm:block absolute bottom-6 left-3 z-[1000] bg-card/90 backdrop-blur border border-border rounded-lg px-3 py-2 text-xs space-y-1">
         <p className="text-muted-foreground mb-1 font-medium">{legendTitle}</p>
@@ -175,6 +189,135 @@ function UsGasDashboard() {
           />
         </div>
       )}
+    </div>
+  )
+}
+
+// ---------- US-48 pace-to-target widget ------------------------------------
+
+function UsPaceWidget({ pace }: { pace: UsPaceStats }) {
+  const {
+    current_bcf,
+    target_bcf,
+    days_to_target,
+    bcf_gap,
+    current_rate_bcf_w,
+    seasonal_rate_bcf_w,
+    weeks_to_target,
+    on_track,
+    history,
+  } = pace
+
+  const statusColor = on_track === true ? '#4ade80' : on_track === false ? '#f87171' : '#94a3b8'
+  const statusLabel = on_track === true ? 'On track' : on_track === false ? 'Behind' : 'Unknown'
+
+  // Chart data: actual history + seasonal band + projected tail
+  const chartData = history.map((p) => ({
+    label: p.week_date.slice(0, 10),
+    actual: p.value_bcf,
+    avg5: p.avg5,
+    min5: p.min5,
+    max5: p.max5,
+    projected: p.projected,
+    // For Area band: stacked [min5, max5 - min5]
+    bandBase: p.min5,
+    bandSize: p.min5 != null && p.max5 != null ? p.max5 - p.min5 : null,
+  }))
+
+  const weeks_left = Math.round(days_to_target / 7)
+
+  return (
+    <div className="bg-card/90 backdrop-blur border border-border rounded-lg p-3 text-xs w-64">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-muted-foreground font-medium">US-48 injection pace</span>
+        <span className="font-semibold" style={{ color: statusColor }}>{statusLabel}</span>
+      </div>
+
+      {/* Key stats row */}
+      <div className="grid grid-cols-3 gap-2 mb-2">
+        <div>
+          <p className="text-muted-foreground text-[10px]">Current</p>
+          <p className="font-semibold text-foreground">{current_bcf != null ? `${current_bcf.toFixed(0)} Bcf` : '--'}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-[10px]">Target (Nov 1)</p>
+          <p className="font-semibold text-foreground">{target_bcf != null ? `${target_bcf.toFixed(0)} Bcf` : '--'}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-[10px]">Gap</p>
+          <p className="font-semibold" style={{ color: bcf_gap != null && bcf_gap > 0 ? '#f87171' : '#4ade80' }}>
+            {bcf_gap != null ? `${bcf_gap > 0 ? '+' : ''}${bcf_gap.toFixed(0)} Bcf` : '--'}
+          </p>
+        </div>
+      </div>
+
+      {/* Rate row */}
+      <div className="flex items-center gap-3 mb-2 pb-2 border-b border-border">
+        <div>
+          <p className="text-muted-foreground text-[10px]">Weekly rate</p>
+          <p className="font-medium text-foreground">{current_rate_bcf_w != null ? `${current_rate_bcf_w > 0 ? '+' : ''}${current_rate_bcf_w.toFixed(0)} Bcf/wk` : '--'}</p>
+        </div>
+        <div>
+          <p className="text-muted-foreground text-[10px]">5yr avg rate</p>
+          <p className="font-medium text-muted-foreground">{seasonal_rate_bcf_w != null ? `${seasonal_rate_bcf_w > 0 ? '+' : ''}${seasonal_rate_bcf_w.toFixed(0)} Bcf/wk` : '--'}</p>
+        </div>
+        <div className="ml-auto text-right">
+          <p className="text-muted-foreground text-[10px]">Weeks left</p>
+          <p className="font-medium text-foreground">{weeks_left}</p>
+        </div>
+      </div>
+
+      {weeks_to_target != null && (
+        <p className="text-[10px] text-muted-foreground mb-2">
+          At current pace: reaches target in{' '}
+          <span style={{ color: statusColor }} className="font-semibold">{weeks_to_target.toFixed(1)} wks</span>
+          {' '}({weeks_left} available)
+        </p>
+      )}
+
+      {/* Pace chart */}
+      <ResponsiveContainer width="100%" height={100}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="2 2" stroke="#1e293b" />
+          <XAxis
+            dataKey="label"
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            interval="preserveStartEnd"
+            tickFormatter={(v: string) => v.slice(5, 10)}
+          />
+          <YAxis
+            tick={{ fontSize: 8, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={30}
+            tickFormatter={(v: number) => `${(v / 1000).toFixed(1)}k`}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(v, name) => {
+              const n = typeof v === 'number' ? v : null
+              return n != null ? [`${n.toFixed(0)} Bcf`, String(name ?? '')] as [string, string] : null
+            }}
+            labelFormatter={(l) => String(l)}
+          />
+          {/* 5yr band */}
+          <Area dataKey="bandBase" stackId="band" fill="transparent" stroke="none" legendType="none" />
+          <Area dataKey="bandSize" stackId="band" fill="#334155" fillOpacity={0.5} stroke="none" name="5yr range" />
+          {/* 5yr avg line */}
+          <Line dataKey="avg5" stroke="#64748b" strokeWidth={1} dot={false} strokeDasharray="3 2" name="5yr avg" connectNulls />
+          {/* Actual Bcf */}
+          <Line dataKey="actual" stroke="#60a5fa" strokeWidth={1.5} dot={false} name="Actual" connectNulls />
+          {/* Projected */}
+          <Line dataKey="projected" stroke={statusColor} strokeWidth={1.5} dot={false} strokeDasharray="4 2" name="Proj." connectNulls />
+          {/* Nov 1 target line */}
+          {target_bcf != null && (
+            <ReferenceLine y={target_bcf} stroke="#f59e0b" strokeDasharray="3 2" strokeOpacity={0.7}
+              label={{ value: 'target', position: 'right', fontSize: 8, fill: '#f59e0b' }} />
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+      <p className="text-[9px] text-muted-foreground mt-1">Target = 5yr avg week-43 Bcf. Blue = EIA weekly. Projection at current weekly rate.</p>
     </div>
   )
 }

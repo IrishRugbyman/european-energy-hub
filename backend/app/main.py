@@ -146,6 +146,9 @@ from .schemas import (
     UsStorageWeekPoint,
     UsStorageSeasonalPoint,
     UsStorageRegionResponse,
+    UsPaceWeekPoint,
+    UsPaceStats,
+    UsPaceResponse,
 )
 
 
@@ -2854,3 +2857,125 @@ def us_gas_region(region: str):
         history=history,
         seasonal=seasonal,
     )
+
+
+@app.get("/api/us-gas/pace", response_model=UsPaceResponse)
+def us_gas_pace():
+    """US-48 gas storage injection pace-to-target.
+
+    Returns current Bcf, weekly injection rate vs 5yr avg, projection to Nov 1,
+    and a 26-week history with seasonal band for the pace chart.
+    """
+    # Last 26 weeks of US-48 history joined with seasonal band
+    hist_df = db.query("""
+        SELECT h.week_date::VARCHAR AS week_date,
+               h.value_bcf,
+               s.avg5,
+               s.min5,
+               s.max5
+        FROM us_storage_history h
+        LEFT JOIN us_storage_seasonal s
+          ON s.region = h.region
+         AND s.week_of_year = WEEKOFYEAR(h.week_date)
+        WHERE h.region = 'US-48'
+          AND h.week_date >= current_date - INTERVAL '26 weeks'
+        ORDER BY h.week_date
+    """)
+    if hist_df is None or hist_df.empty:
+        raise HTTPException(status_code=503, detail="US gas storage data not available")
+
+    latest_hist = hist_df.iloc[-1]
+    current_bcf = _float_us(latest_hist["value_bcf"])
+    current_date_str = str(latest_hist["week_date"])
+    current_date_obj = date.fromisoformat(current_date_str[:10])
+
+    # Current weekly injection rate: diff vs prior week in history
+    prev_row = hist_df.iloc[-2] if len(hist_df) >= 2 else None
+    current_rate_bcf_w: float | None = None
+    if prev_row is not None and current_bcf is not None:
+        prev_bcf = _float_us(prev_row["value_bcf"])
+        if prev_bcf is not None:
+            current_rate_bcf_w = round(current_bcf - prev_bcf, 1)
+
+    # End-of-injection-season target: Nov 1 this year (or next year if past)
+    nov1 = date(current_date_obj.year, 11, 1)
+    if current_date_obj >= nov1:
+        nov1 = date(current_date_obj.year + 1, 11, 1)
+    days_to_target = (nov1 - current_date_obj).days
+    weeks_to_target_int = (days_to_target + 6) // 7
+
+    # 5yr avg end-of-season Bcf (week 43 ~= Oct 28)
+    target_woy = 43
+    target_seas = db.query(
+        "SELECT avg5 FROM us_storage_seasonal WHERE region = 'US-48' AND week_of_year = ?",
+        [target_woy],
+    )
+    target_bcf = _float_us(target_seas.iloc[0]["avg5"]) if not target_seas.empty else None
+
+    # 5yr avg injection rate at current week-of-year
+    current_woy = int(current_date_obj.isocalendar()[1])
+    seas_row = db.query(
+        "SELECT avg5 FROM us_storage_seasonal WHERE region = 'US-48' AND week_of_year = ?",
+        [current_woy],
+    )
+    prev_woy = current_woy - 1 if current_woy > 1 else 52
+    seas_prev = db.query(
+        "SELECT avg5 FROM us_storage_seasonal WHERE region = 'US-48' AND week_of_year = ?",
+        [prev_woy],
+    )
+    seasonal_rate_bcf_w: float | None = None
+    if not seas_row.empty and not seas_prev.empty:
+        avg_cur = _float_us(seas_row.iloc[0]["avg5"])
+        avg_prev = _float_us(seas_prev.iloc[0]["avg5"])
+        if avg_cur is not None and avg_prev is not None:
+            seasonal_rate_bcf_w = round(avg_cur - avg_prev, 1)
+
+    bcf_gap: float | None = None
+    weeks_at_current: float | None = None
+    on_track: bool | None = None
+    if target_bcf is not None and current_bcf is not None:
+        bcf_gap = round(target_bcf - current_bcf, 1)
+        if current_rate_bcf_w is not None and current_rate_bcf_w > 0 and bcf_gap is not None:
+            weeks_at_current = round(bcf_gap / current_rate_bcf_w, 1)
+            on_track = weeks_at_current <= weeks_to_target_int
+
+    # Build history list with projected tail to Nov 1
+    history: list[UsPaceWeekPoint] = [
+        UsPaceWeekPoint(
+            week_date=str(r.week_date),
+            value_bcf=_float_us(r.value_bcf),
+            avg5=_float_us(r.avg5),
+            min5=_float_us(r.min5),
+            max5=_float_us(r.max5),
+            projected=None,
+        )
+        for r in hist_df.itertuples()
+    ]
+    # Append weekly projection from current date to Nov 1
+    if current_bcf is not None and current_rate_bcf_w is not None:
+        for w in range(1, weeks_to_target_int + 1):
+            proj_date = date.fromordinal(current_date_obj.toordinal() + w * 7)
+            proj_bcf = current_bcf + current_rate_bcf_w * w
+            history.append(UsPaceWeekPoint(
+                week_date=proj_date.isoformat(),
+                value_bcf=None,
+                avg5=None,
+                min5=None,
+                max5=None,
+                projected=round(min(proj_bcf, 5000.0), 1),
+            ))
+
+    stats = UsPaceStats(
+        current_bcf=current_bcf,
+        current_date=current_date_str[:10],
+        target_date=nov1.isoformat(),
+        target_bcf=round(target_bcf, 1) if target_bcf is not None else None,
+        days_to_target=days_to_target,
+        bcf_gap=bcf_gap,
+        current_rate_bcf_w=current_rate_bcf_w,
+        seasonal_rate_bcf_w=seasonal_rate_bcf_w,
+        weeks_to_target=weeks_at_current,
+        on_track=on_track,
+        history=history,
+    )
+    return UsPaceResponse(us48=stats)

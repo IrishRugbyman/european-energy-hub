@@ -954,3 +954,30 @@ class UsStorageRegionResponse(BaseModel):
     latest: UsStorageLatestRow
     history: list[UsStorageWeekPoint]
     seasonal: list[UsStorageSeasonalPoint]
+
+
+class UsPaceWeekPoint(BaseModel):
+    week_date: str
+    value_bcf: float | None
+    avg5: float | None = None
+    min5: float | None = None
+    max5: float | None = None
+    projected: float | None = None
+
+
+class UsPaceStats(BaseModel):
+    current_bcf: float | None
+    current_date: str
+    target_date: str          # Nov 1
+    target_bcf: float | None  # 5yr avg end-of-season Bcf (week 43)
+    days_to_target: int
+    bcf_gap: float | None     # target_bcf - current_bcf
+    current_rate_bcf_w: float | None   # current weekly injection rate
+    seasonal_rate_bcf_w: float | None  # 5yr avg weekly injection rate at same woy
+    weeks_to_target: float | None      # bcf_gap / current_rate
+    on_track: bool | None
+    history: list[UsPaceWeekPoint]
+
+
+class UsPaceResponse(BaseModel):
+    us48: UsPaceStats

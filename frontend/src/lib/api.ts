@@ -927,6 +927,33 @@ export interface UsStorageRegionResponse {
   seasonal: UsStorageSeasonalPoint[]
 }
 
+export interface UsPaceWeekPoint {
+  week_date: string
+  value_bcf: number | null
+  avg5: number | null
+  min5: number | null
+  max5: number | null
+  projected: number | null
+}
+
+export interface UsPaceStats {
+  current_bcf: number | null
+  current_date: string
+  target_date: string
+  target_bcf: number | null
+  days_to_target: number
+  bcf_gap: number | null
+  current_rate_bcf_w: number | null
+  seasonal_rate_bcf_w: number | null
+  weeks_to_target: number | null
+  on_track: boolean | null
+  history: UsPaceWeekPoint[]
+}
+
+export interface UsPaceResponse {
+  us48: UsPaceStats
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -986,4 +1013,5 @@ export const api = {
   powerCrossZoneSpreads: (country: string, windowDays?: number) => get<CrossZoneSpreadResponse>(`/power/cross-zone-spreads?country=${country}${windowDays ? `&window_days=${windowDays}` : ''}`),
   usGasMap: () => get<UsStorageMapResponse>('/us-gas/map'),
   usGasRegion: (region: string) => get<UsStorageRegionResponse>(`/us-gas/region/${encodeURIComponent(region)}`),
+  usGasPace: () => get<UsPaceResponse>('/us-gas/pace'),
 }
