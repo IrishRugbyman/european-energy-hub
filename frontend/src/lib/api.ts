@@ -1016,6 +1016,7 @@ export const api = {
   usGasPace: () => get<UsPaceResponse>('/us-gas/pace'),
   usPowerMix: () => get<UsPowerMixResponse>('/us-power/mix'),
   usPowerHistory: (region: string) => get<UsPowerHistoryResponse>(`/us-power/history/${encodeURIComponent(region)}`),
+  usNgPlants: () => get<UsNgPlantsResponse>('/us-power/plants'),
 }
 
 // US power generation
@@ -1052,4 +1053,27 @@ export interface UsPowerHistoryResponse {
   region: string
   region_name: string
   hourly: UsPowerHourlyPoint[]
+}
+
+// US NG power plants (cleanview + EIA-860)
+
+export interface UsNgPlant {
+  plant_id: number
+  name: string
+  state: string
+  county: string
+  lat: number
+  lon: number
+  nameplate_mw: number | null
+  entity_name: string
+  ba_code: string
+  op_year: number | null
+  gen_gwh: number | null
+  category: string
+  cleanview_url: string
+}
+
+export interface UsNgPlantsResponse {
+  count: number
+  plants: UsNgPlant[]
 }

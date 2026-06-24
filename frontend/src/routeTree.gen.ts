@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as UsPowerRouteImport } from './routes/us-power'
+import { Route as UsPlantsRouteImport } from './routes/us-plants'
 import { Route as UsGasRouteImport } from './routes/us-gas'
 import { Route as SpreadsRouteImport } from './routes/spreads'
 import { Route as PricesRouteImport } from './routes/prices'
@@ -22,6 +23,11 @@ import { Route as IndexRouteImport } from './routes/index'
 const UsPowerRoute = UsPowerRouteImport.update({
   id: '/us-power',
   path: '/us-power',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const UsPlantsRoute = UsPlantsRouteImport.update({
+  id: '/us-plants',
+  path: '/us-plants',
   getParentRoute: () => rootRouteImport,
 } as any)
 const UsGasRoute = UsGasRouteImport.update({
@@ -74,6 +80,7 @@ export interface FileRoutesByFullPath {
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
+  '/us-plants': typeof UsPlantsRoute
   '/us-power': typeof UsPowerRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +92,7 @@ export interface FileRoutesByTo {
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
+  '/us-plants': typeof UsPlantsRoute
   '/us-power': typeof UsPowerRoute
 }
 export interface FileRoutesById {
@@ -97,6 +105,7 @@ export interface FileRoutesById {
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
+  '/us-plants': typeof UsPlantsRoute
   '/us-power': typeof UsPowerRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +119,7 @@ export interface FileRouteTypes {
     | '/prices'
     | '/spreads'
     | '/us-gas'
+    | '/us-plants'
     | '/us-power'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +131,7 @@ export interface FileRouteTypes {
     | '/prices'
     | '/spreads'
     | '/us-gas'
+    | '/us-plants'
     | '/us-power'
   id:
     | '__root__'
@@ -132,6 +143,7 @@ export interface FileRouteTypes {
     | '/prices'
     | '/spreads'
     | '/us-gas'
+    | '/us-plants'
     | '/us-power'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +156,7 @@ export interface RootRouteChildren {
   PricesRoute: typeof PricesRoute
   SpreadsRoute: typeof SpreadsRoute
   UsGasRoute: typeof UsGasRoute
+  UsPlantsRoute: typeof UsPlantsRoute
   UsPowerRoute: typeof UsPowerRoute
 }
 
@@ -154,6 +167,13 @@ declare module '@tanstack/react-router' {
       path: '/us-power'
       fullPath: '/us-power'
       preLoaderRoute: typeof UsPowerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/us-plants': {
+      id: '/us-plants'
+      path: '/us-plants'
+      fullPath: '/us-plants'
+      preLoaderRoute: typeof UsPlantsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/us-gas': {
@@ -224,6 +244,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricesRoute: PricesRoute,
   SpreadsRoute: SpreadsRoute,
   UsGasRoute: UsGasRoute,
+  UsPlantsRoute: UsPlantsRoute,
   UsPowerRoute: UsPowerRoute,
 }
 export const routeTree = rootRouteImport

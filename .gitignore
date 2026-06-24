@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 backend/data/
+!backend/data/us_ng_plants.json
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/

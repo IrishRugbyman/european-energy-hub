@@ -42,6 +42,7 @@ from analytics.power import build_power_tables, build_power_correlations
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
 from analytics.us_gas import build_us_storage_tables
+from analytics.us_plants import build_us_plants_table
 from analytics.us_power import build_us_power_tables
 
 
@@ -123,6 +124,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     eia_key = _read_eia_key()
     us_power_tables = build_us_power_tables(eia_key) if eia_key else {"us_power_hourly": pd.DataFrame(), "us_power_latest": pd.DataFrame()}
 
+    logger.info("Loading US NG power plants dataset (cleanview + EIA-860)...")
+    us_plants_df = build_us_plants_table()
+
     # Write to a fresh temp file so we never contend with the API's read-only
     # thread-local connections on energy_hub.duckdb.  Atomic rename at the end
     # means the API always serves a fully-consistent snapshot.
@@ -149,6 +153,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_battery(conn, battery_tables)
         _write_us_storage(conn, us_storage_tables)
         _write_us_power(conn, us_power_tables)
+        _write_us_plants(conn, us_plants_df)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -706,6 +711,31 @@ def _write_forecast_accuracy(conn: duckdb.DuckDBPyConnection, df) -> None:  # ty
                 "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
         conn.execute(f"INSERT INTO forecast_accuracy SELECT {', '.join(cols)} FROM _fa")
     logger.info(f"forecast_accuracy: {len(df) if df is not None else 0} rows")
+
+
+def _write_us_plants(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> None:
+    conn.execute("""
+        CREATE OR REPLACE TABLE us_ng_plants (
+            plant_id      INTEGER,
+            name          VARCHAR,
+            state         VARCHAR,
+            county        VARCHAR,
+            lat           REAL,
+            lon           REAL,
+            nameplate_mw  REAL,
+            entity_name   VARCHAR,
+            ba_code       VARCHAR,
+            op_year       INTEGER,
+            gen_gwh       REAL,
+            category      VARCHAR,
+            cleanview_url VARCHAR
+        )
+    """)
+    if df is not None and not df.empty:
+        conn.register("_unp", df)
+        conn.execute("INSERT INTO us_ng_plants SELECT plant_id, name, state, county, lat, lon, nameplate_mw, entity_name, ba_code, op_year, gen_gwh, category, cleanview_url FROM _unp")
+    n = len(df) if df is not None else 0
+    logger.info(f"us_ng_plants: {n} plants")
 
 
 def _read_eia_key() -> str | None:

@@ -1,5 +1,21 @@
 # Energy Hub Changelog
 
+## 2026-06-24 - Phase 31: US natural gas power plants layer (/us-plants)
+
+**What was built:** New `/us-plants` dashboard: a Leaflet map of 624 operating US natural gas power plants with coordinates, capacity, operator, annual generation, and cleanview.co links.
+
+**Data pipeline:** `backend/scripts/build_us_ng_plants.py` (run once, output committed to `backend/data/us_ng_plants.json`):
+1. Scrapes all 50 US state cleanview.co pages to extract EIA plant IDs from embedded URLs (`/power-projects/operating/natural-gas-power-plants/<state>/<plant_id>/<slug>`). Yields 642 unique plants (top 9 largest + 9 recently built per state, curated by cleanview).
+2. Fetches coordinates, nameplate capacity, operator/BA, and commissioning year from EIA API v2 `electricity/operating-generator-capacity` (monthly frequency, aggregated to plant level - summed capacity across all NG generators per plant).
+3. Fetches 2024 annual net generation (GWh) from EIA API v2 `electricity/facility-fuel/data` (EIA-923).
+4. Cross-reference: cleanview uses EIA plant IDs in its URLs, so the join is exact. 624 of 642 plants matched EIA coordinates; 18 skipped (no lat/lon in EIA-860M).
+
+**Key findings:** Total nameplate 340 GW across 624 plants. Florida most gas-heavy (FPL dominates; West County Energy Center 4,263 MW at 49.9% CF). Texas, Georgia, Louisiana, and New Jersey other heavy concentrations. EIA `operating-generator-capacity` returns generator (not plant) level data monthly - requires aggregation. Correct API call: `requests.get()` with repeated `data[]` and `facets[]` params (urllib string-building fails with repeated keys; requests handles it natively).
+
+**Backend:** `analytics/us_plants.py` loads JSON into DuckDB `us_ng_plants` table on each `refresh.py` run. `GET /api/us-power/plants` with `?min_mw=` and `?state=` filters.
+
+**Frontend:** `/us-plants` route - Leaflet map with `L.circleMarker` sized by sqrt(capacity), colored by tier (red >=2GW, orange >=1GW, amber >=500MW, green >=200MW, blue <200MW). Filters: category (All/Largest/Recent) + min MW. Click opens detail panel: capacity, annual generation, estimated capacity factor, commissioned year, operator, category badge, and cleanview.co link. Source: EIA-860M (Mar 2026) + EIA-923 (2024) + cleanview.co.
+
 ## 2026-06-24 - Phase 30: US power generation mix dashboard (/us-power)
 
 **Tried:** Added a new /us-power dashboard showing real-time hourly generation by fuel type for 10 EIA grid regions (Texas/ERCOT, Midwest/MISO, Mid-Atlantic/PJM, Southeast, California, Northwest, Carolinas, Florida, Southwest, New England). Data source: EIA API v2 `electricity/rto/fuel-type-data` (EIA Form 930, Hourly Electric Grid Monitor). This is the same EIA API key already in use for gas storage data. Fuel types: NG, Nuclear, Coal, Wind, Solar, Hydro, Battery/Storage, Petroleum, Other.

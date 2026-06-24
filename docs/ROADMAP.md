@@ -258,10 +258,9 @@ quantiles). Components per dashboard under `src/components/gas/` and
 
 - Phase 28 - US natural gas storage regional choropleth (/us-gas) [COMPLETE 2026-06-23]
 - Phase 30 - US power generation mix dashboard (/us-power) [COMPLETE 2026-06-24]
+- Phase 31 - US natural gas power plants layer (/us-plants, cleanview.co + EIA-860) [COMPLETE 2026-06-24]
 
 ## Geographic expansion (future)
-
-- US natural gas power plant location layer: EIA-860 annual dataset provides lat/lon + capacity for individual plants. cleanview.co/power-projects/operating/natural-gas-power-plants/us is a structured plant directory (name, capacity, operator, state). Could overlay as circle markers on /us-power or a dedicated plant map - sized by MW, colored by operator/type.
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
 
 ## 10. Deliberately NOT building (v1)

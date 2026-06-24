@@ -154,6 +154,8 @@ from .schemas import (
     UsPowerMixResponse,
     UsPowerHourlyPoint,
     UsPowerHistoryResponse,
+    UsNgPlant,
+    UsNgPlantsResponse,
 )
 
 
@@ -3073,3 +3075,46 @@ def us_power_history(region: str):
         for p, d in sorted(by_period.items())
     ]
     return UsPowerHistoryResponse(region=region, region_name=region_name, hourly=hourly)
+
+
+@app.get("/api/us-power/plants", response_model=UsNgPlantsResponse)
+def us_ng_plants(min_mw: float = 0.0, state: str | None = None):
+    """Operating US natural gas power plants with coordinates (cleanview + EIA).
+
+    Query params:
+      min_mw  - filter to plants with nameplate_mw >= this value (default 0)
+      state   - filter to a two-letter state abbreviation (e.g. TX)
+    """
+    sql = "SELECT plant_id, name, state, county, lat, lon, nameplate_mw, entity_name, ba_code, op_year, gen_gwh, category, cleanview_url FROM us_ng_plants WHERE lat IS NOT NULL AND lon IS NOT NULL"
+    params: list = []
+    if min_mw > 0:
+        sql += " AND nameplate_mw >= ?"
+        params.append(min_mw)
+    if state:
+        sql += " AND state = ?"
+        params.append(state.upper())
+    sql += " ORDER BY nameplate_mw DESC NULLS LAST"
+
+    df = db.query(sql, params or None)
+    if df.empty:
+        return UsNgPlantsResponse(count=0, plants=[])
+
+    plants = [
+        UsNgPlant(
+            plant_id=int(row["plant_id"]),
+            name=str(row["name"]),
+            state=str(row["state"]),
+            county=str(row["county"]),
+            lat=float(row["lat"]),
+            lon=float(row["lon"]),
+            nameplate_mw=float(row["nameplate_mw"]) if row["nameplate_mw"] is not None else None,
+            entity_name=str(row["entity_name"]),
+            ba_code=str(row["ba_code"]),
+            op_year=int(row["op_year"]) if row["op_year"] is not None else None,
+            gen_gwh=float(row["gen_gwh"]) if row["gen_gwh"] is not None else None,
+            category=str(row["category"]),
+            cleanview_url=str(row["cleanview_url"]),
+        )
+        for _, row in df.iterrows()
+    ]
+    return UsNgPlantsResponse(count=len(plants), plants=plants)

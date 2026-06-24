@@ -1017,3 +1017,26 @@ class UsPowerHistoryResponse(BaseModel):
     region: str
     region_name: str
     hourly: list[UsPowerHourlyPoint]
+
+
+# US NG power plants (cleanview + EIA-860)
+
+class UsNgPlant(BaseModel):
+    plant_id: int
+    name: str
+    state: str
+    county: str
+    lat: float
+    lon: float
+    nameplate_mw: float | None
+    entity_name: str
+    ba_code: str
+    op_year: int | None
+    gen_gwh: float | None
+    category: str
+    cleanview_url: str
+
+
+class UsNgPlantsResponse(BaseModel):
+    count: int
+    plants: list[UsNgPlant]
