@@ -149,6 +149,11 @@ from .schemas import (
     UsPaceWeekPoint,
     UsPaceStats,
     UsPaceResponse,
+    UsPowerFuelPoint,
+    UsPowerRegionLatest,
+    UsPowerMixResponse,
+    UsPowerHourlyPoint,
+    UsPowerHistoryResponse,
 )
 
 
@@ -2979,3 +2984,92 @@ def us_gas_pace():
         history=history,
     )
     return UsPaceResponse(us48=stats)
+
+
+# ---------------------------------------------------------------------------
+# US power generation mix
+# ---------------------------------------------------------------------------
+
+@app.get("/api/us-power/mix", response_model=UsPowerMixResponse)
+def us_power_mix():
+    """Current generation mix by EIA grid region (latest complete hour)."""
+    df = db.query(
+        "SELECT period, region, region_name, fueltype, fuel_name, value_mwh FROM us_power_latest ORDER BY region, fueltype"
+    )
+
+    if df.empty:
+        return UsPowerMixResponse(as_of="", regions=[])
+
+    # Group by region
+    from collections import defaultdict
+    by_region: dict[str, list] = defaultdict(list)
+    meta: dict[str, tuple[str, str]] = {}
+    for _, row in df.iterrows():
+        region = row["region"]
+        by_region[region].append((row["fueltype"], row["fuel_name"], float(row["value_mwh"] or 0.0)))
+        if region not in meta:
+            meta[region] = (row["region_name"], row["period"])
+
+    REGION_ORDER = ["TEX", "MISO", "MIDA", "SE", "CAL", "NW", "CAR", "FLA", "SW", "ISNE"]
+    ordered_regions = [r for r in REGION_ORDER if r in by_region]
+    ordered_regions += [r for r in sorted(by_region) if r not in REGION_ORDER]
+
+    region_list: list[UsPowerRegionLatest] = []
+    as_of = ""
+    for region in ordered_regions:
+        fuel_rows = by_region[region]
+        region_name, period = meta[region]
+        if not as_of:
+            as_of = period
+        total_mwh = sum(v for _, _, v in fuel_rows)
+        ng_mwh = sum(v for ft, _, v in fuel_rows if ft == "NG")
+        ng_pct = round(100.0 * ng_mwh / total_mwh, 1) if total_mwh > 0 else 0.0
+        fuels = [
+            UsPowerFuelPoint(fueltype=ft, fuel_name=fn, value_mwh=round(v, 0))
+            for ft, fn, v in sorted(fuel_rows, key=lambda x: -x[2])
+        ]
+        region_list.append(UsPowerRegionLatest(
+            region=region,
+            region_name=region_name,
+            period=period,
+            fuels=fuels,
+            ng_mwh=round(ng_mwh, 0),
+            ng_pct=ng_pct,
+            total_mwh=round(total_mwh, 0),
+        ))
+
+    return UsPowerMixResponse(as_of=as_of, regions=region_list)
+
+
+@app.get("/api/us-power/history/{region}", response_model=UsPowerHistoryResponse)
+def us_power_history(region: str):
+    """Last 48h hourly NG and total generation for a given EIA region."""
+    df = db.query(
+        "SELECT period, region_name, fueltype, value_mwh FROM us_power_hourly WHERE region = ? ORDER BY period",
+        [region],
+    )
+
+    if df.empty:
+        raise HTTPException(status_code=404, detail=f"No data for region {region}")
+
+    region_name = df["region_name"].iloc[0]
+
+    from collections import defaultdict
+    by_period: dict[str, dict[str, float]] = defaultdict(lambda: {"ng": 0.0, "total": 0.0})
+    for _, row in df.iterrows():
+        p = row["period"]
+        v = float(row["value_mwh"] or 0.0)
+        by_period[p]["total"] += v
+        if row["fueltype"] == "NG":
+            by_period[p]["ng"] += v
+
+    hourly = [
+        UsPowerHourlyPoint(
+            period=p,
+            ng_mwh=round(d["ng"], 0),
+            total_mwh=round(d["total"], 0),
+            ng_pct=round(100.0 * d["ng"] / d["total"], 1) if d["total"] > 0 else 0.0,
+        )
+        for p, d in sorted(by_period.items())
+    ]
+    return UsPowerHistoryResponse(region=region, region_name=region_name, hourly=hourly)

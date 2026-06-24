@@ -981,3 +981,39 @@ class UsPaceStats(BaseModel):
 
 class UsPaceResponse(BaseModel):
     us48: UsPaceStats
+
+
+# US power generation
+
+class UsPowerFuelPoint(BaseModel):
+    fueltype: str
+    fuel_name: str
+    value_mwh: float
+
+
+class UsPowerRegionLatest(BaseModel):
+    region: str
+    region_name: str
+    period: str
+    fuels: list[UsPowerFuelPoint]
+    ng_mwh: float
+    ng_pct: float
+    total_mwh: float
+
+
+class UsPowerMixResponse(BaseModel):
+    as_of: str
+    regions: list[UsPowerRegionLatest]
+
+
+class UsPowerHourlyPoint(BaseModel):
+    period: str
+    ng_mwh: float
+    total_mwh: float
+    ng_pct: float
+
+
+class UsPowerHistoryResponse(BaseModel):
+    region: str
+    region_name: str
+    hourly: list[UsPowerHourlyPoint]

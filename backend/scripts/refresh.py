@@ -19,6 +19,7 @@ from pathlib import Path
 import os
 
 import duckdb
+import pandas as pd
 from loguru import logger
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -41,6 +42,7 @@ from analytics.power import build_power_tables, build_power_correlations
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
 from analytics.us_gas import build_us_storage_tables
+from analytics.us_power import build_us_power_tables
 
 
 def run_ingest(fetcher: str) -> bool:
@@ -117,6 +119,10 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building US natural gas storage tables from market_data (PostgreSQL)...")
     us_storage_tables = build_us_storage_tables()
 
+    logger.info("Building US power generation mix from EIA API...")
+    eia_key = _read_eia_key()
+    us_power_tables = build_us_power_tables(eia_key) if eia_key else {"us_power_hourly": pd.DataFrame(), "us_power_latest": pd.DataFrame()}
+
     # Write to a fresh temp file so we never contend with the API's read-only
     # thread-local connections on energy_hub.duckdb.  Atomic rename at the end
     # means the API always serves a fully-consistent snapshot.
@@ -142,6 +148,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_imbalance(conn, imbalance_tables)
         _write_battery(conn, battery_tables)
         _write_us_storage(conn, us_storage_tables)
+        _write_us_power(conn, us_power_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -153,6 +160,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_congestion", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_us_power", now_iso])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -698,6 +706,54 @@ def _write_forecast_accuracy(conn: duckdb.DuckDBPyConnection, df) -> None:  # ty
                 "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
         conn.execute(f"INSERT INTO forecast_accuracy SELECT {', '.join(cols)} FROM _fa")
     logger.info(f"forecast_accuracy: {len(df) if df is not None else 0} rows")
+
+
+def _read_eia_key() -> str | None:
+    """Read EIA_API_KEY from the market-data .env file."""
+    env_path = MARKET_DATA_DIR / ".env"
+    try:
+        for line in env_path.read_text().splitlines():
+            if line.startswith("EIA_API_KEY="):
+                return line.split("=", 1)[1].strip()
+    except Exception as exc:
+        logger.warning(f"Could not read EIA key: {exc!r}")
+    return None
+
+
+def _write_us_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    hourly = tables.get("us_power_hourly")
+    latest = tables.get("us_power_latest")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE us_power_hourly (
+            period      VARCHAR,
+            region      VARCHAR,
+            region_name VARCHAR,
+            fueltype    VARCHAR,
+            fuel_name   VARCHAR,
+            value_mwh   REAL
+        )
+    """)
+    if hourly is not None and not hourly.empty:
+        conn.register("_uph", hourly)
+        conn.execute("INSERT INTO us_power_hourly SELECT * FROM _uph")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE us_power_latest (
+            period      VARCHAR,
+            region      VARCHAR,
+            region_name VARCHAR,
+            fueltype    VARCHAR,
+            fuel_name   VARCHAR,
+            value_mwh   REAL
+        )
+    """)
+    if latest is not None and not latest.empty:
+        conn.register("_upl", latest)
+        conn.execute("INSERT INTO us_power_latest SELECT * FROM _upl")
+
+    n = len(latest) if latest is not None else 0
+    logger.info(f"us_power: {n} latest rows")
 
 
 def _write_us_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

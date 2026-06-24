@@ -1014,4 +1014,42 @@ export const api = {
   usGasMap: () => get<UsStorageMapResponse>('/us-gas/map'),
   usGasRegion: (region: string) => get<UsStorageRegionResponse>(`/us-gas/region/${encodeURIComponent(region)}`),
   usGasPace: () => get<UsPaceResponse>('/us-gas/pace'),
+  usPowerMix: () => get<UsPowerMixResponse>('/us-power/mix'),
+  usPowerHistory: (region: string) => get<UsPowerHistoryResponse>(`/us-power/history/${encodeURIComponent(region)}`),
+}
+
+// US power generation
+
+export interface UsPowerFuelPoint {
+  fueltype: string
+  fuel_name: string
+  value_mwh: number
+}
+
+export interface UsPowerRegionLatest {
+  region: string
+  region_name: string
+  period: string
+  fuels: UsPowerFuelPoint[]
+  ng_mwh: number
+  ng_pct: number
+  total_mwh: number
+}
+
+export interface UsPowerMixResponse {
+  as_of: string
+  regions: UsPowerRegionLatest[]
+}
+
+export interface UsPowerHourlyPoint {
+  period: string
+  ng_mwh: number
+  total_mwh: number
+  ng_pct: number
+}
+
+export interface UsPowerHistoryResponse {
+  region: string
+  region_name: string
+  hourly: UsPowerHourlyPoint[]
 }

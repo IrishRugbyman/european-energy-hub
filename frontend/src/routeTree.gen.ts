@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UsPowerRouteImport } from './routes/us-power'
 import { Route as UsGasRouteImport } from './routes/us-gas'
 import { Route as SpreadsRouteImport } from './routes/spreads'
 import { Route as PricesRouteImport } from './routes/prices'
@@ -18,6 +19,11 @@ import { Route as GenerationRouteImport } from './routes/generation'
 import { Route as GasRouteImport } from './routes/gas'
 import { Route as IndexRouteImport } from './routes/index'
 
+const UsPowerRoute = UsPowerRouteImport.update({
+  id: '/us-power',
+  path: '/us-power',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UsGasRoute = UsGasRouteImport.update({
   id: '/us-gas',
   path: '/us-gas',
@@ -68,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
+  '/us-power': typeof UsPowerRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByTo {
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
+  '/us-power': typeof UsPowerRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/prices': typeof PricesRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
+  '/us-power': typeof UsPowerRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
     | '/prices'
     | '/spreads'
     | '/us-gas'
+    | '/us-power'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
     | '/prices'
     | '/spreads'
     | '/us-gas'
+    | '/us-power'
   id:
     | '__root__'
     | '/'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/prices'
     | '/spreads'
     | '/us-gas'
+    | '/us-power'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -132,10 +144,18 @@ export interface RootRouteChildren {
   PricesRoute: typeof PricesRoute
   SpreadsRoute: typeof SpreadsRoute
   UsGasRoute: typeof UsGasRoute
+  UsPowerRoute: typeof UsPowerRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/us-power': {
+      id: '/us-power'
+      path: '/us-power'
+      fullPath: '/us-power'
+      preLoaderRoute: typeof UsPowerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/us-gas': {
       id: '/us-gas'
       path: '/us-gas'
@@ -204,6 +224,7 @@ const rootRouteChildren: RootRouteChildren = {
   PricesRoute: PricesRoute,
   SpreadsRoute: SpreadsRoute,
   UsGasRoute: UsGasRoute,
+  UsPowerRoute: UsPowerRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
