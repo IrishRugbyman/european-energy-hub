@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-24 - Phase 29: US gas injection pace widget + EU coverage expansion
+
+**Tried:** Added a US-48 injection pace-to-target widget on /us-gas mirroring the EU gas pace widget (Phase 21). Expanded AGSI coverage from 17 to 21 countries (DK, GB, IE, SE). Reconsidered GB exclusion from the EU aggregate.
+
+**Found:** DK/SE: full AGSI history from 2019 (2730 rows each). GB: 2730 rows from 2019, all with fill% data. IE: 2730 rows but zero fill% values - Kinsale storage essentially depleted, AGSI reports no fill data. US-48 pace as of 2026-06-12: 2,759 Bcf current, 3,725 Bcf 5yr-avg target for Nov 1, +73 Bcf/week injection rate (vs +78 Bcf/week 5yr avg), 13.2 weeks needed with 20 weeks available - on track. Weekly injection band and seasonal projection clean.
+
+**Decision:** GB included in the EU aggregate - it is physically connected to the EU gas network via IUK and BBL interconnectors, the same justification used for Ukraine's inclusion. IE stays grey on the map (no fill data). US pace widget uses 5yr avg week-43 Bcf as the Nov 1 target (3,725 Bcf); labeled clearly so it is not confused with an official EIA target.
+
+**Artifacts:** `backend/app/main.py` (+GET /api/us-gas/pace), `backend/app/schemas.py` (UsPaceWeekPoint, UsPaceStats, UsPaceResponse), `frontend/src/lib/api.ts` (UsPaceWeekPoint, UsPaceStats, UsPaceResponse, usGasPace()), `frontend/src/routes/us-gas.tsx` (UsPaceWidget component). `AGSI_COUNTRIES` in market-data/config.py: 21 entries. `analytics/gas.py`: GB no longer excluded from EU aggregate.
+
+---
+
 ## 2026-06-23 - Phase 28: US natural gas storage regional choropleth (/us-gas)
 
 **Tried:** Added a full /us-gas dashboard - EIA weekly regional storage data (5 regions: East, Midwest, Mountain, Pacific, South Central + US-48 aggregate). Two color modes: vs 5yr average (the headline market metric) and implied fill % (current Bcf vs 5yr max at same week-of-year as a capacity proxy). Drill-down panel with seasonal fan chart (current year / 5yr avg / 5yr min-max band / prior year).
