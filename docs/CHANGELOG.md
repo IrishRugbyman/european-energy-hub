@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-24 - Phase 30: US power generation mix dashboard (/us-power)
+
+**Tried:** Added a new /us-power dashboard showing real-time hourly generation by fuel type for 10 EIA grid regions (Texas/ERCOT, Midwest/MISO, Mid-Atlantic/PJM, Southeast, California, Northwest, Carolinas, Florida, Southwest, New England). Data source: EIA API v2 `electricity/rto/fuel-type-data` (EIA Form 930, Hourly Electric Grid Monitor). This is the same EIA API key already in use for gas storage data. Fuel types: NG, Nuclear, Coal, Wind, Solar, Hydro, Battery/Storage, Petroleum, Other.
+
+**Found:** EIA Form 930 API has ~1h lag and returns 10 major regional aggregates covering the US-48. Texas (ERCOT) at 44.4% NG, 30% wind at 3am. Florida at 81.3% NG (thermal-dominant grid). California at 30.6% NG with strong solar/geothermal. Mid-Atlantic (PJM) at 45.4% NG + 32% nuclear. US-48 total: 483k MWh/h with 43.8% from natural gas. EIA region respondents map to `TEX/CAL/MISO/MIDA/SE/NW/CAR/FLA/SW/ISNE`. No NYISO separate aggregate in the regional respondent list (NY falls under MIDA region). Analytics module calls EIA API directly during refresh (no PostgreSQL step needed for this real-time source). 48h window gives clean intraday patterns.
+
+**Decision:** Analytics module `analytics/us_power.py` calls EIA API directly in the refresh step. DuckDB tables: `us_power_hourly` (48h) and `us_power_latest` (latest complete hour). Fuel normalization collapses BAT/OES/PS/SNB into a unified "Battery/Storage" segment. Region display order by typical capacity: TEX, MISO, MIDA, SE, CAL, NW, CAR, FLA, SW, ISNE. Nav renamed "Power" to "EU Power" to disambiguate.
+
+**Artifacts:** `backend/analytics/us_power.py` (EIA API fetch + fuel normalization), `backend/scripts/refresh.py` (build_us_power_tables + _write_us_power + _read_eia_key), `backend/app/schemas.py` (UsPowerFuelPoint, UsPowerRegionLatest, UsPowerMixResponse, UsPowerHourlyPoint, UsPowerHistoryResponse), `backend/app/main.py` (GET /api/us-power/mix, GET /api/us-power/history/{region}), `frontend/src/routes/us-power.tsx` (region cards, stacked mix bar, drill-down panel with 48h NG trend + share charts), `frontend/src/routes/__root.tsx` (US Power nav entry, EU Power rename).
+
+---
+
 ## 2026-06-24 - Phase 29: US gas injection pace widget + EU coverage expansion
 
 **Tried:** Added a US-48 injection pace-to-target widget on /us-gas mirroring the EU gas pace widget (Phase 21). Expanded AGSI coverage from 17 to 21 countries (DK, GB, IE, SE). Reconsidered GB exclusion from the EU aggregate.
