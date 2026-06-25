@@ -449,6 +449,13 @@ function ZonePriceReCorrChart({ rows }: { rows: ZonePriceReCorrRow[] }) {
       </p>
       <div className="space-y-1">
         {rows.map((r) => {
+          if (r.corr == null) return (
+            <div key={r.zone} className="flex items-center gap-1">
+              <span className="text-xs font-mono text-muted-foreground w-12 shrink-0 text-right">{r.zone}</span>
+              <div className="flex-1 text-[10px] text-muted-foreground/50 pl-2">no RE data</div>
+              <span className="text-xs tabular-nums w-12 shrink-0 text-left pl-1 text-muted-foreground/40">--</span>
+            </div>
+          )
           const isNeg = r.corr < 0
           const barW = (Math.abs(r.corr) / maxAbs) * 50
           const color = isNeg
@@ -913,7 +920,7 @@ function ZoneCarbonIntensityChart({ rows }: { rows: ZoneCarbonIntensityRow[] }) 
 
 function ZoneTtfCorrChart({ rows }: { rows: ZoneTtfCorrRow[] }) {
   if (!rows.length) return null
-  const maxAbs = Math.max(...rows.map((r) => Math.abs(r.corr)), 0.01)
+  const maxAbs = Math.max(...rows.map((r) => Math.abs(r.corr ?? 0)), 0.01)
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <h2 className="text-sm font-semibold text-foreground mb-1">
@@ -925,6 +932,13 @@ function ZoneTtfCorrChart({ rows }: { rows: ZoneTtfCorrRow[] }) {
       </p>
       <div className="space-y-1">
         {rows.map((r) => {
+          if (r.corr == null) return (
+            <div key={r.zone} className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground w-14 shrink-0 text-right">{r.zone}</span>
+              <div className="flex-1 text-[10px] text-muted-foreground/50 pl-2">no data</div>
+              <span className="text-xs font-mono w-10 shrink-0 text-muted-foreground/40">--</span>
+            </div>
+          )
           const isPos = r.corr >= 0
           const barW = (Math.abs(r.corr) / maxAbs) * 100
           const color = r.corr >= 0.3 ? '#f97316' : r.corr >= 0 ? '#fbbf24' : r.corr >= -0.15 ? '#94a3b8' : '#60a5fa'
