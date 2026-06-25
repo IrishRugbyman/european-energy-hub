@@ -1276,6 +1276,9 @@ class NuclearHeatRiskPlant(BaseModel):
     peak_fc_temp_c: float | None
     peak_fc_date: str | None
     fc_alert_level: str
+    implied_river_c: float | None
+    river_limit_c: float
+    summer_limit_c: float
 
 
 class NuclearHeatRiskTrendPoint(BaseModel):

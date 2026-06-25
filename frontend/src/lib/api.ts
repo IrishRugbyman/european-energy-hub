@@ -229,6 +229,9 @@ export interface NuclearHeatRiskPlant {
   peak_fc_temp_c: number | null
   peak_fc_date: string | null
   fc_alert_level: 'normal' | 'watch' | 'warning' | 'critical'
+  implied_river_c: number | null
+  river_limit_c: number
+  summer_limit_c: number
 }
 
 export interface NuclearHeatRiskTrendPoint {

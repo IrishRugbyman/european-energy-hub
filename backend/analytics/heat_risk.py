@@ -25,15 +25,18 @@ from loguru import logger
 # French nuclear plants on thermally-constrained rivers.
 # capacity_mw is the curtailable output (not installed - excludes units long offline).
 NUCLEAR_PLANTS: list[dict[str, Any]] = [
-    {"code": "TRICASTIN",   "name": "Tricastin",     "river": "Rhone",   "lat": 44.332, "lon": 4.732,  "capacity_mw": 3600},
-    {"code": "CRUAS",       "name": "Cruas-Meysse",  "river": "Rhone",   "lat": 44.638, "lon": 4.755,  "capacity_mw": 3700},
-    {"code": "SAINT_ALBAN", "name": "Saint-Alban",   "river": "Rhone",   "lat": 45.408, "lon": 4.805,  "capacity_mw": 1500},
-    {"code": "BUGEY",       "name": "Bugey",         "river": "Rhone",   "lat": 45.797, "lon": 5.270,  "capacity_mw": 1850},
-    {"code": "GOLFECH",     "name": "Golfech",       "river": "Garonne", "lat": 44.107, "lon": 0.851,  "capacity_mw": 1400},
-    {"code": "DAMPIERRE",   "name": "Dampierre",     "river": "Loire",   "lat": 47.734, "lon": 2.514,  "capacity_mw": 3700},
-    {"code": "BELLEVILLE",  "name": "Belleville",    "river": "Loire",   "lat": 47.510, "lon": 2.868,  "capacity_mw": 2600},
-    {"code": "CATTENOM",    "name": "Cattenom",      "river": "Moselle", "lat": 49.400, "lon": 6.218,  "capacity_mw": 5400},
-    {"code": "CHINON",      "name": "Chinon",        "river": "Loire",   "lat": 47.231, "lon": 0.164,  "capacity_mw": 1900},
+    # river_limit_c: ASN normal permit limit for river water temperature (°C).
+    # summer_limit_c: summer derogation limit (granted by ASN during heat waves).
+    # Implied river temp ≈ air_max - 5°C in sustained summer heat.
+    {"code": "TRICASTIN",   "name": "Tricastin",     "river": "Rhone",   "lat": 44.332, "lon": 4.732,  "capacity_mw": 3600, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {"code": "CRUAS",       "name": "Cruas-Meysse",  "river": "Rhone",   "lat": 44.638, "lon": 4.755,  "capacity_mw": 3700, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {"code": "SAINT_ALBAN", "name": "Saint-Alban",   "river": "Rhone",   "lat": 45.408, "lon": 4.805,  "capacity_mw": 1500, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {"code": "BUGEY",       "name": "Bugey",         "river": "Rhone",   "lat": 45.797, "lon": 5.270,  "capacity_mw": 1850, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {"code": "GOLFECH",     "name": "Golfech",       "river": "Garonne", "lat": 44.107, "lon": 0.851,  "capacity_mw": 1400, "river_limit_c": 24.0, "summer_limit_c": 28.0},
+    {"code": "DAMPIERRE",   "name": "Dampierre",     "river": "Loire",   "lat": 47.734, "lon": 2.514,  "capacity_mw": 3700, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {"code": "BELLEVILLE",  "name": "Belleville",    "river": "Loire",   "lat": 47.510, "lon": 2.868,  "capacity_mw": 2600, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {"code": "CATTENOM",    "name": "Cattenom",      "river": "Moselle", "lat": 49.400, "lon": 6.218,  "capacity_mw": 5400, "river_limit_c": 24.0, "summer_limit_c": 28.0},
+    {"code": "CHINON",      "name": "Chinon",        "river": "Loire",   "lat": 47.231, "lon": 0.164,  "capacity_mw": 1900, "river_limit_c": 24.0, "summer_limit_c": 27.0},
 ]
 
 # Air temperature thresholds -> river thermal risk level.
@@ -161,6 +164,7 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
         recent5 = [t for _, t in obs_temps[-5:] if t is not None]
         days_above_35 = sum(1 for t in recent5 if t >= 35.0)
 
+        implied_river = round(latest_temp - 5.0, 1) if latest_temp is not None else None
         latest_rows.append({
             "plant_code": code, "plant_name": name, "river": river,
             "capacity_mw": cap, "lat": lat, "lon": lon,
@@ -172,6 +176,9 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
             "peak_fc_temp_c": peak_fc_temp,
             "peak_fc_date": peak_fc_date,
             "fc_alert_level": _alert(peak_fc_temp),
+            "implied_river_c": implied_river,
+            "river_limit_c": plant["river_limit_c"],
+            "summer_limit_c": plant["summer_limit_c"],
         })
 
     df_latest   = pd.DataFrame(latest_rows)

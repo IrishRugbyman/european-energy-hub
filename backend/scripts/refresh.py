@@ -945,7 +945,10 @@ def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             days_above_35_last5 INTEGER,
             peak_fc_temp_c      REAL,
             peak_fc_date        DATE,
-            fc_alert_level      VARCHAR
+            fc_alert_level      VARCHAR,
+            implied_river_c     REAL,
+            river_limit_c       REAL,
+            summer_limit_c      REAL
         )
     """)
     if not latest.empty:
@@ -955,7 +958,8 @@ def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             SELECT plant_code, plant_name, river, capacity_mw, lat, lon,
                    obs_date::DATE, temp_max_c, avg5_temp_c, anomaly_c,
                    alert_level, days_above_35_last5, peak_fc_temp_c,
-                   peak_fc_date::DATE, fc_alert_level
+                   peak_fc_date::DATE, fc_alert_level,
+                   implied_river_c, river_limit_c, summer_limit_c
             FROM _hr_l
         """)
 

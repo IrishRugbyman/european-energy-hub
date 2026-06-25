@@ -963,7 +963,8 @@ def generation_heat_risk():
         SELECT plant_code, plant_name, river, capacity_mw, lat, lon,
                obs_date::TEXT AS obs_date, temp_max_c, avg5_temp_c, anomaly_c,
                alert_level, days_above_35_last5, peak_fc_temp_c,
-               peak_fc_date::TEXT AS peak_fc_date, fc_alert_level
+               peak_fc_date::TEXT AS peak_fc_date, fc_alert_level,
+               implied_river_c, river_limit_c, summer_limit_c
         FROM nuclear_heat_risk_latest
         ORDER BY temp_max_c DESC NULLS LAST
     """)
@@ -996,6 +997,9 @@ def generation_heat_risk():
             peak_fc_temp_c=_float(r.peak_fc_temp_c),
             peak_fc_date=_iso(r.peak_fc_date),
             fc_alert_level=str(r.fc_alert_level),
+            implied_river_c=_float(r.implied_river_c),
+            river_limit_c=float(r.river_limit_c),
+            summer_limit_c=float(r.summer_limit_c),
         )
         for r in plants_df.itertuples()
     ]

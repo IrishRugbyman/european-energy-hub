@@ -1618,11 +1618,25 @@ function HeatRiskSection({
               )}
             </div>
             <div className="text-muted-foreground text-[10px] space-y-0.5">
-              <div>5yr avg at this DOY: {p.avg5_temp_c?.toFixed(1)}°C</div>
-              <div>{p.days_above_35_last5}/5 recent days &gt;35°C</div>
+              {p.implied_river_c != null && (
+                <div className="flex items-center gap-1">
+                  <span>Est. river temp:</span>
+                  <span
+                    className="font-semibold"
+                    style={{ color: p.implied_river_c >= p.summer_limit_c ? ALERT_COLORS.critical : p.implied_river_c >= p.river_limit_c ? ALERT_COLORS.warning : '#94a3b8' }}
+                  >
+                    ~{p.implied_river_c.toFixed(1)}°C
+                  </span>
+                  <span className="text-muted-foreground/60">
+                    (limit {p.river_limit_c}°C / {p.summer_limit_c}°C derog.)
+                  </span>
+                </div>
+              )}
+              <div>5yr avg air: {p.avg5_temp_c?.toFixed(1)}°C</div>
+              <div>{p.days_above_35_last5}/5 recent days &gt;35°C air</div>
               {p.peak_fc_temp_c != null && (
                 <div>
-                  Forecast peak: <span style={{ color: ALERT_COLORS[p.fc_alert_level] }}>
+                  Next 10d peak: <span style={{ color: ALERT_COLORS[p.fc_alert_level] }}>
                     {p.peak_fc_temp_c.toFixed(1)}°C
                   </span>{' '}
                   {p.peak_fc_date ? `on ${p.peak_fc_date}` : ''}
