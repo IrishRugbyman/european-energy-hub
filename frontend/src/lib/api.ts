@@ -1112,6 +1112,16 @@ export interface FundamentalCurrent {
   residual: number
   zscore: number
   pct_rank_1yr: number
+  half_life_days: number | null
+}
+
+export interface RollingCoefPoint {
+  date: string
+  ttf_eur_mwh: number
+  eua_eur_t: number
+  wind_pct: number
+  solar_pct: number
+  r2: number
 }
 
 export interface FundamentalModelResponse {
@@ -1119,6 +1129,7 @@ export interface FundamentalModelResponse {
   coefficients: FundamentalCoefficients
   series: FundamentalPoint[]
   current: FundamentalCurrent
+  rolling_coefs: RollingCoefPoint[]
 }
 
 export interface SignalSnapshotRow {

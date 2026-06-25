@@ -1068,6 +1068,16 @@ class FundamentalCurrent(BaseModel):
     residual: float
     zscore: float
     pct_rank_1yr: int
+    half_life_days: float | None = None
+
+
+class RollingCoefPoint(BaseModel):
+    date: str
+    ttf_eur_mwh: float
+    eua_eur_t: float
+    wind_pct: float
+    solar_pct: float
+    r2: float
 
 
 class FundamentalModelResponse(BaseModel):
@@ -1075,6 +1085,7 @@ class FundamentalModelResponse(BaseModel):
     coefficients: FundamentalCoefficients
     series: list[FundamentalPoint]
     current: FundamentalCurrent
+    rolling_coefs: list[RollingCoefPoint] = []
 
 
 class SignalSnapshotRow(BaseModel):

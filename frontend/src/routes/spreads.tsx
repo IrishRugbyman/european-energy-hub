@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1242,6 +1242,66 @@ function FundamentalModelChart({
   )
 }
 
+function RollingCoefChart({ data }: { data: RollingCoefPoint[] }) {
+  if (!data.length) return null
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground font-medium">
+        Rolling 90-day coefficient stability (stepped weekly)
+      </p>
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={Math.floor(data.length / 5)} />
+          <YAxis
+            yAxisId="coef"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            label={{ value: 'coef', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          <YAxis
+            yAxisId="r2"
+            orientation="right"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={28}
+            domain={[0, 1]}
+            tickFormatter={(v) => (v * 100).toFixed(0) + '%'}
+          />
+          <ReferenceLine yAxisId="coef" y={0} stroke="#475569" strokeWidth={1} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(val: unknown, name: unknown) => {
+              if (name === 'r2') return [typeof val === 'number' ? (val * 100).toFixed(0) + '%' : '--', 'R²']
+              return [typeof val === 'number' ? val.toFixed(3) : '--', String(name)]
+            }}
+            labelFormatter={(l) => String(l)}
+          />
+          <Line yAxisId="coef" dataKey="ttf_eur_mwh" stroke="#60a5fa" strokeWidth={1.5} dot={false} isAnimationActive={false} name="TTF" />
+          <Line yAxisId="coef" dataKey="eua_eur_t"   stroke="#34d399" strokeWidth={1.5} dot={false} isAnimationActive={false} name="EUA" />
+          <Line yAxisId="coef" dataKey="wind_pct"    stroke="#818cf8" strokeWidth={1.5} dot={false} isAnimationActive={false} name="Wind%" strokeDasharray="4 2" />
+          <Line yAxisId="coef" dataKey="solar_pct"   stroke="#fbbf24" strokeWidth={1.5} dot={false} isAnimationActive={false} name="Solar%" strokeDasharray="4 2" />
+          <Line yAxisId="r2"   dataKey="r2"          stroke="#f87171" strokeWidth={1} dot={false} isAnimationActive={false} name="r2" strokeDasharray="6 3" />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-3 mt-1 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-400 inline-block" />TTF coef (left)</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-400 inline-block" />EUA coef (left)</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-indigo-400 inline-block" />Wind% coef (left)</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-amber-400 inline-block" />Solar% coef (left)</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-red-400 inline-block" />R² (right)</span>
+      </div>
+      <p className="text-[9px] text-muted-foreground">
+        Stable flat lines indicate robust, regime-invariant factor loadings. Drift or sign flips signal structural changes
+        (e.g. gas crisis changing TTF passthrough, or seasonality in solar impact).
+      </p>
+    </div>
+  )
+}
+
 function FundamentalModelSection({ window: w }: { window: DateWindow }) {
   const [zone, setZone] = useState<FundZone>('DE-LU')
 
@@ -1316,6 +1376,13 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
                 <span className="text-xs text-muted-foreground ml-1">({zscoreLabel(cur.zscore)}, p{cur.pct_rank_1yr})</span>
               </p>
             </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Mean-reversion half-life</p>
+              <p className="text-sm font-semibold text-foreground">
+                {cur.half_life_days != null ? `${cur.half_life_days.toFixed(1)}d` : '--'}
+                <span className="text-xs text-muted-foreground ml-1">AR(1) implied</span>
+              </p>
+            </div>
           </div>
 
           {/* Coefficients */}
@@ -1343,6 +1410,13 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
 
           {/* Chart */}
           <FundamentalModelChart series={data.series} window={w} />
+
+          {/* Rolling coefficient stability */}
+          {data.rolling_coefs && data.rolling_coefs.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <RollingCoefChart data={data.rolling_coefs} />
+            </div>
+          )}
         </div>
       )}
     </div>

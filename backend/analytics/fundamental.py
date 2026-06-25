@@ -140,6 +140,51 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
     else:
         pct_rank = 50
 
+    # AR(1) half-life of residual: fit residual(t) = a + b * residual(t-1)
+    # Use the fit-window residuals (last OLS_WINDOW rows)
+    fit_res = residual[max(0, len(residual) - OLS_WINDOW):]
+    half_life_days: float | None = None
+    if len(fit_res) > 20:
+        y_ar = fit_res[1:]
+        x_ar = fit_res[:-1]
+        X_ar = np.column_stack([np.ones(len(x_ar)), x_ar])
+        b_ar, _, _, _ = np.linalg.lstsq(X_ar, y_ar, rcond=None)
+        ar1 = float(b_ar[1])
+        if 0.0 < ar1 < 1.0:
+            half_life_days = round(-np.log(2) / np.log(ar1), 2)
+
+    # Rolling 90-day OLS (stepped weekly) to track coefficient stability over time.
+    # Only computed on the trailing 2 years to bound response size.
+    ROLL_WIN = 90
+    STEP = 7
+    two_yr_df = df.tail(OLS_WINDOW * 2)
+    rolling_coefs = []
+    for end in range(ROLL_WIN, len(two_yr_df) + 1, STEP):
+        win = two_yr_df.iloc[end - ROLL_WIN:end]
+        if win.empty or win["base_eur"].isna().any():
+            continue
+        Xw = np.column_stack([
+            np.ones(len(win)),
+            win["ttf_eur_mwh"].values,
+            win["eua_eur_t"].values,
+            win["wind_pct"].values,
+            win["solar_pct"].values,
+        ])
+        yw = win["base_eur"].values
+        cw, _, _, _ = np.linalg.lstsq(Xw, yw, rcond=None)
+        yw_pred = Xw @ cw
+        ss_r = np.sum((yw - yw_pred) ** 2)
+        ss_t = np.sum((yw - yw.mean()) ** 2)
+        r2w = float(1 - ss_r / ss_t) if ss_t > 0 else 0.0
+        rolling_coefs.append({
+            "date": two_yr_df.iloc[end - 1]["price_date"].strftime("%Y-%m-%d"),
+            "ttf_eur_mwh": round(float(cw[1]), 4),
+            "eua_eur_t": round(float(cw[2]), 4),
+            "wind_pct": round(float(cw[3]), 4),
+            "solar_pct": round(float(cw[4]), 4),
+            "r2": round(r2w, 4),
+        })
+
     return {
         "zone": zone,
         "coefficients": {
@@ -158,5 +203,7 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
             "residual": round(latest_residual, 2),
             "zscore": round(latest_zscore, 3),
             "pct_rank_1yr": pct_rank,
+            "half_life_days": half_life_days,
         },
+        "rolling_coefs": rolling_coefs,
     }

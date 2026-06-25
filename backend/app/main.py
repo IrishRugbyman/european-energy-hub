@@ -159,6 +159,7 @@ from .schemas import (
     FundamentalCoefficients,
     FundamentalPoint,
     FundamentalCurrent,
+    RollingCoefPoint,
     FundamentalModelResponse,
     SignalSnapshotRow,
     SignalSnapshotResponse,
@@ -3149,7 +3150,6 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
         raise HTTPException(status_code=503, detail="Insufficient data for fundamental model")
 
     coef = result["coefficients"]
-    coef = result["coefficients"]
     return FundamentalModelResponse(
         zone=result["zone"],
         coefficients=FundamentalCoefficients(
@@ -3177,7 +3177,12 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
             residual=result["current"]["residual"],
             zscore=result["current"]["zscore"],
             pct_rank_1yr=result["current"]["pct_rank_1yr"],
+            half_life_days=result["current"].get("half_life_days"),
         ),
+        rolling_coefs=[
+            RollingCoefPoint(**rc)
+            for rc in result.get("rolling_coefs", [])
+        ],
     )
 
 
