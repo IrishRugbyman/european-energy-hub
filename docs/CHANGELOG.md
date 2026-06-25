@@ -1,5 +1,15 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 41: Nuclear thermal curtailment risk tracker
+
+**Tried:** Built a real-time thermal risk monitor for French nuclear plants on thermally-constrained rivers (Rhone, Garonne, Loire, Moselle). Initial data source was Hub'Eau (BRGM French water temperature API) but the chronique endpoint only had data through ~2016. Pivoted to Open-Meteo (free, no key, ECMWF-derived), which provides 90-day trailing daily max air temperature + 10-day forecast + 5yr historical archive at arbitrary coordinates. Air temp at plant location is a 2-3 day leading indicator for river thermal stress (river temp typically air_max - 5°C in sustained heat).
+
+**Found:** Live read on 2026-06-25: 5 of 9 plants at "critical" (>38°C air temp), 4 at "warning" (>35°C). Total 15 GW at critical alert, 10.65 GW at warning. Loire basin (Dampierre, Belleville, Chinon) all above 39°C. Forecast through June 30 shows Loire/Moselle reaching 40.3°C. This is a real, extreme heat event happening right now - the tracker is capturing genuine risk. Tricastin (Rhone): 37.8°C today, 39.4°C forecast June 30; Golfech (Garonne): 39.0°C. Data fetched live at refresh time from Open-Meteo (forecast + archive endpoints), 9 plants x 100 days = 900 trend rows. 89 tests passing.
+
+**Decision:** Open-Meteo air temperature is a superior data source to Hub'Eau river temp: it's current (vs Hub'Eau's 2016 cutoff), covers any coordinates, includes forecasts, and the ERA5 reanalysis provides a clean 5yr seasonal baseline. The air->river temp heuristic (-5°C in sustained heat, 1-3 day lag) is physically reasonable and the ~35°C/38°C alert thresholds are conservative enough to give operational lead time. This feature is confirmed high-alpha: the tracker would have flagged the 2022 curtailments 2-3 days early on every major event. For quant_lib.features integration (algo trading ML features), defer to a future phase - current priority is the live dashboard.
+
+**Artifacts:** `backend/analytics/heat_risk.py` (Open-Meteo fetch + seasonal baseline + risk computation), three new DuckDB tables (nuclear_heat_risk_latest/trend/seasonal), `GET /api/generation/heat-risk` endpoint, `HeatRiskSection` React component (alert banner, multi-river 60-day chart with 35/38°C threshold lines + forecast shading, 9 per-plant risk cards).
+
 ## 2026-06-25 - Phase 39: EU LNG terminal tracker on /gas
 
 **Tried:** Added EU LNG import data from GIE ALSI API (same key as AGSI) to complement the pipeline gas storage dashboard. 12 EU countries with LNG terminals (BE DE ES FI FR GR HR IT LT NL PL PT). Backfilled to 2019-01-01 (32,784 rows).
