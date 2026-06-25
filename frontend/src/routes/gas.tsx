@@ -19,7 +19,7 @@ import {
   YAxis,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow, type GasPriceScatterRow } from '@/lib/api'
+import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow, type GasPriceScatterRow, type LngLatestRow, type LngTrendPoint } from '@/lib/api'
 import { GasMap, type GasColorMode } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
@@ -68,6 +68,7 @@ function GasDashboard() {
   const [showFacilities, setShowFacilities] = useState(false)
   const [selectedFlow, setSelectedFlow] = useState<string | null>(null)
   const [showRankings, setShowRankings] = useState(false)
+  const [showLng, setShowLng] = useState(false)
   const [colorMode, setColorMode] = useState<GasColorMode>('fill')
 
   const { data, isLoading, error } = useQuery({
@@ -91,6 +92,20 @@ function GasDashboard() {
   const { data: paceData } = useQuery({
     queryKey: ['gas-pace'],
     queryFn: api.gasPace,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const { data: lngData } = useQuery({
+    queryKey: ['gas-lng-map'],
+    queryFn: api.gasLngMap,
+    enabled: showLng,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const { data: lngTrendData } = useQuery({
+    queryKey: ['gas-lng-trend'],
+    queryFn: api.gasLngTrend,
+    enabled: showLng,
     staleTime: 60 * 60 * 1000,
   })
 
@@ -197,6 +212,17 @@ function GasDashboard() {
         >
           Facilities
         </button>
+        <button
+          onClick={() => { setShowLng((v) => !v); setSelected(null); setShowRankings(false) }}
+          title="EU LNG terminal send-out and fill levels"
+          className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors shadow-lg ${
+            showLng
+              ? 'bg-violet-700 border-violet-600 text-white'
+              : 'bg-card/90 backdrop-blur border-border text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          LNG
+        </button>
       </div>
 
       {/* Legend (hidden on mobile, swaps between fill and flow) */}
@@ -229,7 +255,7 @@ function GasDashboard() {
       <StaleBanner datasetKey="gas" />
 
       {/* Side panel: bottom sheet on mobile, right-side on sm+ */}
-      {(selected || (showFlows && selectedFlow) || showRankings) && (() => {
+      {(selected || (showFlows && selectedFlow) || showRankings || showLng) && (() => {
         const isFlowPanel = showFlows && selectedFlow != null
         const flowRow = isFlowPanel
           ? (flowsData?.rows ?? []).find((r) => r.country === selectedFlow) ?? null
@@ -247,6 +273,12 @@ function GasDashboard() {
                 latestExit={flowRow?.exit_gwh_d ?? null}
                 latestDate={flowRow?.period_date ?? null}
                 onClose={() => setSelectedFlow(null)}
+              />
+            ) : showLng ? (
+              <LngPanel
+                rows={lngData?.rows ?? []}
+                trend={lngTrendData ?? []}
+                onClose={() => setShowLng(false)}
               />
             ) : showRankings ? (
               <StorageRankings
@@ -1035,6 +1067,163 @@ function PaceComparisonChart({
         <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm bg-[#334155]" /><span className="text-xs text-muted-foreground">Required</span></div>
         <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm bg-green-700" /><span className="text-xs text-muted-foreground">On track</span></div>
         <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm bg-red-700" /><span className="text-xs text-muted-foreground">Behind</span></div>
+      </div>
+    </div>
+  )
+}
+
+const LNG_COUNTRY_NAMES: Record<string, string> = {
+  EU: 'EU Total',
+  BE: 'Belgium',
+  DE: 'Germany',
+  ES: 'Spain',
+  FI: 'Finland',
+  FR: 'France',
+  GR: 'Greece',
+  HR: 'Croatia',
+  IT: 'Italy',
+  LT: 'Lithuania',
+  NL: 'Netherlands',
+  PL: 'Poland',
+  PT: 'Portugal',
+}
+
+function LngPanel({
+  rows,
+  trend,
+  onClose,
+}: {
+  rows: LngLatestRow[]
+  trend: LngTrendPoint[]
+  onClose: () => void
+}) {
+  const eu = rows.find((r) => r.country === 'EU')
+  const countries = rows.filter((r) => r.country !== 'EU').sort((a, b) => (b.sendout_gwh ?? 0) - (a.sendout_gwh ?? 0))
+
+  return (
+    <div className="h-full overflow-y-auto">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-border sticky top-0 bg-card z-10">
+        <div>
+          <p className="text-sm font-semibold">EU LNG Terminals</p>
+          {eu && (
+            <p className="text-xs text-muted-foreground">
+              {eu.gas_day} · {eu.sendout_gwh?.toFixed(0)} GWh/d send-out · {eu.fill_pct?.toFixed(1)}% full
+            </p>
+          )}
+        </div>
+        <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* EU summary stats */}
+      {eu && (
+        <div className="px-4 pt-3 pb-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-secondary/40 rounded p-2">
+              <p className="text-[10px] text-muted-foreground">Send-out</p>
+              <p className="text-sm font-medium">{eu.sendout_gwh?.toFixed(0)} <span className="text-xs text-muted-foreground">GWh/d</span></p>
+              {eu.vs_avg5_sendout != null && (
+                <p className={`text-xs ${eu.vs_avg5_sendout >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {eu.vs_avg5_sendout >= 0 ? '+' : ''}{eu.vs_avg5_sendout.toFixed(0)} vs 5yr avg
+                </p>
+              )}
+            </div>
+            <div className="bg-secondary/40 rounded p-2">
+              <p className="text-[10px] text-muted-foreground">Utilization</p>
+              <p className="text-sm font-medium">{eu.sendout_util_pct?.toFixed(1)}<span className="text-xs text-muted-foreground">%</span></p>
+              <p className="text-xs text-muted-foreground">of {eu.dtrs_gwh?.toFixed(0)} GWh/d cap</p>
+            </div>
+            <div className="bg-secondary/40 rounded p-2">
+              <p className="text-[10px] text-muted-foreground">Inventory</p>
+              <p className="text-sm font-medium">{eu.inventory_gwh != null ? (eu.inventory_gwh / 1000).toFixed(0) : '--'} <span className="text-xs text-muted-foreground">TWh</span></p>
+              <p className="text-xs text-muted-foreground">{eu.fill_pct?.toFixed(1)}% of {eu.dtmi_gwh != null ? (eu.dtmi_gwh / 1000).toFixed(0) : '--'} TWh cap</p>
+            </div>
+            <div className="bg-secondary/40 rounded p-2">
+              <p className="text-[10px] text-muted-foreground">7-day change</p>
+              <p className={`text-sm font-medium ${(eu.d7_sendout_gwh ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                {eu.d7_sendout_gwh != null ? `${eu.d7_sendout_gwh >= 0 ? '+' : ''}${eu.d7_sendout_gwh.toFixed(0)}` : '--'} <span className="text-xs text-muted-foreground">GWh/d</span>
+              </p>
+              <p className="text-xs text-muted-foreground">send-out change</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EU send-out trend chart */}
+      {trend.length > 0 && (
+        <div className="px-4 pb-2">
+          <p className="text-xs text-muted-foreground mb-1">EU send-out vs 5yr avg (GWh/d)</p>
+          <ResponsiveContainer width="100%" height={100}>
+            <ComposedChart data={trend} margin={{ top: 2, right: 4, bottom: 0, left: 0 }}>
+              <XAxis dataKey="gas_day" hide />
+              <YAxis domain={['auto', 'auto']} tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} width={32} />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                formatter={(v: unknown, name: unknown) => {
+                  const n = typeof v === 'number' ? v : null
+                  const label = name === 'sendout_gwh' ? 'Send-out' : '5yr avg'
+                  return [n != null ? `${n.toFixed(0)} GWh/d` : '--', label]
+                }}
+              />
+              <Area type="monotone" dataKey="avg5_sendout" stroke="#4b5563" fill="#1e293b" strokeDasharray="3 2" name="avg5_sendout" dot={false} />
+              <Line type="monotone" dataKey="sendout_gwh" stroke="#8b5cf6" strokeWidth={1.5} dot={false} name="sendout_gwh" />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Per-country breakdown */}
+      <div className="px-4 pb-1">
+        <p className="text-xs text-muted-foreground mb-2 font-medium">By country (sorted by send-out)</p>
+      </div>
+      <div className="space-y-0">
+        {countries.map((r) => {
+          const fillW = r.fill_pct != null ? Math.max(0, Math.min(100, r.fill_pct)) : 0
+          const utilW = r.sendout_util_pct != null ? Math.max(0, Math.min(100, r.sendout_util_pct)) : 0
+          const d7Color = (r.d7_sendout_gwh ?? 0) >= 0 ? '#4ade80' : '#f87171'
+          return (
+            <div key={r.country} className="px-4 py-2 border-b border-border/40 last:border-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-medium">{LNG_COUNTRY_NAMES[r.country] ?? r.country}</span>
+                <div className="flex items-center gap-2">
+                  {r.d7_sendout_gwh != null && (
+                    <span className="text-[10px]" style={{ color: d7Color }}>
+                      {r.d7_sendout_gwh >= 0 ? '+' : ''}{r.d7_sendout_gwh.toFixed(0)} d7
+                    </span>
+                  )}
+                  <span className="text-xs text-muted-foreground">{r.sendout_gwh?.toFixed(0) ?? '--'} GWh/d</span>
+                </div>
+              </div>
+              {/* Send-out utilization bar */}
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <span className="text-[9px] text-muted-foreground w-8">util</span>
+                <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-violet-500" style={{ width: `${utilW}%` }} />
+                </div>
+                <span className="text-[9px] text-muted-foreground w-8 text-right">{r.sendout_util_pct?.toFixed(0) ?? '--'}%</span>
+              </div>
+              {/* Fill level bar */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-[9px] text-muted-foreground w-8">fill</span>
+                <div className="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${fillW}%`,
+                      backgroundColor: fillW >= 70 ? '#16a34a' : fillW >= 40 ? '#ca8a04' : '#b91c1c',
+                    }}
+                  />
+                </div>
+                <span className="text-[9px] text-muted-foreground w-8 text-right">{r.fill_pct?.toFixed(0) ?? '--'}%</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      <div className="px-4 py-2 text-[10px] text-muted-foreground/50 border-t border-border">
+        Source: ALSI (GIE) · {rows[0]?.gas_day ?? ''}
       </div>
     </div>
   )

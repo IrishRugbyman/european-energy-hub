@@ -558,6 +558,52 @@ def _seed_db(path: str) -> None:
         ["DE-LU", 1216.7, 10508.0, 770.2, 13671.0, 63150.0, 81150.0, 1.9, 0.9, 6500],
     )
 
+    # LNG tables
+    conn.execute("""
+        CREATE TABLE lng_latest (
+            country VARCHAR, gas_day DATE, inventory_gwh REAL, sendout_gwh REAL,
+            dtmi_gwh REAL, dtrs_gwh REAL, fill_pct REAL, sendout_util_pct REAL,
+            d7_sendout_gwh REAL, vs_avg5_sendout REAL, avg5_sendout REAL
+        )
+    """)
+    conn.execute("""
+        INSERT INTO lng_latest VALUES
+        ('EU', '2026-06-24', 31913.0, 3599.0, 62329.0, 7970.0, 51.2, 45.2, -362.0, 481.0, 3118.0),
+        ('ES', '2026-06-24', 13575.0, 560.0, 23240.0, 2132.0, 58.4, 26.3, 65.0, 14.6, 545.6),
+        ('IT', '2026-06-24', 2518.0, 663.0, 5205.0, 890.0, 48.4, 74.6, 87.0, 197.0, 466.0)
+    """)
+    conn.execute("""
+        CREATE TABLE lng_trend (
+            gas_day DATE, inventory_gwh REAL, sendout_gwh REAL, dtmi_gwh REAL,
+            dtrs_gwh REAL, fill_pct REAL, sendout_util_pct REAL, avg5_sendout REAL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO lng_trend VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        [date.today() - timedelta(days=1), 31913.0, 3599.0, 62329.0, 7970.0, 51.2, 45.2, 3118.0],
+    )
+    conn.execute("""
+        CREATE TABLE lng_seasonal (
+            country VARCHAR, doy SMALLINT, avg5_sendout REAL, min5_sendout REAL,
+            max5_sendout REAL, avg5_fill REAL, min5_fill REAL, max5_fill REAL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO lng_seasonal VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ["EU", 175, 3118.0, 2800.0, 3600.0, 50.0, 40.0, 65.0],
+    )
+    conn.execute("""
+        CREATE TABLE lng_history (
+            country VARCHAR, gas_day DATE, inventory_gwh REAL, sendout_gwh REAL,
+            dtmi_gwh REAL, dtrs_gwh REAL, fill_pct REAL, sendout_util_pct REAL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO lng_history VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ["ES", date.today() - timedelta(days=1), 13575.0, 560.0, 23240.0, 2132.0, 58.4, 26.3],
+    )
+    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_lng", "2026-06-24T12:00:00+00:00"])
+
     conn.close()
 
 

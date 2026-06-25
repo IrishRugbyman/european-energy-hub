@@ -171,6 +171,12 @@ from .schemas import (
     BacktestEquityPoint,
     BacktestStats,
     FundamentalBacktestResponse,
+    LngLatestRow,
+    LngMapResponse,
+    LngTrendPoint,
+    LngSeasonalPoint,
+    LngHistoryPoint,
+    LngCountryResponse,
 )
 
 
@@ -788,6 +794,140 @@ def gas_price_scatter():
         for r in df.itertuples()
     ]
     return GasPriceScatterResponse(rows=rows)
+
+
+@app.get("/api/gas/lng/map", response_model=LngMapResponse)
+def gas_lng_map():
+    """Latest LNG terminal snapshot for all 12 EU countries + EU aggregate."""
+    df = db.query("""
+        SELECT country, gas_day::VARCHAR AS gas_day, inventory_gwh, sendout_gwh,
+               dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct,
+               d7_sendout_gwh, vs_avg5_sendout, avg5_sendout
+        FROM lng_latest
+        ORDER BY CASE WHEN country = 'EU' THEN 0 ELSE 1 END, sendout_gwh DESC
+    """)
+    if df is None or df.empty:
+        return LngMapResponse(rows=[])
+    rows = [
+        LngLatestRow(
+            country=str(r.country),
+            gas_day=str(r.gas_day),
+            inventory_gwh=_float(r.inventory_gwh),
+            sendout_gwh=_float(r.sendout_gwh),
+            dtmi_gwh=_float(r.dtmi_gwh),
+            dtrs_gwh=_float(r.dtrs_gwh),
+            fill_pct=_float(r.fill_pct),
+            sendout_util_pct=_float(r.sendout_util_pct),
+            d7_sendout_gwh=_float(r.d7_sendout_gwh),
+            vs_avg5_sendout=_float(r.vs_avg5_sendout),
+            avg5_sendout=_float(r.avg5_sendout),
+        )
+        for r in df.itertuples()
+    ]
+    return LngMapResponse(rows=rows)
+
+
+@app.get("/api/gas/lng/trend", response_model=list[LngTrendPoint])
+def gas_lng_trend():
+    """EU aggregate LNG send-out trend over trailing 365 days with 5yr avg band."""
+    df = db.query("""
+        SELECT gas_day::VARCHAR AS gas_day, sendout_gwh, fill_pct, avg5_sendout
+        FROM lng_trend
+        ORDER BY gas_day
+    """)
+    if df is None or df.empty:
+        return []
+    return [
+        LngTrendPoint(
+            gas_day=str(r.gas_day),
+            sendout_gwh=_float(r.sendout_gwh),
+            fill_pct=_float(r.fill_pct),
+            avg5_sendout=_float(r.avg5_sendout),
+        )
+        for r in df.itertuples()
+    ]
+
+
+@app.get("/api/gas/lng/country/{cc}", response_model=LngCountryResponse)
+def gas_lng_country(cc: str):
+    """LNG terminal data for one country: latest snapshot + 2yr history + 5yr seasonal."""
+    cc = cc.upper()
+
+    latest_df = db.query(
+        """
+        SELECT country, gas_day::VARCHAR AS gas_day, inventory_gwh, sendout_gwh,
+               dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct,
+               d7_sendout_gwh, vs_avg5_sendout, avg5_sendout
+        FROM lng_latest WHERE country = ?
+        """,
+        [cc],
+    )
+    latest = None
+    if latest_df is not None and not latest_df.empty:
+        r = latest_df.iloc[0]
+        latest = LngLatestRow(
+            country=str(r.country),
+            gas_day=str(r.gas_day),
+            inventory_gwh=_float(r.inventory_gwh),
+            sendout_gwh=_float(r.sendout_gwh),
+            dtmi_gwh=_float(r.dtmi_gwh),
+            dtrs_gwh=_float(r.dtrs_gwh),
+            fill_pct=_float(r.fill_pct),
+            sendout_util_pct=_float(r.sendout_util_pct),
+            d7_sendout_gwh=_float(r.d7_sendout_gwh),
+            vs_avg5_sendout=_float(r.vs_avg5_sendout),
+            avg5_sendout=_float(r.avg5_sendout),
+        )
+
+    hist_df = db.query(
+        """
+        SELECT gas_day::VARCHAR AS gas_day, sendout_gwh, fill_pct, inventory_gwh
+        FROM lng_history WHERE country = ?
+        ORDER BY gas_day
+        """,
+        [cc],
+    )
+    history = [
+        LngHistoryPoint(
+            gas_day=str(r.gas_day),
+            sendout_gwh=_float(r.sendout_gwh),
+            fill_pct=_float(r.fill_pct),
+            inventory_gwh=_float(r.inventory_gwh),
+        )
+        for r in (hist_df if hist_df is not None else pd.DataFrame()).itertuples()
+    ]
+
+    seas_df = db.query(
+        "SELECT doy, avg5_sendout, min5_sendout, max5_sendout, avg5_fill, min5_fill, max5_fill FROM lng_seasonal WHERE country = ? ORDER BY doy",
+        [cc],
+    )
+    seasonal = [
+        LngSeasonalPoint(
+            doy=int(r.doy),
+            avg5_sendout=_float(r.avg5_sendout),
+            min5_sendout=_float(r.min5_sendout),
+            max5_sendout=_float(r.max5_sendout),
+            avg5_fill=_float(r.avg5_fill),
+            min5_fill=_float(r.min5_fill),
+            max5_fill=_float(r.max5_fill),
+        )
+        for r in (seas_df if seas_df is not None else pd.DataFrame()).itertuples()
+    ]
+
+    trend_df = db.query(
+        "SELECT gas_day::VARCHAR AS gas_day, sendout_gwh, fill_pct, avg5_sendout FROM lng_trend ORDER BY gas_day"
+    )
+    trend = [
+        LngTrendPoint(
+            gas_day=str(r.gas_day),
+            sendout_gwh=_float(r.sendout_gwh),
+            fill_pct=_float(r.fill_pct),
+            avg5_sendout=_float(r.avg5_sendout),
+        )
+        for r in (trend_df if trend_df is not None else pd.DataFrame()).itertuples()
+    ]
+
+    return LngCountryResponse(country=cc, latest=latest, history=history, seasonal=seasonal, trend=trend)
 
 
 @app.get("/api/power/congestion", response_model=CongestionResponse)

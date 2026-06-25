@@ -35,6 +35,7 @@ from analytics.battery import build_battery_tables
 from analytics.congestion import build_congestion_tables
 from analytics.divergence import build_divergence_tables
 from analytics.gas import build_facilities_table, build_storage_tables
+from analytics.lng import build_lng_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables, compute_forecast_accuracy
 from analytics.imbalance import build_imbalance_tables
@@ -73,13 +74,16 @@ def run_ingest(fetcher: str) -> bool:
 
 def rebuild(skip_ingest: bool = False) -> None:
     if not skip_ingest:
-        for fetcher in ["agsi", "agsi-facilities", "ttf", "nbp", "eia-natgas", "eia-natgas-storage", "eua-carbon", "coal-api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de", "worldmonitor"]:
+        for fetcher in ["agsi", "agsi-facilities", "alsi", "ttf", "nbp", "eia-natgas", "eia-natgas-storage", "eua-carbon", "coal-api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de", "worldmonitor"]:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
 
     logger.info("Building storage tables from market_data (PostgreSQL)...")
     storage_tables = build_storage_tables()
+
+    logger.info("Building LNG terminal tables from market_data (PostgreSQL)...")
+    lng_tables = build_lng_tables()
 
     logger.info("Building UGS facilities reference table...")
     facilities_df = build_facilities_table()
@@ -138,6 +142,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("BEGIN TRANSACTION")
 
         _write_storage(conn, storage_tables)
+        _write_lng(conn, lng_tables)
         _write_facilities(conn, facilities_df)
         _write_power(conn, power_tables)
         _write_power_correlations(conn, power_corr)
@@ -161,6 +166,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         )
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_lng", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_power", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_congestion", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
@@ -251,6 +257,80 @@ def _write_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     logger.info(
         f"storage: {len(history)} history rows, {len(seasonal)} seasonal rows, "
         f"{len(latest)} latest rows, {n_inj_seas} injection-seasonal rows"
+    )
+
+
+def _write_lng(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    latest = tables.get("lng_latest", pd.DataFrame())
+    trend = tables.get("lng_trend", pd.DataFrame())
+    seasonal = tables.get("lng_seasonal", pd.DataFrame())
+    history = tables.get("lng_history", pd.DataFrame())
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE lng_latest (
+            country             VARCHAR,
+            gas_day             DATE,
+            inventory_gwh       REAL,
+            sendout_gwh         REAL,
+            dtmi_gwh            REAL,
+            dtrs_gwh            REAL,
+            fill_pct            REAL,
+            sendout_util_pct    REAL,
+            d7_sendout_gwh      REAL,
+            vs_avg5_sendout     REAL,
+            avg5_sendout        REAL
+        )
+    """)
+    if not latest.empty:
+        conn.execute("INSERT INTO lng_latest SELECT country, gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct, d7_sendout_gwh, vs_avg5_sendout, avg5_sendout FROM latest")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE lng_trend (
+            gas_day         DATE,
+            inventory_gwh   REAL,
+            sendout_gwh     REAL,
+            dtmi_gwh        REAL,
+            dtrs_gwh        REAL,
+            fill_pct        REAL,
+            sendout_util_pct REAL,
+            avg5_sendout    REAL
+        )
+    """)
+    if not trend.empty:
+        conn.execute("INSERT INTO lng_trend SELECT gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct, avg5_sendout FROM trend")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE lng_seasonal (
+            country         VARCHAR,
+            doy             SMALLINT,
+            avg5_sendout    REAL,
+            min5_sendout    REAL,
+            max5_sendout    REAL,
+            avg5_fill       REAL,
+            min5_fill       REAL,
+            max5_fill       REAL
+        )
+    """)
+    if not seasonal.empty:
+        conn.execute("INSERT INTO lng_seasonal SELECT country, doy, avg5_sendout, min5_sendout, max5_sendout, avg5_fill, min5_fill, max5_fill FROM seasonal")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE lng_history (
+            country             VARCHAR,
+            gas_day             DATE,
+            inventory_gwh       REAL,
+            sendout_gwh         REAL,
+            dtmi_gwh            REAL,
+            dtrs_gwh            REAL,
+            fill_pct            REAL,
+            sendout_util_pct    REAL
+        )
+    """)
+    if not history.empty:
+        conn.execute("INSERT INTO lng_history SELECT country, gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct FROM history")
+
+    logger.info(
+        f"LNG: {len(latest)} latest rows, {len(trend)} trend rows, {len(seasonal)} seasonal rows"
     )
 
 

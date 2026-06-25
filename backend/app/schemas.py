@@ -1171,3 +1171,53 @@ class FundamentalBacktestResponse(BaseModel):
     zone: str
     equity: list[BacktestEquityPoint]
     stats: BacktestStats
+
+
+class LngLatestRow(BaseModel):
+    country: str
+    gas_day: str
+    inventory_gwh: float | None
+    sendout_gwh: float | None
+    dtmi_gwh: float | None
+    dtrs_gwh: float | None
+    fill_pct: float | None
+    sendout_util_pct: float | None
+    d7_sendout_gwh: float | None
+    vs_avg5_sendout: float | None
+    avg5_sendout: float | None
+
+
+class LngMapResponse(BaseModel):
+    rows: list[LngLatestRow]
+
+
+class LngTrendPoint(BaseModel):
+    gas_day: str
+    sendout_gwh: float | None
+    fill_pct: float | None
+    avg5_sendout: float | None
+
+
+class LngSeasonalPoint(BaseModel):
+    doy: int
+    avg5_sendout: float | None
+    min5_sendout: float | None
+    max5_sendout: float | None
+    avg5_fill: float | None
+    min5_fill: float | None
+    max5_fill: float | None
+
+
+class LngHistoryPoint(BaseModel):
+    gas_day: str
+    sendout_gwh: float | None
+    fill_pct: float | None
+    inventory_gwh: float | None
+
+
+class LngCountryResponse(BaseModel):
+    country: str
+    latest: LngLatestRow | None
+    history: list[LngHistoryPoint]
+    seasonal: list[LngSeasonalPoint]
+    trend: list[LngTrendPoint]

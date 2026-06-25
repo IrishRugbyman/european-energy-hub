@@ -132,6 +132,56 @@ export interface MetaResponse {
   imbalance_refreshed_at: string | null
 }
 
+export interface LngLatestRow {
+  country: string
+  gas_day: string
+  inventory_gwh: number | null
+  sendout_gwh: number | null
+  dtmi_gwh: number | null
+  dtrs_gwh: number | null
+  fill_pct: number | null
+  sendout_util_pct: number | null
+  d7_sendout_gwh: number | null
+  vs_avg5_sendout: number | null
+  avg5_sendout: number | null
+}
+
+export interface LngMapResponse {
+  rows: LngLatestRow[]
+}
+
+export interface LngTrendPoint {
+  gas_day: string
+  sendout_gwh: number | null
+  fill_pct: number | null
+  avg5_sendout: number | null
+}
+
+export interface LngSeasonalPoint {
+  doy: number
+  avg5_sendout: number | null
+  min5_sendout: number | null
+  max5_sendout: number | null
+  avg5_fill: number | null
+  min5_fill: number | null
+  max5_fill: number | null
+}
+
+export interface LngHistoryPoint {
+  gas_day: string
+  sendout_gwh: number | null
+  fill_pct: number | null
+  inventory_gwh: number | null
+}
+
+export interface LngCountryResponse {
+  country: string
+  latest: LngLatestRow | null
+  history: LngHistoryPoint[]
+  seasonal: LngSeasonalPoint[]
+  trend: LngTrendPoint[]
+}
+
 export interface PowerLatestRow {
   zone: string
   price_date: string
@@ -963,6 +1013,9 @@ export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
   gasMap: () => get<GasMapResponse>('/gas/map'),
+  gasLngMap: () => get<LngMapResponse>('/gas/lng/map'),
+  gasLngTrend: () => get<LngTrendPoint[]>('/gas/lng/trend'),
+  gasLngCountry: (cc: string) => get<LngCountryResponse>(`/gas/lng/country/${cc}`),
   gasCountry: (cc: string) => get<GasCountryResponse>(`/gas/country/${cc}`),
   gasFacilities: () => get<StorageFacilitiesResponse>('/gas/facilities'),
   gasFlows: () => get<GasFlowResponse>('/gas/flows'),

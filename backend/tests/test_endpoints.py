@@ -1136,3 +1136,41 @@ def test_spreads_fundamental_backtest(client):
     # Invalid zone -> 400
     r2 = client.get("/api/spreads/fundamental-backtest?zone=FAKE")
     assert r2.status_code == 400
+
+
+def test_gas_lng_map(client):
+    r = client.get("/api/gas/lng/map")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    rows = data["rows"]
+    assert len(rows) >= 1
+    eu = next((x for x in rows if x["country"] == "EU"), None)
+    assert eu is not None
+    assert eu["sendout_gwh"] > 0
+    assert eu["fill_pct"] > 0
+    assert eu["dtrs_gwh"] > 0
+
+
+def test_gas_lng_trend(client):
+    r = client.get("/api/gas/lng/trend")
+    assert r.status_code == 200
+    data = r.json()
+    assert isinstance(data, list)
+    assert len(data) >= 1
+    pt = data[0]
+    assert "gas_day" in pt
+    assert "sendout_gwh" in pt
+    assert "fill_pct" in pt
+
+
+def test_gas_lng_country(client):
+    r = client.get("/api/gas/lng/country/ES")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["country"] == "ES"
+    assert data["latest"] is not None
+    assert data["latest"]["sendout_gwh"] > 0
+    assert isinstance(data["history"], list)
+    assert isinstance(data["seasonal"], list)
+    assert isinstance(data["trend"], list)
