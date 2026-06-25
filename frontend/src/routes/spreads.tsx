@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1302,6 +1302,98 @@ function RollingCoefChart({ data }: { data: RollingCoefPoint[] }) {
   )
 }
 
+function WindPriceAnalysisChart({
+  data,
+  interpretation,
+}: {
+  data: WindPriceBin[]
+  interpretation: WindPriceAnalysisResponse['interpretation']
+}) {
+  if (!data.length) return null
+
+  // Two-color bars: price (blue) and residual (positive=orange, negative=teal)
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-muted-foreground font-medium">
+        DA price and OLS residual by wind penetration bin
+        {interpretation.nonlinear_premium_eur != null && (
+          <span className="ml-2 text-amber-400 font-semibold">
+            Wind drought premium: +{interpretation.nonlinear_premium_eur.toFixed(0)} EUR/MWh (0-5% vs 35%+)
+          </span>
+        )}
+      </p>
+      <ResponsiveContainer width="100%" height={200}>
+        <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="wind_bin" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} />
+          <YAxis
+            yAxisId="price"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            label={{ value: '€/MWh', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          <YAxis
+            yAxisId="residual"
+            orientation="right"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            label={{ value: 'residual', angle: 90, position: 'insideRight', fill: '#64748b', fontSize: 9 }}
+          />
+          <ReferenceLine yAxisId="residual" y={0} stroke="#475569" strokeWidth={1} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(val: unknown, name: unknown) => {
+              const v = typeof val === 'number' ? val.toFixed(1) : '--'
+              if (name === 'mean_residual') return [v + ' EUR', 'OLS residual (right)']
+              return [v + ' EUR/MWh', name === 'mean_price' ? 'Mean price' : String(name)]
+            }}
+            labelFormatter={(l) => `Wind: ${String(l)}`}
+          />
+          <Bar yAxisId="price" dataKey="mean_price" name="mean_price" isAnimationActive={false} radius={[2, 2, 0, 0]}>
+            {data.map((entry) => (
+              <Cell
+                key={entry.wind_bin}
+                fill={entry.wind_lo < 5 ? '#f97316' : entry.wind_lo < 10 ? '#f59e0b' : entry.wind_lo >= 35 ? '#22c55e' : '#60a5fa'}
+              />
+            ))}
+          </Bar>
+          <Line
+            yAxisId="residual"
+            dataKey="mean_residual"
+            stroke="#a78bfa"
+            strokeWidth={2}
+            dot={{ r: 4, fill: '#a78bfa' }}
+            isAnimationActive={false}
+            name="mean_residual"
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="grid grid-cols-3 gap-2 text-[10px] text-muted-foreground">
+        <div>
+          <span className="text-amber-400 font-medium">Low wind (0-5%): </span>
+          CV {interpretation.cv_low_wind_pct != null ? `${interpretation.cv_low_wind_pct.toFixed(0)}%` : '--'}
+          <span className="block text-[9px] text-muted-foreground/60">High price volatility = gas scarcity</span>
+        </div>
+        <div>
+          <span className="text-emerald-400 font-medium">High wind (35%+): </span>
+          CV {interpretation.cv_high_wind_pct != null ? `${interpretation.cv_high_wind_pct.toFixed(0)}%` : '--'}
+          <span className="block text-[9px] text-muted-foreground/60">Lower vol, more predictable</span>
+        </div>
+        <div>
+          <span className="text-purple-400 font-medium">OLS residual</span> (purple line)
+          <span className="block text-[9px] text-muted-foreground/60">
+            Positive residual in 0-5% bin = OLS underestimates wind drought premium - motivates nonlinear ML
+          </span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function FundamentalModelSection({ window: w }: { window: DateWindow }) {
   const [zone, setZone] = useState<FundZone>('DE-LU')
 
@@ -1315,6 +1407,12 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
     queryKey: ['signal-snapshot'],
     queryFn: api.spreadsSignalSnapshot,
     staleTime: 30 * 60 * 1000,
+  })
+
+  const { data: windAnalysisData } = useQuery({
+    queryKey: ['wind-price-analysis', zone],
+    queryFn: () => api.spreadsWindPriceAnalysis(zone),
+    staleTime: 60 * 60 * 1000,
   })
 
   const cur = data?.current
@@ -1415,6 +1513,16 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
           {data.rolling_coefs && data.rolling_coefs.length > 0 && (
             <div className="border-t border-border pt-4">
               <RollingCoefChart data={data.rolling_coefs} />
+            </div>
+          )}
+
+          {/* Wind-price nonlinearity */}
+          {windAnalysisData && windAnalysisData.bins.length > 0 && (
+            <div className="border-t border-border pt-4">
+              <WindPriceAnalysisChart
+                data={windAnalysisData.bins}
+                interpretation={windAnalysisData.interpretation}
+              />
             </div>
           )}
         </div>

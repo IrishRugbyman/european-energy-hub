@@ -1086,3 +1086,27 @@ def test_power_cf_map(client):
     # All zones are from the same latest date
     dates = {r["gen_date"] for r in rows if r["gen_date"]}
     assert len(dates) <= 1
+
+
+def test_spreads_wind_price_analysis(client):
+    r = client.get("/api/spreads/wind-price-analysis?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    bins = data["bins"]
+    assert len(bins) > 0
+    for b in bins:
+        assert "wind_bin" in b
+        assert b["n"] > 0
+        assert isinstance(b["mean_price"], float)
+        assert isinstance(b["mean_residual"], float)
+    # Bins should be in ascending wind order
+    orders = [b["bin_order"] for b in bins]
+    assert orders == sorted(orders)
+    # Interpretation fields present
+    interp = data["interpretation"]
+    assert "nonlinear_premium_eur" in interp
+    assert "cv_low_wind_pct" in interp
+    # Invalid zone -> 400
+    r2 = client.get("/api/spreads/wind-price-analysis?zone=FAKE")
+    assert r2.status_code == 400

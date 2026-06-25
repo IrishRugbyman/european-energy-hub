@@ -1117,3 +1117,29 @@ class CfMapRow(BaseModel):
 class CfMapResponse(BaseModel):
     gen_date: str | None
     rows: list[CfMapRow]
+
+
+class WindPriceBin(BaseModel):
+    wind_bin: str
+    bin_order: int
+    wind_lo: int
+    wind_hi: int
+    n: int
+    median_price: float
+    mean_price: float
+    std_price: float
+    mean_residual: float
+    median_residual: float
+
+
+class WindPriceInterpretation(BaseModel):
+    nonlinear_premium_eur: float | None
+    cv_low_wind_pct: float | None
+    cv_high_wind_pct: float | None
+
+
+class WindPriceAnalysisResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    bins: list[WindPriceBin]
+    interpretation: WindPriceInterpretation

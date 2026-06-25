@@ -165,6 +165,9 @@ from .schemas import (
     SignalSnapshotResponse,
     CfMapRow,
     CfMapResponse,
+    WindPriceBin,
+    WindPriceInterpretation,
+    WindPriceAnalysisResponse,
 )
 
 
@@ -3220,6 +3223,39 @@ def spreads_signal_snapshot():
     # Sort by absolute z-score descending (most extreme signal first)
     rows.sort(key=lambda r: abs(r.zscore), reverse=True)
     return SignalSnapshotResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/spreads/wind-price-analysis", response_model=WindPriceAnalysisResponse)
+def spreads_wind_price_analysis(zone: str = "DE-LU"):
+    """Wind penetration vs DA price nonlinearity analysis.
+
+    Bins days by wind% and shows median/mean/std price and OLS fundamental-model
+    residual per bin. Exposes the convexity OLS misses: the price premium at very
+    low wind (0-5%) is far larger than the linear coefficient implies, which is
+    the empirical motivation for nonlinear ML models.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_wind_price_analysis, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_wind_price_analysis(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for wind-price analysis")
+
+    interp = result["interpretation"]
+    return WindPriceAnalysisResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        bins=[WindPriceBin(**b) for b in result["bins"]],
+        interpretation=WindPriceInterpretation(
+            nonlinear_premium_eur=interp["nonlinear_premium_eur"],
+            cv_low_wind_pct=interp["cv_low_wind_pct"],
+            cv_high_wind_pct=interp["cv_high_wind_pct"],
+        ),
+    )
 
 
 @app.get("/api/power/cf-map", response_model=CfMapResponse)

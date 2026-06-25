@@ -1,4 +1,4 @@
-"""Power price fundamental value model for European DA markets.
+"""Power price fundamental value models and signal analytics for European DA markets.
 
 OLS regression of daily DA base price on gas (TTF), carbon (EUA), wind%, solar%.
 Computes the fundamental fair value, residual (price vs fair value), and rolling
@@ -206,4 +206,123 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
             "half_life_days": half_life_days,
         },
         "rolling_coefs": rolling_coefs,
+    }
+
+
+# Wind bin breakpoints and labels (ascending wind_pct)
+_WIND_BINS = [
+    (0,   5,  "0-5%",   1),
+    (5,   10, "5-10%",  2),
+    (10,  15, "10-15%", 3),
+    (15,  20, "15-20%", 4),
+    (20,  25, "20-25%", 5),
+    (25,  35, "25-35%", 6),
+    (35, 100, "35%+",   7),
+]
+
+
+def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU") -> dict:
+    """Compute wind-price nonlinearity analysis: per-bin price stats and OLS residuals.
+
+    Bins days by wind penetration, shows median/mean/std price per bin, then computes
+    the OLS residual (vs the fundamental value model) by bin to expose where the linear
+    model systematically over- or under-prices. High residuals in the low-wind bins
+    indicate convexity that OLS misses - the case for nonlinear ML models.
+
+    Args:
+        query_fn: db.query callable
+        zone: bidding zone code
+
+    Returns a dict with:
+      - zone, as_of
+      - bins: [{wind_bin, bin_order, n, median_price, mean_price, std_price,
+                mean_residual, median_residual}]
+      - interpretation: {nonlinear_premium, cv_low_wind, cv_high_wind}
+    """
+    model = compute_fundamental_model(query_fn, zone)
+    if not model or not model.get("series"):
+        return {}
+
+    series = model["series"]
+    coef = model["coefficients"]
+    b0 = coef["intercept"]
+    b1 = coef["ttf_eur_mwh"]
+    b2 = coef["eua_eur_t"]
+    b3 = coef["wind_pct"]
+    b4 = coef["solar_pct"]
+
+    # Re-fetch raw data to get wind_pct for each row
+    try:
+        rows = query_fn("""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
+                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND g.total_mw > 0
+              AND g.wind IS NOT NULL
+              AND g.solar IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"wind-price query failed for {zone}: {exc!r}")
+        return {}
+
+    if rows is None or rows.empty:
+        return {}
+
+    df = rows.copy().dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df["fitted"] = b0 + b1 * df["ttf_eur_mwh"] + b2 * df["eua_eur_t"] + b3 * df["wind_pct"] + b4 * df["solar_pct"]
+    df["residual"] = df["base_eur"] - df["fitted"]
+
+    result_bins = []
+    for lo, hi, label, order in _WIND_BINS:
+        mask = (df["wind_pct"] >= lo) & (df["wind_pct"] < hi)
+        sub = df[mask]
+        if sub.empty:
+            continue
+        result_bins.append({
+            "wind_bin": label,
+            "bin_order": order,
+            "wind_lo": lo,
+            "wind_hi": hi,
+            "n": int(len(sub)),
+            "median_price": round(float(sub["base_eur"].median()), 1),
+            "mean_price": round(float(sub["base_eur"].mean()), 1),
+            "std_price": round(float(sub["base_eur"].std()), 1),
+            "mean_residual": round(float(sub["residual"].mean()), 1),
+            "median_residual": round(float(sub["residual"].median()), 1),
+        })
+
+    # Key metrics for interpretation
+    low_bin = next((b for b in result_bins if b["wind_lo"] < 5), None)
+    high_bin = next((b for b in result_bins if b["wind_lo"] >= 35), None)
+    nonlinear_premium = None
+    cv_low = None
+    cv_high = None
+    if low_bin and high_bin and high_bin["mean_price"] > 0:
+        nonlinear_premium = round(low_bin["mean_price"] - high_bin["mean_price"], 1)
+    if low_bin and low_bin["mean_price"] > 0:
+        cv_low = round(low_bin["std_price"] / low_bin["mean_price"] * 100, 1)
+    if high_bin and high_bin["mean_price"] > 0:
+        cv_high = round(high_bin["std_price"] / high_bin["mean_price"] * 100, 1)
+
+    as_of = series[-1]["price_date"] if series else None
+    return {
+        "zone": zone,
+        "as_of": as_of,
+        "bins": result_bins,
+        "interpretation": {
+            "nonlinear_premium_eur": nonlinear_premium,
+            "cv_low_wind_pct": cv_low,
+            "cv_high_wind_pct": cv_high,
+        },
     }

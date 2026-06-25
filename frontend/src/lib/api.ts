@@ -976,6 +976,7 @@ export const api = {
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerCfMap: () => get<CfMapResponse>('/power/cf-map'),
+  spreadsWindPriceAnalysis: (zone?: string) => get<WindPriceAnalysisResponse>(`/spreads/wind-price-analysis${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1161,4 +1162,30 @@ export interface CfMapRow {
 export interface CfMapResponse {
   gen_date: string | null
   rows: CfMapRow[]
+}
+
+export interface WindPriceBin {
+  wind_bin: string
+  bin_order: number
+  wind_lo: number
+  wind_hi: number
+  n: number
+  median_price: number
+  mean_price: number
+  std_price: number
+  mean_residual: number
+  median_residual: number
+}
+
+export interface WindPriceInterpretation {
+  nonlinear_premium_eur: number | null
+  cv_low_wind_pct: number | null
+  cv_high_wind_pct: number | null
+}
+
+export interface WindPriceAnalysisResponse {
+  zone: string
+  as_of: string | null
+  bins: WindPriceBin[]
+  interpretation: WindPriceInterpretation
 }
