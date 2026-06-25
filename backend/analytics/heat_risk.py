@@ -19,10 +19,11 @@ Calibration key results (Roquemaure, downstream reference - northern plants are 
   River >= 27C summer derogation when air_max >= ~35C (median)
   At air_max=35C: median implied river = 26.6C (p25=24.9, p75=28.6)
 
-Alert thresholds remain in air temperature terms (conservative, accounts for variance):
-  watch at 30C: river likely 22-24C, approaching permit limit
-  warning at 33C: river likely 24-26C, permit limit likely exceeded
-  critical at 36C: river likely 26-28C, summer derogation under pressure
+Alert thresholds applied directly to implied_river_c (river-temp terms), May-Sep only:
+  watch    >= 24C: ASN normal permit limit
+  warning  >= 27C: summer derogation limit
+  critical >= 29C: above all permit levels, curtailment highly likely
+Outside May-Sep the alert is always "normal" (permit limits only apply in summer).
 
 Called at refresh time; writes three tables to energy_hub.duckdb:
   nuclear_heat_risk_latest   - one row per plant, current + risk level + 10d forecast peak
@@ -56,14 +57,17 @@ NUCLEAR_PLANTS: list[dict[str, Any]] = [
     {"code": "CHINON",      "name": "Chinon",        "river": "Loire",   "lat": 47.231, "lon": 0.164,  "capacity_mw": 1900, "river_limit_c": 24.0, "summer_limit_c": 27.0},
 ]
 
-# Air temperature thresholds -> river thermal risk level.
-# Calibrated against Hub'Eau Roquemaure data 2008-2026 (see module docstring).
-# Northern plants (Bugey, Cattenom) run cooler rivers; thresholds are conservative.
-THRESHOLDS = [
-    (36.0, "critical"),   # river likely 26-28C, summer derogation under pressure
-    (33.0, "warning"),    # river likely 24-26C, normal permit limit likely exceeded
-    (30.0, "watch"),      # river likely 22-24C, approaching permit limit
+# River temperature thresholds -> alert level.
+# Applied to implied_river_c; only active in SUMMER_MONTHS.
+# Limits are per ASN regulations; summer derogation requires EDF application to ASN.
+RIVER_THRESHOLDS = [
+    (29.0, "critical"),  # above summer derogation limit for all plants
+    (27.0, "warning"),   # at summer derogation limit (24-28C depending on plant)
+    (24.0, "watch"),     # at normal permit limit
 ]
+
+# Thermal risk is only meaningful in summer - permit limits don't bind in winter.
+SUMMER_MONTHS = {5, 6, 7, 8, 9}
 
 # Seasonal median offset river_daily_max - air_daily_max, calibrated from
 # Hub'Eau station 06121500 (Rhone at Roquemaure), 2008-2026.
@@ -79,11 +83,12 @@ _ARCHIVE_API  = "https://archive-api.open-meteo.com/v1/archive"
 _COMMON_PARAMS = "daily=temperature_2m_max&timezone=Europe/Paris"
 
 
-def _alert(temp_c: float | None) -> str:
-    if temp_c is None:
+def _alert(river_c: float | None, month: int) -> str:
+    """Map implied river temperature to alert level; returns 'normal' outside May-Sep."""
+    if river_c is None or month not in SUMMER_MONTHS:
         return "normal"
-    for thr, level in THRESHOLDS:
-        if temp_c >= thr:
+    for thr, level in RIVER_THRESHOLDS:
+        if river_c >= thr:
             return level
     return "normal"
 
@@ -174,10 +179,23 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
         today_str = today.isoformat()
         obs_temps = [(dt, t) for dt, t in zip(times, temps) if dt <= today_str and t is not None]
         fc_temps  = [(dt, t) for dt, t in zip(times, temps) if dt >  today_str and t is not None]
-        latest_temp  = obs_temps[-1][1] if obs_temps else None
-        latest_date  = obs_temps[-1][0] if obs_temps else None
-        peak_fc_temp = max((t for _, t in fc_temps), default=None)
-        peak_fc_date = next((dt for dt, t in fc_temps if t == peak_fc_temp), None) if peak_fc_temp else None
+        latest_temp = obs_temps[-1][1] if obs_temps else None
+        latest_date = obs_temps[-1][0] if obs_temps else None
+
+        # Forecast: evaluate implied river temp per day using that day's monthly offset,
+        # so the alert adapts if the forecast window spans a month boundary.
+        fc_rivers: list[tuple[str, float, float]] = []  # (date, air_temp, river_temp)
+        for dt_str, t in fc_temps:
+            fc_month  = datetime.date.fromisoformat(dt_str).month
+            fc_offset = _MONTHLY_RIVER_OFFSET[fc_month]
+            fc_rivers.append((dt_str, t, round(t + fc_offset, 1)))
+
+        # Peak forecast values: air temp for display, river temp for alert level.
+        peak_fc_temp = max((t for _, t, _ in fc_rivers), default=None)
+        peak_fc_date = next((dt for dt, t, _ in fc_rivers if t == peak_fc_temp), None) if peak_fc_temp else None
+        peak_fc_river = max((r for _, _, r in fc_rivers), default=None)
+        peak_fc_river_date = next((dt for dt, _, r in fc_rivers if r == peak_fc_river), None) if peak_fc_river else None
+        fc_month = datetime.date.fromisoformat(peak_fc_river_date).month if peak_fc_river_date else today.month
 
         # 5yr avg at today's DOY
         doy = today.timetuple().tm_yday
@@ -187,11 +205,14 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
             if not row.empty:
                 avg5 = float(row["avg5"].iloc[0])
 
-        # 5-day rolling sum > 33°C (heat wave indicator - matches updated warning threshold)
-        recent5 = [t for _, t in obs_temps[-5:] if t is not None]
-        days_above_35 = sum(1 for t in recent5 if t >= 33.0)
+        # Days in the last 5 where implied river exceeded the watch threshold (24C).
+        recent5_rivers = [
+            round(t + _MONTHLY_RIVER_OFFSET[today.month], 1)
+            for _, t in obs_temps[-5:]
+        ]
+        days_above_35 = sum(1 for r in recent5_rivers if r >= 24.0)
 
-        month_offset = _MONTHLY_RIVER_OFFSET[today.month]
+        month_offset  = _MONTHLY_RIVER_OFFSET[today.month]
         implied_river = round(latest_temp + month_offset, 1) if latest_temp is not None else None
         latest_rows.append({
             "plant_code": code, "plant_name": name, "river": river,
@@ -199,11 +220,11 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
             "obs_date": latest_date, "temp_max_c": latest_temp,
             "avg5_temp_c": avg5,
             "anomaly_c": round(latest_temp - avg5, 1) if latest_temp is not None and avg5 is not None else None,
-            "alert_level": _alert(latest_temp),
+            "alert_level": _alert(implied_river, today.month),
             "days_above_35_last5": days_above_35,
             "peak_fc_temp_c": peak_fc_temp,
             "peak_fc_date": peak_fc_date,
-            "fc_alert_level": _alert(peak_fc_temp),
+            "fc_alert_level": _alert(peak_fc_river, fc_month),
             "implied_river_c": implied_river,
             "river_limit_c": plant["river_limit_c"],
             "summer_limit_c": plant["summer_limit_c"],

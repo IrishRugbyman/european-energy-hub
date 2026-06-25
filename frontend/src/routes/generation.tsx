@@ -1486,7 +1486,7 @@ function HeatRiskSection({
                   <span style={{ color: ALERT_COLORS.critical }}>
                     {(capacityCriticalMw / 1000).toFixed(1)} GW critical
                   </span>{' '}
-                  (&gt;36°C air - river likely above summer derogation limit)
+                  (est. river &ge;29°C - above all permit levels)
                 </span>
               )}
               {capacityWarningMw > 0 && (
@@ -1494,7 +1494,7 @@ function HeatRiskSection({
                   <span style={{ color: ALERT_COLORS.warning }}>
                     {(capacityWarningMw / 1000).toFixed(1)} GW warning
                   </span>{' '}
-                  (&gt;33°C - normal permit limit likely exceeded)
+                  (est. river &ge;27°C - summer derogation limit)
                 </span>
               )}
             </div>
@@ -1505,10 +1505,10 @@ function HeatRiskSection({
       <div className="mb-3">
         <h1 className="text-base font-semibold">Nuclear Thermal Risk</h1>
         <p className="text-xs text-muted-foreground mt-0.5">
-          Daily max air temperature at French nuclear plant locations. Estimated river temp
-          uses a seasonal offset calibrated from Hub'Eau historical data (Rhone/Roquemaure
-          2008-2026): -6.7°C in June, -6.8°C July, -6.0°C August. ASN permit limits: 24°C
-          normal, 27-28°C summer derogation. Air &gt;33°C = permit limit likely exceeded.
+          Daily max air temperature at French nuclear plant locations. Alerts are based on
+          estimated river temperature (seasonal offset from Hub'Eau calibration, 2008-2026):
+          watch when river &ge;24°C (ASN permit limit), warning &ge;27°C (summer derogation),
+          critical &ge;29°C. Active May-Sep only.
         </p>
       </div>
 
@@ -1538,10 +1538,6 @@ function HeatRiskSection({
               formatter={(v: any, name: any) => [v != null ? `${(v as number).toFixed(1)}°C` : '--', String(name)]}
               labelFormatter={(l) => `${l}${fcDates.includes(l as string) ? ' (forecast)' : ''}`}
             />
-            <ReferenceLine y={33} stroke="#f97316" strokeDasharray="4 2" strokeWidth={1}
-              label={{ value: '33°C', position: 'right', fontSize: 9, fill: '#f97316' }} />
-            <ReferenceLine y={36} stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1}
-              label={{ value: '36°C', position: 'right', fontSize: 9, fill: '#ef4444' }} />
             {firstFcDate && (
               <ReferenceLine x={firstFcDate} stroke="#475569" strokeDasharray="3 3"
                 label={{ value: 'forecast', position: 'top', fontSize: 8, fill: '#64748b' }} />
@@ -1568,13 +1564,8 @@ function HeatRiskSection({
               {r}
             </div>
           ))}
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-px border-t border-dashed border-orange-500" />
-            33°C warning threshold
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-5 h-px border-t border-dashed border-red-500" />
-            36°C critical threshold
+          <div className="text-xs text-muted-foreground/60 mt-0.5">
+            Alerts: river &ge;24°C watch, &ge;27°C warning, &ge;29°C critical (May-Sep)
           </div>
         </div>
       </div>
@@ -1634,7 +1625,7 @@ function HeatRiskSection({
                 </div>
               )}
               <div>5yr avg air: {p.avg5_temp_c?.toFixed(1)}°C</div>
-              <div>{p.days_above_35_last5}/5 recent days &gt;33°C air</div>
+              <div>{p.days_above_35_last5}/5 recent days river &ge;24°C</div>
               {p.peak_fc_temp_c != null && (
                 <div>
                   Next 10d peak: <span style={{ color: ALERT_COLORS[p.fc_alert_level] }}>
