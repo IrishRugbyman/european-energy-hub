@@ -160,6 +160,8 @@ from .schemas import (
     FundamentalPoint,
     FundamentalCurrent,
     FundamentalModelResponse,
+    SignalSnapshotRow,
+    SignalSnapshotResponse,
 )
 
 
@@ -3145,6 +3147,7 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
         raise HTTPException(status_code=503, detail="Insufficient data for fundamental model")
 
     coef = result["coefficients"]
+    coef = result["coefficients"]
     return FundamentalModelResponse(
         zone=result["zone"],
         coefficients=FundamentalCoefficients(
@@ -3174,3 +3177,39 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
             pct_rank_1yr=result["current"]["pct_rank_1yr"],
         ),
     )
+
+
+@app.get("/api/spreads/signal-snapshot", response_model=SignalSnapshotResponse)
+def spreads_signal_snapshot():
+    """Current fundamental z-score for all modelled zones (DE-LU/FR/NL/IT-NORD/BE).
+
+    Runs the OLS fundamental value model for each zone and returns a compact
+    signal snapshot sorted by absolute z-score descending. Used to show a
+    cross-zone signal dashboard without requiring 5 separate API calls.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
+
+    rows = []
+    as_of = None
+    for z in FUNDAMENTAL_ZONES:
+        result = compute_fundamental_model(db.query, z)
+        if not result:
+            continue
+        cur = result["current"]
+        coef = result["coefficients"]
+        rows.append(SignalSnapshotRow(
+            zone=z,
+            actual=cur["actual"],
+            fitted=cur["fitted"],
+            residual=cur["residual"],
+            zscore=cur["zscore"],
+            pct_rank_1yr=cur["pct_rank_1yr"],
+            r2=coef["r2"],
+        ))
+        if not as_of and result["series"]:
+            as_of = result["series"][-1]["price_date"]
+
+    # Sort by absolute z-score descending (most extreme signal first)
+    rows.sort(key=lambda r: abs(r.zscore), reverse=True)
+    return SignalSnapshotResponse(as_of=as_of, rows=rows)

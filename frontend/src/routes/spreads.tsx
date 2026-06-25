@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1082,6 +1082,58 @@ function zscoreLabel(z: number): string {
   return 'neutral'
 }
 
+function SignalSnapshotPanel({
+  rows,
+  onSelectZone,
+}: {
+  rows: SignalSnapshotRow[]
+  onSelectZone: (zone: string) => void
+}) {
+  if (!rows.length) return null
+
+  return (
+    <div className="bg-muted/10 border border-border rounded-lg p-3 mb-4">
+      <p className="text-xs font-medium text-muted-foreground mb-2">
+        Cross-zone signal snapshot - sorted by |z-score| (click to analyse)
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+        {rows.map((r) => {
+          const color = zscoreColor(r.zscore)
+          const label = zscoreLabel(r.zscore)
+          return (
+            <button
+              key={r.zone}
+              onClick={() => onSelectZone(r.zone as typeof FUNDAMENTAL_ZONES[number])}
+              className="text-left rounded-lg border border-border bg-card hover:border-primary/40 hover:bg-card/80 transition-colors p-2.5"
+            >
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-xs font-semibold text-foreground">{r.zone}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ backgroundColor: color + '25', color }}>
+                  {label}
+                </span>
+              </div>
+              <div className="text-lg font-bold" style={{ color }}>
+                {r.zscore >= 0 ? '+' : ''}{r.zscore.toFixed(2)}σ
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {r.residual >= 0 ? '+' : ''}{r.residual.toFixed(0)} EUR/MWh vs model
+              </div>
+              <div className="flex items-center justify-between mt-1.5 text-[10px] text-muted-foreground">
+                <span>p{r.pct_rank_1yr}</span>
+                <span>R²={r.r2 > 0 ? (r.r2 * 100).toFixed(0) : '--'}%</span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-[9px] text-muted-foreground mt-2">
+        Positive z-score (overbought): actual price above OLS fundamental value. Negative (oversold): below.
+        Signal reverts to zero on average - basis for a mean-reversion strategy.
+      </p>
+    </div>
+  )
+}
+
 function CoefTable({ coef }: { coef: FundamentalCoefficients }) {
   const rows = [
     { label: 'Intercept (base)',     value: coef.intercept.toFixed(1),     unit: 'EUR/MWh', hint: 'structural base load' },
@@ -1199,6 +1251,12 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
     staleTime: 30 * 60 * 1000,
   })
 
+  const { data: snapshotData } = useQuery({
+    queryKey: ['signal-snapshot'],
+    queryFn: api.spreadsSignalSnapshot,
+    staleTime: 30 * 60 * 1000,
+  })
+
   const cur = data?.current
   const coef = data?.coefficients
 
@@ -1223,6 +1281,13 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
           ))}
         </div>
       </div>
+
+      {snapshotData?.rows && snapshotData.rows.length > 0 && (
+        <SignalSnapshotPanel
+          rows={snapshotData.rows}
+          onSelectZone={(z) => setZone(z as FundZone)}
+        />
+      )}
 
       {isLoading && <p className="text-muted-foreground text-xs">Computing model...</p>}
 

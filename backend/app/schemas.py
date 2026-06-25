@@ -1075,3 +1075,18 @@ class FundamentalModelResponse(BaseModel):
     coefficients: FundamentalCoefficients
     series: list[FundamentalPoint]
     current: FundamentalCurrent
+
+
+class SignalSnapshotRow(BaseModel):
+    zone: str
+    actual: float
+    fitted: float
+    residual: float
+    zscore: float
+    pct_rank_1yr: int
+    r2: float
+
+
+class SignalSnapshotResponse(BaseModel):
+    as_of: str | None
+    rows: list[SignalSnapshotRow]

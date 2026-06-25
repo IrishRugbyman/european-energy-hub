@@ -1046,3 +1046,21 @@ def test_spreads_fundamental_model(client):
     # Invalid zone -> 400
     r2 = client.get("/api/spreads/fundamental-model?zone=FAKE")
     assert r2.status_code == 400
+
+
+def test_spreads_signal_snapshot(client):
+    r = client.get("/api/spreads/signal-snapshot")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data
+    rows = data["rows"]
+    assert len(rows) > 0
+    for row in rows:
+        assert "zone" in row
+        assert isinstance(row["zscore"], float)
+        assert isinstance(row["residual"], float)
+        assert isinstance(row["r2"], float)
+        assert 0 <= row["pct_rank_1yr"] <= 100
+    # Sorted by |z-score| descending
+    abs_zscores = [abs(r["zscore"]) for r in rows]
+    assert abs_zscores == sorted(abs_zscores, reverse=True)

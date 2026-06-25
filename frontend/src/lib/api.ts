@@ -1018,6 +1018,7 @@ export const api = {
   usPowerHistory: (region: string) => get<UsPowerHistoryResponse>(`/us-power/history/${encodeURIComponent(region)}`),
   usNgPlants: () => get<UsNgPlantsResponse>('/us-power/plants'),
   spreadsFundamentalModel: (zone?: string) => get<FundamentalModelResponse>(`/spreads/fundamental-model${zone ? `?zone=${zone}` : ''}`),
+  spreadsSignalSnapshot: () => get<SignalSnapshotResponse>('/spreads/signal-snapshot'),
 }
 
 // US power generation
@@ -1112,4 +1113,19 @@ export interface FundamentalModelResponse {
   coefficients: FundamentalCoefficients
   series: FundamentalPoint[]
   current: FundamentalCurrent
+}
+
+export interface SignalSnapshotRow {
+  zone: string
+  actual: number
+  fitted: number
+  residual: number
+  zscore: number
+  pct_rank_1yr: number
+  r2: number
+}
+
+export interface SignalSnapshotResponse {
+  as_of: string | null
+  rows: SignalSnapshotRow[]
 }
