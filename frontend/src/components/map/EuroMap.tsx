@@ -23,10 +23,38 @@ const CARTO_NOLABELS = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/
 const CARTO_LABELS   = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 const CARTO_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors'
 
-export type MapMetric = 'price' | 'range' | 'neg_hours' | 'pct_rank' | 'renewable' | 'dominant_fuel' | 'carbon_intensity'
+export type MapMetric = 'price' | 'range' | 'neg_hours' | 'pct_rank' | 'renewable' | 'dominant_fuel' | 'carbon_intensity' | 'wind_cf' | 'solar_cf'
 
 export function isPriceMetric(m: MapMetric): boolean {
   return m === 'price' || m === 'range' || m === 'neg_hours' || m === 'pct_rank'
+}
+
+// Wind CF: low = red (wind drought -> gas fills gap), high = green
+function windCfColor(cf: number | null | undefined): string {
+  if (cf == null) return '#374151'
+  const p = cf // 0-1 fraction
+  if (p < 0.05) return '#b91c1c'  // < 5% - severe drought
+  if (p < 0.10) return '#dc2626'
+  if (p < 0.15) return '#f97316'
+  if (p < 0.20) return '#f59e0b'
+  if (p < 0.25) return '#a3a300'
+  if (p < 0.35) return '#4ade80'
+  if (p < 0.45) return '#22c55e'
+  return '#16a34a'                // > 45% - strong wind
+}
+
+// Solar CF: grey (no sun/winter) to gold (peak summer)
+function solarCfColor(cf: number | null | undefined): string {
+  if (cf == null) return '#374151'
+  const p = cf
+  if (p < 0.02) return '#374151'  // essentially zero (night/winter)
+  if (p < 0.05) return '#44403c'
+  if (p < 0.08) return '#78350f'
+  if (p < 0.12) return '#92400e'
+  if (p < 0.16) return '#b45309'
+  if (p < 0.20) return '#d97706'
+  if (p < 0.24) return '#f59e0b'
+  return '#fbbf24'                // > 24% - peak summer irradiance
 }
 
 
@@ -56,6 +84,8 @@ export function zoneColor(
     case 'renewable':          return renewablePctColor(gen?.renewable_pct)
     case 'dominant_fuel':      return dominantFuelColor(computeDominantFuel(gen))
     case 'carbon_intensity':   return carbonIntensityColor(computeCarbonIntensity(gen))
+    case 'wind_cf':      return windCfColor(gen?.wind_cf)
+    case 'solar_cf':     return solarCfColor(gen?.solar_cf)
   }
 }
 
@@ -101,6 +131,24 @@ function tooltipContent(
       case 'carbon_intensity': {
         const ci = computeCarbonIntensity(gen)
         return ci != null ? `Carbon: ${ci} gCO₂/kWh` : ''
+      }
+      case 'wind_cf': {
+        const cf = gen?.wind_cf
+        const inst = gen?.wind_installed_mw
+        const actual = gen?.wind_mw
+        if (cf == null) return ''
+        const instStr = inst != null ? ` (${inst.toFixed(0)} MW installed)` : ''
+        const actStr = actual != null ? `, ${actual.toFixed(0)} MW actual` : ''
+        return `Wind CF: ${(cf * 100).toFixed(1)}%${actStr}${instStr}`
+      }
+      case 'solar_cf': {
+        const cf = gen?.solar_cf
+        const inst = gen?.solar_installed_mw
+        const actual = gen?.solar_mw
+        if (cf == null) return ''
+        const instStr = inst != null ? ` (${inst.toFixed(0)} MW installed)` : ''
+        const actStr = actual != null ? `, ${actual.toFixed(0)} MW actual` : ''
+        return `Solar CF: ${(cf * 100).toFixed(1)}%${actStr}${instStr}`
       }
       default: return ''
     }

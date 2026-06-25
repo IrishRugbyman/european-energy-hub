@@ -1064,3 +1064,25 @@ def test_spreads_signal_snapshot(client):
     # Sorted by |z-score| descending
     abs_zscores = [abs(r["zscore"]) for r in rows]
     assert abs_zscores == sorted(abs_zscores, reverse=True)
+
+
+def test_power_cf_map(client):
+    r = client.get("/api/power/cf-map")
+    assert r.status_code == 200
+    data = r.json()
+    assert "gen_date" in data
+    rows = data["rows"]
+    assert len(rows) > 0
+    for row in rows:
+        assert "zone" in row
+        assert "gen_date" in row
+        # wind_cf and solar_cf may be null for zones without installed capacity
+        assert "wind_cf" in row
+        assert "solar_cf" in row
+        if row["wind_cf"] is not None:
+            assert 0.0 <= row["wind_cf"] <= 1.0
+        if row["solar_cf"] is not None:
+            assert 0.0 <= row["solar_cf"] <= 1.0
+    # All zones are from the same latest date
+    dates = {r["gen_date"] for r in rows if r["gen_date"]}
+    assert len(dates) <= 1

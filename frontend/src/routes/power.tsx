@@ -140,10 +140,40 @@ const METRIC_CONFIG: Record<MapMetric, MetricConfig> = {
       { label: 'no data',       color: '#374151' },
     ],
   },
+  wind_cf: {
+    label: 'Wind CF',
+    title: 'Wind capacity factor',
+    items: [
+      { label: '< 5% (drought)',  color: '#b91c1c' },
+      { label: '5-10%',           color: '#dc2626' },
+      { label: '10-15%',          color: '#f97316' },
+      { label: '15-20%',          color: '#f59e0b' },
+      { label: '20-25%',          color: '#a3a300' },
+      { label: '25-35%',          color: '#4ade80' },
+      { label: '35-45%',          color: '#22c55e' },
+      { label: '> 45% (strong)',  color: '#16a34a' },
+      { label: 'no data',         color: '#374151' },
+    ],
+  },
+  solar_cf: {
+    label: 'Solar CF',
+    title: 'Solar capacity factor',
+    items: [
+      { label: '< 2% (dark)',    color: '#374151' },
+      { label: '2-5%',           color: '#44403c' },
+      { label: '5-8%',           color: '#78350f' },
+      { label: '8-12%',          color: '#92400e' },
+      { label: '12-16%',         color: '#b45309' },
+      { label: '16-20%',         color: '#d97706' },
+      { label: '20-24%',         color: '#f59e0b' },
+      { label: '> 24% (bright)', color: '#fbbf24' },
+      { label: 'no data',        color: '#374151' },
+    ],
+  },
 }
 
 const PRICE_METRICS: MapMetric[] = ['price', 'range', 'neg_hours', 'pct_rank']
-const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel', 'carbon_intensity']
+const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel', 'carbon_intensity', 'wind_cf', 'solar_cf']
 
 function cfRankColor(rank: number | null, type: 'wind' | 'solar'): string {
   if (rank == null) return '#64748b'
@@ -238,11 +268,39 @@ function MapDashboard() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: cfMapData } = useQuery({
+    queryKey: ['power-cf-map'],
+    queryFn: api.powerCfMap,
+    staleTime: 6 * 60 * 60 * 1000,
+    enabled: metric === 'wind_cf' || metric === 'solar_cf',
+  })
+
   const powerByZone: Record<string, PowerLatestRow> = {}
   for (const r of powerData?.rows ?? []) powerByZone[r.zone] = r
 
   const genByZone: Record<string, GenMapItem> = {}
   for (const z of genData?.zones ?? []) genByZone[z.zone] = z
+
+  // Merge CF data into genByZone for wind_cf / solar_cf map modes
+  if (cfMapData?.rows) {
+    for (const r of cfMapData.rows) {
+      if (!genByZone[r.zone]) {
+        genByZone[r.zone] = {
+          zone: r.zone, gen_date: r.gen_date, renewable_pct: null,
+          solar_mw: r.solar_mw, wind_mw: r.wind_mw, hydro_mw: null,
+          gas_mw: null, coal_mw: null, nuclear_mw: null, biomass_mw: null,
+          geothermal_mw: null, oil_mw: null, other_mw: null, total_mw: null,
+          wind_cf: r.wind_cf, solar_cf: r.solar_cf,
+          wind_installed_mw: r.wind_installed_mw, solar_installed_mw: r.solar_installed_mw,
+        }
+      } else {
+        genByZone[r.zone].wind_cf = r.wind_cf
+        genByZone[r.zone].solar_cf = r.solar_cf
+        genByZone[r.zone].wind_installed_mw = r.wind_installed_mw
+        genByZone[r.zone].solar_installed_mw = r.solar_installed_mw
+      }
+    }
+  }
 
   const prices = (powerData?.rows ?? [])
     .map((r) => r.base_eur)

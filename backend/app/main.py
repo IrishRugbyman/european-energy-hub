@@ -162,6 +162,8 @@ from .schemas import (
     FundamentalModelResponse,
     SignalSnapshotRow,
     SignalSnapshotResponse,
+    CfMapRow,
+    CfMapResponse,
 )
 
 
@@ -3213,3 +3215,49 @@ def spreads_signal_snapshot():
     # Sort by absolute z-score descending (most extreme signal first)
     rows.sort(key=lambda r: abs(r.zscore), reverse=True)
     return SignalSnapshotResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/power/cf-map", response_model=CfMapResponse)
+def power_cf_map():
+    """Latest wind and solar capacity factors for all zones.
+
+    Returns wind_cf and solar_cf (0-1 fractions of installed capacity) per zone.
+    Low wind_cf indicates wind drought - empirically associated with elevated DA prices
+    via the fundamental value model (wind_pct coefficient is strongly negative).
+    """
+    _rate_limited()
+    df = db.query("""
+        WITH latest AS (
+            SELECT MAX(gen_date) AS d FROM capacity_factors_daily
+        )
+        SELECT
+            c.zone,
+            c.gen_date::VARCHAR AS gen_date,
+            c.wind_cf,
+            c.solar_cf,
+            c.wind_mw,
+            c.solar_mw,
+            c.wind_installed_mw,
+            c.solar_installed_mw
+        FROM capacity_factors_daily c
+        JOIN latest l ON c.gen_date = l.d
+        ORDER BY c.zone
+    """)
+    if df is None or df.empty:
+        return CfMapResponse(gen_date=None, rows=[])
+
+    rows = [
+        CfMapRow(
+            zone=str(r.zone),
+            gen_date=str(r.gen_date),
+            wind_cf=_float(r.wind_cf),
+            solar_cf=_float(r.solar_cf),
+            wind_mw=_float(r.wind_mw),
+            solar_mw=_float(r.solar_mw),
+            wind_installed_mw=_float(r.wind_installed_mw),
+            solar_installed_mw=_float(r.solar_installed_mw),
+        )
+        for r in df.itertuples()
+    ]
+    gen_date = rows[0].gen_date if rows else None
+    return CfMapResponse(gen_date=gen_date, rows=rows)

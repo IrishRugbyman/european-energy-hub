@@ -222,6 +222,11 @@ export interface GenMapItem {
   oil_mw: number | null
   other_mw: number | null
   total_mw: number | null
+  // Optional capacity factor fields (from /api/power/cf-map)
+  wind_cf?: number | null
+  solar_cf?: number | null
+  wind_installed_mw?: number | null
+  solar_installed_mw?: number | null
 }
 
 export interface GenMapResponse {
@@ -970,6 +975,7 @@ export const api = {
   powerZoneNetFlows: () => get<ZoneNetFlowsResponse>('/power/zone-net-flows'),
   powerDivergence: () => get<DivergenceResponse>('/power/divergence'),
   powerMap: () => get<PowerMapResponse>('/power/map'),
+  powerCfMap: () => get<CfMapResponse>('/power/cf-map'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1128,4 +1134,20 @@ export interface SignalSnapshotRow {
 export interface SignalSnapshotResponse {
   as_of: string | null
   rows: SignalSnapshotRow[]
+}
+
+export interface CfMapRow {
+  zone: string
+  gen_date: string
+  wind_cf: number | null
+  solar_cf: number | null
+  wind_mw: number | null
+  solar_mw: number | null
+  wind_installed_mw: number | null
+  solar_installed_mw: number | null
+}
+
+export interface CfMapResponse {
+  gen_date: string | null
+  rows: CfMapRow[]
 }

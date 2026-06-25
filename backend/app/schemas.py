@@ -1090,3 +1090,19 @@ class SignalSnapshotRow(BaseModel):
 class SignalSnapshotResponse(BaseModel):
     as_of: str | None
     rows: list[SignalSnapshotRow]
+
+
+class CfMapRow(BaseModel):
+    zone: str
+    gen_date: str
+    wind_cf: float | None
+    solar_cf: float | None
+    wind_mw: float | None
+    solar_mw: float | None
+    wind_installed_mw: float | None
+    solar_installed_mw: float | None
+
+
+class CfMapResponse(BaseModel):
+    gen_date: str | None
+    rows: list[CfMapRow]
