@@ -1,5 +1,9 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 33: Cross-zone signal snapshot panel on /spreads
+
+**What was built:** `GET /api/spreads/signal-snapshot` computes the OLS fundamental model for all 5 European zones (DE-LU, FR, NL, IT-NORD, BE) in a single request and returns current z-scores ranked by |z|. `SignalSnapshotPanel` on /spreads shows a 5-card grid above the detailed zone model: each card displays zone code, z-score with color (red=overbought/green=oversold), EUR/MWh residual vs fair value, 1yr percentile rank, and R2. Clicking jumps to the detailed model for that zone. On 2026-06-24 all zones showed +2.8 to +4.2-sigma residuals from a synchronized European heat event (wind drought + TTF/EUA pressure). 1 new test (81 total).
+
 ## 2026-06-25 - Phase 32: US power choropleth map + EU fundamental value model
 
 **US Power choropleth (/us-power):** Rebuilt from region-card grid to full Leaflet choropleth map. `build_us_power_regions.py` dissolves Natural Earth state boundaries into 10 EIA Form 930 region polygons (us_power_regions.geojson, 99 KB). Color modes: NG% share (green-to-red), RE% (wind+solar+hydro), total MWh/h. Map-first layout mirrors /us-gas: floating stat strip (US total, NG%, RE%), color mode toggle, region rankings strip, click-to-drill panel with 48h NG trend. Regions: TEX, CAL, MISO, MIDA, SE, NW, CAR, FLA, SW, ISNE.
