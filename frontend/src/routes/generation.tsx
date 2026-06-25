@@ -1520,7 +1520,7 @@ function HeatRiskSection({
             <Tooltip
               contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              formatter={(v: any, name: any) => [`${(v as number).toFixed(1)}°C`, String(name)]}
+              formatter={(v: any, name: any) => [v != null ? `${(v as number).toFixed(1)}°C` : '--', String(name)]}
               labelFormatter={(l) => `${l}${fcDates.includes(l as string) ? ' (forecast)' : ''}`}
             />
             <ReferenceLine y={35} stroke="#f97316" strokeDasharray="4 2" strokeWidth={1}
@@ -1791,6 +1791,7 @@ function NuclearTrackerSection({
                 contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 formatter={(v: any, name: any) => {
+                  if (v == null) return ['--', String(name)]
                   const n = v as number
                   if (name === 'nuclear_mw') return [`${n.toLocaleString()} MW`, 'FR nuclear']
                   if (name === 'avg5_nuclear_mw') return [`${n.toLocaleString()} MW`, '5yr avg']
@@ -1878,6 +1879,7 @@ function NuclearTrackerSection({
                 contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 formatter={(v: any, name: any) => {
+                  if (v == null) return ['--', String(name)]
                   const n = v as number
                   return [
                     name === 'nuclear_mw' ? `${n.toLocaleString()} MW` : `${n.toFixed(1)} EUR/MWh`,
