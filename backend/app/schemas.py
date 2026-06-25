@@ -1221,3 +1221,37 @@ class LngCountryResponse(BaseModel):
     history: list[LngHistoryPoint]
     seasonal: list[LngSeasonalPoint]
     trend: list[LngTrendPoint]
+
+
+# --- Nuclear tracker ---
+
+
+class NuclearCountryRow(BaseModel):
+    zone: str
+    gen_date: str
+    nuclear_mw: float
+    avg5_mw: float | None
+    min5_mw: float | None
+    max5_mw: float | None
+    vs_avg5_pct: float | None
+    util_pct: float | None
+    installed_mw: int | None
+
+
+class NuclearFrTrendPoint(BaseModel):
+    gen_date: str
+    nuclear_mw: float | None
+    avg5_nuclear_mw: float | None
+    fr_de_spread: float | None
+
+
+class NuclearScatterPoint(BaseModel):
+    gen_date: str
+    nuclear_mw: float | None
+    fr_de_spread: float | None
+
+
+class NuclearTrackerResponse(BaseModel):
+    country_latest: list[NuclearCountryRow]
+    fr_trend: list[NuclearFrTrendPoint]
+    fr_scatter: list[NuclearScatterPoint]

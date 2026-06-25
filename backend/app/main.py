@@ -177,6 +177,10 @@ from .schemas import (
     LngSeasonalPoint,
     LngHistoryPoint,
     LngCountryResponse,
+    NuclearCountryRow,
+    NuclearFrTrendPoint,
+    NuclearScatterPoint,
+    NuclearTrackerResponse,
 )
 
 
@@ -928,6 +932,23 @@ def gas_lng_country(cc: str):
     ]
 
     return LngCountryResponse(country=cc, latest=latest, history=history, seasonal=seasonal, trend=trend)
+
+
+@app.get("/api/generation/nuclear-tracker", response_model=NuclearTrackerResponse)
+def generation_nuclear_tracker():
+    """EU nuclear generation tracker: country output vs 5yr avg, FR trend with seasonal norm,
+    and FR nuclear vs FR-DE price spread scatter (730 days)."""
+    from analytics.nuclear import nuclear_country_latest, nuclear_fr_scatter, nuclear_fr_trend
+
+    cl = nuclear_country_latest(db)
+    ft = nuclear_fr_trend(db)
+    sc = nuclear_fr_scatter(db)
+
+    return NuclearTrackerResponse(
+        country_latest=[NuclearCountryRow(**r) for r in cl],
+        fr_trend=[NuclearFrTrendPoint(**r) for r in ft],
+        fr_scatter=[NuclearScatterPoint(**r) for r in sc],
+    )
 
 
 @app.get("/api/power/congestion", response_model=CongestionResponse)

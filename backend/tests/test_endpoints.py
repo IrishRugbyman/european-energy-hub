@@ -1174,3 +1174,24 @@ def test_gas_lng_country(client):
     assert isinstance(data["history"], list)
     assert isinstance(data["seasonal"], list)
     assert isinstance(data["trend"], list)
+
+
+def test_generation_nuclear_tracker(client):
+    r = client.get("/api/generation/nuclear-tracker")
+    assert r.status_code == 200
+    data = r.json()
+    assert "country_latest" in data
+    assert "fr_trend" in data
+    assert "fr_scatter" in data
+    cl = data["country_latest"]
+    assert len(cl) >= 1
+    fr = next((x for x in cl if x["zone"] == "FR"), None)
+    assert fr is not None
+    assert fr["nuclear_mw"] > 0
+    assert fr["util_pct"] is not None
+    assert len(data["fr_trend"]) >= 1
+    trend_pt = data["fr_trend"][0]
+    assert "gen_date" in trend_pt
+    assert "nuclear_mw" in trend_pt
+    assert "fr_de_spread" in trend_pt
+    assert len(data["fr_scatter"]) >= 1

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint, type ZoneNetFlowRow } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint, type ZoneNetFlowRow, type NuclearCountryRow, type NuclearFrTrendPoint, type NuclearScatterPoint } from '@/lib/api'
 import {
   BarChart, Bar, Cell, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -1375,6 +1375,285 @@ function ZoneHourlyComparisonChart({ rows }: { rows: ZoneHourlyProfileRow[] }) {
   )
 }
 
+// Zone display names for nuclear tracker
+const NUCLEAR_ZONE_NAMES: Record<string, string> = {
+  FR: 'France', ES: 'Spain', FI: 'Finland', CZ: 'Czech Rep.', BE: 'Belgium',
+  SE: 'Sweden', SK: 'Slovakia', BG: 'Bulgaria', HU: 'Hungary', CH: 'Switzerland',
+  RO: 'Romania', NL: 'Netherlands', 'DE-LU': 'Germany',
+}
+
+const NUCLEAR_PURPLE = '#7c3aed'
+const SPREAD_TEAL = '#0891b2'
+
+function NuclearTrackerSection({
+  countryLatest,
+  frTrend,
+  frScatter,
+}: {
+  countryLatest: NuclearCountryRow[]
+  frTrend: NuclearFrTrendPoint[]
+  frScatter: NuclearScatterPoint[]
+}) {
+  const fr = countryLatest.find((r) => r.zone === 'FR')
+  const euTotal = countryLatest.reduce((s, r) => s + (r.nuclear_mw ?? 0), 0)
+  const euAvg5 = countryLatest.reduce((s, r) => s + (r.avg5_mw ?? 0), 0)
+  const euVs = euAvg5 > 0 ? ((euTotal - euAvg5) / euAvg5) * 100 : null
+  const beDown = countryLatest.find((r) => r.zone === 'BE' && (r.nuclear_mw ?? 0) < 500)
+  const latestFr = frTrend.length > 0 ? frTrend[frTrend.length - 1] : null
+
+  const activeZones = countryLatest.filter((r) => (r.nuclear_mw ?? 0) > 0)
+
+  return (
+    <div className="mb-6">
+      <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <h1 className="text-base font-semibold">EU Nuclear Generation</h1>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Current output vs 5yr seasonal average by country. FR-DE price spread
+            narrows when French nuclear is high (FR exports cheap nuclear surplus to DE).
+          </p>
+        </div>
+        <div className="flex gap-3 text-xs">
+          <div className="text-right">
+            <div className="text-muted-foreground">EU nuclear</div>
+            <div className="font-semibold" style={{ color: NUCLEAR_PURPLE }}>
+              {(euTotal / 1000).toFixed(0)} GW
+              {euVs != null && (
+                <span className={`ml-1 ${euVs >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  ({euVs >= 0 ? '+' : ''}{euVs.toFixed(1)}% vs 5yr)
+                </span>
+              )}
+            </div>
+          </div>
+          {fr && (
+            <div className="text-right border-l border-border pl-3">
+              <div className="text-muted-foreground">FR utilization</div>
+              <div className="font-semibold" style={{ color: NUCLEAR_PURPLE }}>
+                {fr.util_pct?.toFixed(1)}%
+                {fr.vs_avg5_pct != null && (
+                  <span className={`ml-1 ${fr.vs_avg5_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    ({fr.vs_avg5_pct >= 0 ? '+' : ''}{fr.vs_avg5_pct.toFixed(1)}%)
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+          {latestFr?.fr_de_spread != null && (
+            <div className="text-right border-l border-border pl-3">
+              <div className="text-muted-foreground">FR-DE spread</div>
+              <div className={`font-semibold ${latestFr.fr_de_spread <= -10 ? 'text-green-400' : latestFr.fr_de_spread >= 10 ? 'text-red-400' : 'text-foreground'}`}>
+                {latestFr.fr_de_spread >= 0 ? '+' : ''}{latestFr.fr_de_spread.toFixed(1)} EUR/MWh
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {beDown && (
+        <div className="mb-3 px-3 py-2 rounded text-xs bg-yellow-900/20 border border-yellow-700/40 text-yellow-300">
+          Belgium nuclear at 0 MW (planned/unplanned outage) - seasonal avg {((beDown.avg5_mw ?? 0) / 1000).toFixed(1)} GW
+        </div>
+      )}
+
+      {/* Country bar chart: current vs 5yr avg */}
+      <div className="mb-4">
+        <div className="text-xs text-muted-foreground mb-2">Nuclear output by country (MW) - purple = current, grey = 5yr seasonal avg</div>
+        <ResponsiveContainer width="100%" height={220}>
+          <BarChart
+            data={activeZones.map((r) => ({
+              name: NUCLEAR_ZONE_NAMES[r.zone] ?? r.zone,
+              current: r.nuclear_mw ?? 0,
+              avg5: r.avg5_mw ?? 0,
+              vs: r.vs_avg5_pct,
+            }))}
+            margin={{ top: 4, right: 8, left: 0, bottom: 4 }}
+            barCategoryGap="20%"
+            barGap={2}
+          >
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+            <YAxis
+              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+              width={34}
+            />
+            <Tooltip
+              contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 12 }}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter={(v: any, name: any) => [
+                `${(v as number).toLocaleString()} MW (${((v as number) / 1000).toFixed(1)} GW)`,
+                name === 'current' ? 'Today' : '5yr avg (same DOY)',
+              ]}
+            />
+            <Bar dataKey="avg5" fill="#334155" name="avg5" radius={[2, 2, 0, 0]} />
+            <Bar dataKey="current" name="current" radius={[2, 2, 0, 0]}>
+              {activeZones.map((r, i) => (
+                <Cell
+                  key={i}
+                  fill={(r.vs_avg5_pct ?? 0) < -15
+                    ? '#ef4444'
+                    : (r.vs_avg5_pct ?? 0) < 0
+                    ? '#f97316'
+                    : NUCLEAR_PURPLE
+                  }
+                />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* FR trend: nuclear output + seasonal avg + FR-DE spread */}
+      {frTrend.length > 0 && (
+        <div className="mb-4">
+          <div className="text-xs text-muted-foreground mb-1">
+            France nuclear output vs seasonal norm and FR-DE price spread (365d)
+          </div>
+          <ResponsiveContainer width="100%" height={220}>
+            <ComposedChart data={frTrend} margin={{ top: 4, right: 48, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis
+                dataKey="gen_date"
+                tickFormatter={(v: string) => v.slice(5, 10)}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                interval={Math.floor(frTrend.length / 8)}
+              />
+              <YAxis
+                yAxisId="left"
+                domain={['auto', 'auto']}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                width={38}
+                label={{ value: 'MW', angle: -90, position: 'insideLeft', offset: 10, style: { fontSize: 9, fill: '#64748b' } }}
+              />
+              <YAxis
+                yAxisId="right"
+                orientation="right"
+                domain={['auto', 'auto']}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${v.toFixed(0)}`}
+                width={42}
+                label={{ value: 'EUR/MWh', angle: 90, position: 'insideRight', offset: 14, style: { fontSize: 9, fill: '#64748b' } }}
+              />
+              <Tooltip
+                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(v: any, name: any) => {
+                  const n = v as number
+                  if (name === 'nuclear_mw') return [`${n.toLocaleString()} MW`, 'FR nuclear']
+                  if (name === 'avg5_nuclear_mw') return [`${n.toLocaleString()} MW`, '5yr avg']
+                  return [`${n.toFixed(1)} EUR/MWh`, 'FR-DE spread']
+                }}
+                labelFormatter={(l) => l}
+              />
+              <Area
+                yAxisId="left"
+                type="monotone"
+                dataKey="avg5_nuclear_mw"
+                fill="#1e293b"
+                stroke="#475569"
+                strokeWidth={1}
+                dot={false}
+                name="avg5_nuclear_mw"
+              />
+              <Line
+                yAxisId="left"
+                type="monotone"
+                dataKey="nuclear_mw"
+                stroke={NUCLEAR_PURPLE}
+                strokeWidth={1.5}
+                dot={false}
+                name="nuclear_mw"
+              />
+              <Line
+                yAxisId="right"
+                type="monotone"
+                dataKey="fr_de_spread"
+                stroke={SPREAD_TEAL}
+                strokeWidth={1.5}
+                dot={false}
+                strokeDasharray="4 2"
+                name="fr_de_spread"
+              />
+              <ReferenceLine yAxisId="right" y={0} stroke="#475569" strokeDasharray="3 3" />
+            </ComposedChart>
+          </ResponsiveContainer>
+          <div className="flex gap-4 mt-1 text-[10px] text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-0.5 rounded" style={{ background: NUCLEAR_PURPLE }} />
+              FR nuclear MW
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-0.5 rounded" style={{ background: '#475569' }} />
+              5yr seasonal avg
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-5 h-0.5 rounded border-t border-dashed" style={{ borderColor: SPREAD_TEAL }} />
+              FR-DE spread (right axis, dashed)
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Scatter: FR nuclear vs FR-DE spread */}
+      {frScatter.length > 0 && (
+        <div>
+          <div className="text-xs text-muted-foreground mb-1">
+            FR nuclear output vs FR-DE spread (2yr scatter) - negative spread = FR exports cheap nuclear to DE
+          </div>
+          <ResponsiveContainer width="100%" height={200}>
+            <ScatterChart margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis
+                dataKey="nuclear_mw"
+                type="number"
+                domain={['auto', 'auto']}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                label={{ value: 'FR nuclear (MW)', position: 'insideBottom', offset: -4, style: { fontSize: 9, fill: '#64748b' } }}
+              />
+              <YAxis
+                dataKey="fr_de_spread"
+                type="number"
+                domain={['auto', 'auto']}
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                tickFormatter={(v) => `${v.toFixed(0)}`}
+                label={{ value: 'FR-DE (EUR/MWh)', angle: -90, position: 'insideLeft', offset: 12, style: { fontSize: 9, fill: '#64748b' } }}
+                width={46}
+              />
+              <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+              <Tooltip
+                contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                formatter={(v: any, name: any) => {
+                  const n = v as number
+                  return [
+                    name === 'nuclear_mw' ? `${n.toLocaleString()} MW` : `${n.toFixed(1)} EUR/MWh`,
+                    name === 'nuclear_mw' ? 'FR nuclear' : 'FR-DE spread',
+                  ]
+                }}
+                labelFormatter={(_, payload) => payload?.[0]?.payload?.gen_date ?? ''}
+              />
+              <Scatter
+                data={frScatter.filter((r) => r.nuclear_mw != null && r.fr_de_spread != null)}
+                fill={NUCLEAR_PURPLE}
+                opacity={0.35}
+                r={2.5}
+              />
+            </ScatterChart>
+          </ResponsiveContainer>
+          <div className="text-[10px] text-muted-foreground mt-1">
+            Inverse relationship: when FR nuclear is high, France exports and FR-DE spread turns negative.
+            Belgian/German outages or high demand can break this pattern.
+          </div>
+        </div>
+      )}
+
+      <div className="text-[10px] text-muted-foreground mt-3">Source: ENTSO-E A75 (Generation by fuel type)</div>
+    </div>
+  )
+}
+
 function GenerationTrends() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['gen-trends'],
@@ -1485,6 +1764,12 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: nuclearData } = useQuery({
+    queryKey: ['generation-nuclear-tracker'],
+    queryFn: api.genNuclearTracker,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Fetch power map to derive the country with the biggest live congestion spread
   const { data: powerMapData } = useQuery({
     queryKey: ['power-map'],
@@ -1577,6 +1862,8 @@ function GenerationTrends() {
       <nav className="flex flex-wrap gap-x-3 gap-y-1 mb-4 text-[10px] text-muted-foreground border-b border-border pb-2">
         <a href="#gen-eu-overview" className="hover:text-foreground transition-colors">EU Overview</a>
         <span className="text-border">·</span>
+        <a href="#gen-nuclear" className="hover:text-foreground transition-colors">Nuclear</a>
+        <span className="text-border">·</span>
         <a href="#gen-neg-prices" className="hover:text-foreground transition-colors">Negative Prices</a>
         <span className="text-border">·</span>
         <a href="#gen-re-trend" className="hover:text-foreground transition-colors">RE Trend</a>
@@ -1601,6 +1888,16 @@ function GenerationTrends() {
         {(euFuelData?.rows.length ?? 0) > 0 && <EuFuelMixChart rows={euFuelData!.rows} />}
         {(monthlyFuelMixData?.rows.length ?? 0) > 0 && <MonthlyFuelMixSeasonality rows={monthlyFuelMixData!.rows} />}
         {(capacityData?.rows.length ?? 0) > 0 && <EuCapacityChart rows={capacityData!.rows} />}
+      </div>
+
+      <div id="gen-nuclear">
+        {(nuclearData?.country_latest.length ?? 0) > 0 && (
+          <NuclearTrackerSection
+            countryLatest={nuclearData!.country_latest}
+            frTrend={nuclearData!.fr_trend}
+            frScatter={nuclearData!.fr_scatter}
+          />
+        )}
       </div>
 
       <div id="gen-neg-prices">

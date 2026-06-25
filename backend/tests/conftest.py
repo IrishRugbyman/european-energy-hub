@@ -293,6 +293,13 @@ def _seed_db(path: str) -> None:
         renewable_pct = round((solar + wind + hydro) / total * 100, 1)
         # zone, gen_date, biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind, renewable_pct, total_mw
         gen_rows.append(["DE-LU", day, 1200.0, coal, gas, 0.0, hydro, nuclear, 200.0, 500.0, solar, wind, renewable_pct, round(total, 1)])
+        # FR: realistic nuclear + gas + wind/solar mix
+        fr_nuclear = round(36000.0 + 2000.0 * ((i % 365 - 180) / 365), 1)
+        fr_solar = round(6000.0 + 4000.0 * ((i % 365 - 180) / 365), 1)
+        fr_wind = 5000.0
+        fr_total = fr_nuclear + fr_solar + fr_wind + 3000.0 + 5000.0
+        fr_re_pct = round((fr_solar + fr_wind) / fr_total * 100, 1)
+        gen_rows.append(["FR", day, 300.0, 0.0, 3000.0, 0.0, 5000.0, fr_nuclear, 0.0, 200.0, fr_solar, fr_wind, fr_re_pct, round(fr_total, 1)])
     conn.executemany("INSERT INTO generation_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_rows)
 
     # generation_hourly_recent (10 days of hourly data for DE-LU)

@@ -182,6 +182,37 @@ export interface LngCountryResponse {
   trend: LngTrendPoint[]
 }
 
+export interface NuclearCountryRow {
+  zone: string
+  gen_date: string
+  nuclear_mw: number
+  avg5_mw: number | null
+  min5_mw: number | null
+  max5_mw: number | null
+  vs_avg5_pct: number | null
+  util_pct: number | null
+  installed_mw: number | null
+}
+
+export interface NuclearFrTrendPoint {
+  gen_date: string
+  nuclear_mw: number | null
+  avg5_nuclear_mw: number | null
+  fr_de_spread: number | null
+}
+
+export interface NuclearScatterPoint {
+  gen_date: string
+  nuclear_mw: number | null
+  fr_de_spread: number | null
+}
+
+export interface NuclearTrackerResponse {
+  country_latest: NuclearCountryRow[]
+  fr_trend: NuclearFrTrendPoint[]
+  fr_scatter: NuclearScatterPoint[]
+}
+
 export interface PowerLatestRow {
   zone: string
   price_date: string
@@ -1041,6 +1072,7 @@ export const api = {
   pricesSeasonality: () => get<TtfSeasonalityResponse>('/prices/seasonality'),
   pricesRegime: () => get<PriceRegimeResponse>('/prices/regime'),
   flows: () => get<FlowsResponse>('/flows'),
+  genNuclearTracker: () => get<NuclearTrackerResponse>('/generation/nuclear-tracker'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genTrends: () => get<GenTrendsResponse>('/generation/trends'),
   genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),
