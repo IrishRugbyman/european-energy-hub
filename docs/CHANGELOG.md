@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 32: US power choropleth map + EU fundamental value model
+
+**US Power choropleth (/us-power):** Rebuilt from region-card grid to full Leaflet choropleth map. `build_us_power_regions.py` dissolves Natural Earth state boundaries into 10 EIA Form 930 region polygons (us_power_regions.geojson, 99 KB). Color modes: NG% share (green-to-red), RE% (wind+solar+hydro), total MWh/h. Map-first layout mirrors /us-gas: floating stat strip (US total, NG%, RE%), color mode toggle, region rankings strip, click-to-drill panel with 48h NG trend. Regions: TEX, CAL, MISO, MIDA, SE, NW, CAR, FLA, SW, ISNE.
+
+**EU Fundamental Value Model (/spreads):** New `GET /api/spreads/fundamental-model?zone=` OLS regression of daily DA base price on TTF (EUR/MWh), EUA (EUR/t), wind%, solar% over trailing 365-day window. Returns coefficients, R², fitted vs actual series, rolling 30-day z-score of residual, and 1-year percentile rank. Zone selector: DE-LU/FR/NL/IT-NORD/BE. DE-LU R²=0.752 (TTF coef +1.04, wind -1.74 EUR/pp, solar -1.35 EUR/pp); FR R²=0.519 (nuclear-heavy grid less gas-driven). Frontend: coefficient table, actual vs fundamental value chart, residual z-score signal chart (+/-2σ bands). On 2026-06-24 DE-LU showed +4.03σ residual (p100) driven by extreme 3% wind penetration - exactly the kind of mean-reversion signal a power algo desk monitors. 1 new test (80 total).
+
 ## 2026-06-24 - Phase 31: US natural gas power plants layer (/us-plants)
 
 **What was built:** New `/us-plants` dashboard: a Leaflet map of 624 operating US natural gas power plants with coordinates, capacity, operator, annual generation, and cleanview.co links.
