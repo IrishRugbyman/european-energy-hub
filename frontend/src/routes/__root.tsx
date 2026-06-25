@@ -12,7 +12,7 @@ const NAV = [
   { to: '/us-power',   label: 'US Power',   icon: BarChart2,  enabled: true },
   { to: '/us-plants',  label: 'US Plants',  icon: Factory,    enabled: true },
   { to: '/power',      label: 'EU Power',   icon: Zap,        enabled: true },
-  { to: '/generation', label: 'RE Trends',  icon: Wind,       enabled: true },
+  { to: '/generation', label: 'Generation', icon: Wind,       enabled: true },
   { to: '/spreads',    label: 'Spreads',    icon: TrendingUp, enabled: true },
   { to: '/prices',     label: 'Prices',     icon: DollarSign, enabled: true },
   { to: '/imbalance',  label: 'Imbalance',  icon: Activity,   enabled: true },
@@ -27,7 +27,7 @@ function Root() {
         <Link to="/" className="font-semibold text-base text-foreground hover:text-primary transition-colors tracking-tight shrink-0">
           Energy Hub
         </Link>
-        <nav className="flex items-center gap-0.5">
+        <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
           {NAV.map(({ to, label, icon: Icon, enabled }) =>
             enabled ? (
               <Link
