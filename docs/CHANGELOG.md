@@ -1,5 +1,9 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 35: Rolling coefficient stability + AR(1) half-life on /spreads
+
+**What was built:** `compute_fundamental_model` now computes two additional analytics: (1) `half_life_days` via AR(1) regression of residuals (DE-LU = 0.7d, meaning fast daily mean reversion); (2) `rolling_coefs` - 90-day rolling OLS stepped weekly over trailing 2 years (~66 points), exposing structural changes in factor loadings. Key finding: DE-LU's EUA coefficient rose from ~0.01 to ~4.25 between Sep 2024 and Jun 2026, reflecting carbon becoming increasingly significant for power prices post-gas-crisis normalization. Frontend: new 'Mean-reversion half-life' stat card; `RollingCoefChart` showing TTF, EUA, wind%, solar% loadings over time with R² on the right axis, including interpretation note. 82 tests passing.
+
 ## 2026-06-25 - Phase 34: Wind CF and Solar CF choropleth modes on /map
 
 **What was built:** `GET /api/power/cf-map` returns latest wind capacity factor (wind_cf) and solar capacity factor (solar_cf) for all 27 ENTSO-E zones from capacity_factors_daily. Two new map metric modes on /map: Wind CF (red=drought <5%, green=strong >45%) and Solar CF (dark amber=near-zero, bright gold=peak >24%). CF data is lazy-fetched and merged into genByZone only when a CF mode is selected. The Wind CF layer directly visualises the cause of the current fundamental model signal: DE-LU wind_cf=2.1% on 2026-06-24 caused the +4.03-sigma price residual on /spreads - the two views now tell the same story. 1 new test (82 total).
