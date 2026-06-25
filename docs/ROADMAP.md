@@ -260,6 +260,8 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 30 - US power generation mix dashboard (/us-power) [COMPLETE 2026-06-24]
 - Phase 31 - US natural gas power plants layer (/us-plants, cleanview.co + EIA-860) [COMPLETE 2026-06-24]
 
+- Phase 39 - EU LNG terminal tracker on /gas [COMPLETE 2026-06-25]
+
 ## Geographic expansion (future)
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
 

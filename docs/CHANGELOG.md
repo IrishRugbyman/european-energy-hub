@@ -1,5 +1,19 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 39: EU LNG terminal tracker on /gas
+
+**Tried:** Added EU LNG import data from GIE ALSI API (same key as AGSI) to complement the pipeline gas storage dashboard. 12 EU countries with LNG terminals (BE DE ES FI FR GR HR IT LT NL PL PT). Backfilled to 2019-01-01 (32,784 rows).
+
+**Found:** EU total LNG send-out: 3,599 GWh/d on 2026-06-24 (+481 GWh/d vs 5yr avg), running at 45.2% of 7,970 GWh/d max regasification capacity. 51.2% inventory fill (31,913 GWh of 62,329 GWh max). Italy leads by utilization (663 GWh/d, 74.6% cap), Spain by absolute send-out (560 GWh/d). EU LNG running 15% above seasonal norms, confirming LNG is compensating for reduced Russian pipeline supply. 5yr seasonal bands available per country.
+
+**Decision:** LNG panel wired into /gas via violet toggle button (mirrors Facilities and Physical Flows pattern). LngPanel shows 4-stat grid, 365d EU trend chart (purple line vs 5yr avg), per-country dual progress bars (send-out utilization + fill level). Country drill-down endpoint at /api/gas/lng/country/{cc} with seasonal bands ready for future expansion. alsi added to twice-daily refresh ingest list.
+
+**Artifacts:** `market-data/fetchers/alsi.py`, `market-data/db.py` (lng_storage table), `market-data/config.py` (ALSI_COUNTRIES), `market-data/ingest.py` (alsi command), `backend/analytics/lng.py`, `backend/app/main.py` (3 new endpoints), `backend/app/schemas.py` (LngLatestRow + 4 more), `backend/tests/conftest.py` (LNG fixture tables), `frontend/src/routes/gas.tsx` (LngPanel component), `frontend/src/lib/api.ts` (LNG types). 87 tests total.
+
+## 2026-06-25 - Phase 38: Landing page for energy.lbzgiu.xyz
+
+**What was built:** Landing page at `/` with hero section, 9-card dashboard grid (3-row layout: EU Gas 2-col/EU Power/Spreads, Prices/Imbalance/US Power/US Gas, RE Trends 2-col/US Plants 2-col), and data sources strip. Featured dashboards (EU Gas, EU Power, Spreads) highlighted with primary accent. Cards link directly to their dashboards. The `/` route previously just redirected to `/gas`.
+
 ## 2026-06-25 - Phase 37: Fundamental signal backtest with equity curve on /spreads
 
 **What was built:** `compute_fundamental_backtest()` implements a continuous mean-reversion strategy: position = clip(-zscore, -1, 1), daily P&L = position(t-1) x price_change(t). Splits into OOS (pre-OLS-fit-window) and IS periods. DE-LU results: Sharpe OOS=2.23 (181d), IS=2.71 (365d), hit rate OOS=54.7%, max drawdown=-269 EUR. `GET /api/spreads/fundamental-backtest?zone=`. Frontend: BacktestSection with 4-stat grid and BacktestEquityChart (cumulative P&L, IS period shaded). The high OOS Sharpe validates the fundamental residual signal is not curve-fitted. 1 new test (84 total).
