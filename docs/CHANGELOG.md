@@ -8,6 +8,18 @@
 
 **Decision:** Open-Meteo air temperature is a superior data source to Hub'Eau river temp: it's current (vs Hub'Eau's 2016 cutoff), covers any coordinates, includes forecasts, and the ERA5 reanalysis provides a clean 5yr seasonal baseline. The air->river temp heuristic (-5°C in sustained heat, 1-3 day lag) is physically reasonable and the ~35°C/38°C alert thresholds are conservative enough to give operational lead time. This feature is confirmed high-alpha: the tracker would have flagged the 2022 curtailments 2-3 days early on every major event. For quant_lib.features integration (algo trading ML features), defer to a future phase - current priority is the live dashboard.
 
+---
+
+*Addendum (same session):* Hub'Eau air->river calibration and threshold redesign.
+
+**Tried:** Investigated Hub'Eau station 06121500 (Rhone at Roquemaure) as a historical calibration source. Found the previous session's claim that Hub'Eau was stale/dead was wrong - the API uses `date_debut_mesure` not `date_debut_serie` for filtering. Station has hourly data from 2008-10-14 to 2026-03-25 (3 months stale; not live for current heatwave). Wrote `scripts/calibrate_river_temp.py` to join n=3,360 days of Hub'Eau daily max river temps against Open-Meteo archive air temps at the same coordinates.
+
+**Found:** The flat -5°C heuristic significantly underestimates the summer offset. Calibrated medians: June -6.7°C, July -6.8°C, August -6.0°C. Offset widens with air temp: at air_max 33-35°C the median is -8.8°C; at >=37°C it's -10.8°C. Practical implication: river reaches the 24°C ASN normal permit limit at air_max ~32.4°C (not ~29°C as -5°C implied), and the 27°C summer derogation at ~35.4°C. The previous air-temp thresholds (warning 35°C, critical 38°C) were meaningfully too late relative to the permit limits they were meant to track.
+
+**Decision:** Replaced flat -5°C offset with a monthly lookup table (`_MONTHLY_RIVER_OFFSET`) calibrated from Hub'Eau. Switched alert logic from air-temp thresholds to river-temp thresholds (watch >=24°C, warning >=27°C, critical >=29°C), gated to May-Sep (outside summer the permit limits don't bind). Forecast alert level now evaluated per forecast day using that day's monthly offset, so a 10-day window spanning a month boundary is handled correctly. Old fixed 33°C/36°C chart reference lines removed - they no longer correspond to a single threshold. On today's heatwave all 9 plants show critical (implied rivers 30-33°C, 5/5 recent days above permit limit); consistent with reported Bugey and Nogent curtailments.
+
+**Artifacts:** `backend/scripts/calibrate_river_temp.py`, `backend/results/calibration_river_temp.csv` (3,360-day daily joined dataset).
+
 **Artifacts:** `backend/analytics/heat_risk.py` (Open-Meteo fetch + seasonal baseline + risk computation), three new DuckDB tables (nuclear_heat_risk_latest/trend/seasonal), `GET /api/generation/heat-risk` endpoint, `HeatRiskSection` React component (alert banner, multi-river 60-day chart with 35/38°C threshold lines + forecast shading, 9 per-plant risk cards).
 
 ## 2026-06-25 - Phase 39: EU LNG terminal tracker on /gas
