@@ -1255,3 +1255,40 @@ class NuclearTrackerResponse(BaseModel):
     country_latest: list[NuclearCountryRow]
     fr_trend: list[NuclearFrTrendPoint]
     fr_scatter: list[NuclearScatterPoint]
+
+
+# --- Nuclear heat risk ---
+
+
+class NuclearHeatRiskPlant(BaseModel):
+    plant_code: str
+    plant_name: str
+    river: str
+    capacity_mw: int
+    lat: float
+    lon: float
+    obs_date: str | None
+    temp_max_c: float | None
+    avg5_temp_c: float | None
+    anomaly_c: float | None
+    alert_level: str
+    days_above_35_last5: int
+    peak_fc_temp_c: float | None
+    peak_fc_date: str | None
+    fc_alert_level: str
+
+
+class NuclearHeatRiskTrendPoint(BaseModel):
+    plant_code: str
+    river: str
+    obs_date: str
+    temp_max_c: float | None
+    is_forecast: bool
+
+
+class NuclearHeatRiskResponse(BaseModel):
+    plants: list[NuclearHeatRiskPlant]
+    trend: list[NuclearHeatRiskTrendPoint]
+    capacity_critical_mw: int
+    capacity_warning_mw: int
+    refreshed_at: str | None

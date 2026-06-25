@@ -611,6 +611,57 @@ def _seed_db(path: str) -> None:
     )
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_lng", "2026-06-24T12:00:00+00:00"])
 
+    # --- Nuclear heat risk tables ---
+    conn.execute("""
+        CREATE TABLE nuclear_heat_risk_latest (
+            plant_code VARCHAR, plant_name VARCHAR, river VARCHAR,
+            capacity_mw INTEGER, lat REAL, lon REAL,
+            obs_date DATE, temp_max_c REAL, avg5_temp_c REAL, anomaly_c REAL,
+            alert_level VARCHAR, days_above_35_last5 INTEGER,
+            peak_fc_temp_c REAL, peak_fc_date DATE, fc_alert_level VARCHAR
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO nuclear_heat_risk_latest VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [
+            ["TRICASTIN",  "Tricastin",   "Rhone",   3600, 44.332, 4.732,
+             (date.today() - timedelta(days=1)).isoformat(),
+             38.5, 28.1, 10.4, "critical", 4, 39.4, date.today().isoformat(), "critical"],
+            ["GOLFECH",    "Golfech",     "Garonne", 1400, 44.107, 0.851,
+             (date.today() - timedelta(days=1)).isoformat(),
+             34.0, 27.5, 6.5,  "warning",  2, 32.0, date.today().isoformat(), "warning"],
+            ["CATTENOM",   "Cattenom",    "Moselle", 5400, 49.400, 6.218,
+             (date.today() - timedelta(days=1)).isoformat(),
+             27.0, 25.0, 2.0,  "normal",   0, 28.0, date.today().isoformat(), "normal"],
+        ],
+    )
+    conn.execute("""
+        CREATE TABLE nuclear_heat_risk_trend (
+            plant_code VARCHAR, plant_name VARCHAR, river VARCHAR,
+            obs_date DATE, temp_max_c REAL, is_forecast BOOLEAN
+        )
+    """)
+    for i in range(10):
+        d = (date.today() - timedelta(days=9 - i)).isoformat()
+        conn.execute(
+            "INSERT INTO nuclear_heat_risk_trend VALUES (?,?,?,?,?,?)",
+            ["TRICASTIN", "Tricastin", "Rhone", d, 30.0 + i * 1.2, False],
+        )
+    conn.execute(
+        "INSERT INTO nuclear_heat_risk_trend VALUES (?,?,?,?,?,?)",
+        ["TRICASTIN", "Tricastin", "Rhone", (date.today() + timedelta(days=1)).isoformat(), 40.0, True],
+    )
+    conn.execute("""
+        CREATE TABLE nuclear_heat_risk_seasonal (
+            plant_code VARCHAR, doy SMALLINT, avg5 REAL, min5 REAL, max5 REAL
+        )
+    """)
+    conn.execute(
+        "INSERT INTO nuclear_heat_risk_seasonal VALUES (?,?,?,?,?)",
+        ["TRICASTIN", 176, 28.1, 22.0, 38.0],
+    )
+    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", "2026-06-25T08:00:00+00:00"])
+
     conn.close()
 
 

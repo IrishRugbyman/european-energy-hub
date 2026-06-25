@@ -1195,3 +1195,30 @@ def test_generation_nuclear_tracker(client):
     assert "nuclear_mw" in trend_pt
     assert "fr_de_spread" in trend_pt
     assert len(data["fr_scatter"]) >= 1
+
+
+def test_generation_heat_risk(client):
+    r = client.get("/api/generation/heat-risk")
+    assert r.status_code == 200
+    data = r.json()
+    assert "plants" in data
+    assert "trend" in data
+    assert "capacity_critical_mw" in data
+    assert "capacity_warning_mw" in data
+    plants = data["plants"]
+    assert len(plants) >= 1
+    p = plants[0]
+    assert "plant_code" in p
+    assert "temp_max_c" in p
+    assert "alert_level" in p
+    assert p["alert_level"] in ("normal", "watch", "warning", "critical")
+    assert data["capacity_critical_mw"] >= 0
+    # Tricastin is critical in fixture
+    critical = [x for x in plants if x["alert_level"] == "critical"]
+    assert len(critical) >= 1
+    assert any(x["plant_code"] == "TRICASTIN" for x in critical)
+    # Trend has at least 10 rows
+    assert len(data["trend"]) >= 10
+    # Forecast row present
+    fc_rows = [t for t in data["trend"] if t["is_forecast"]]
+    assert len(fc_rows) >= 1

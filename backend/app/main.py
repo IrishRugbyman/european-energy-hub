@@ -181,6 +181,9 @@ from .schemas import (
     NuclearFrTrendPoint,
     NuclearScatterPoint,
     NuclearTrackerResponse,
+    NuclearHeatRiskPlant,
+    NuclearHeatRiskTrendPoint,
+    NuclearHeatRiskResponse,
 )
 
 
@@ -948,6 +951,75 @@ def generation_nuclear_tracker():
         country_latest=[NuclearCountryRow(**r) for r in cl],
         fr_trend=[NuclearFrTrendPoint(**r) for r in ft],
         fr_scatter=[NuclearScatterPoint(**r) for r in sc],
+    )
+
+
+@app.get("/api/generation/heat-risk", response_model=NuclearHeatRiskResponse)
+def generation_heat_risk():
+    """Nuclear thermal curtailment risk: air temperature at French nuclear plant locations
+    vs 5yr seasonal avg. Includes 10-day forecast. Air temp > 35°C triggers river thermal
+    stress (~24-28°C river temp); ASN curtailment orders typically follow in 2-3 days."""
+    plants_df = db.query("""
+        SELECT plant_code, plant_name, river, capacity_mw, lat, lon,
+               obs_date::TEXT AS obs_date, temp_max_c, avg5_temp_c, anomaly_c,
+               alert_level, days_above_35_last5, peak_fc_temp_c,
+               peak_fc_date::TEXT AS peak_fc_date, fc_alert_level
+        FROM nuclear_heat_risk_latest
+        ORDER BY temp_max_c DESC NULLS LAST
+    """)
+    trend_df = db.query("""
+        SELECT plant_code, river, obs_date::TEXT AS obs_date, temp_max_c, is_forecast
+        FROM nuclear_heat_risk_trend
+        ORDER BY obs_date, plant_code
+    """)
+
+    if plants_df is None or plants_df.empty:
+        return NuclearHeatRiskResponse(
+            plants=[], trend=[], capacity_critical_mw=0,
+            capacity_warning_mw=0, refreshed_at=None,
+        )
+
+    plants = [
+        NuclearHeatRiskPlant(
+            plant_code=str(r.plant_code),
+            plant_name=str(r.plant_name),
+            river=str(r.river),
+            capacity_mw=int(r.capacity_mw),
+            lat=float(r.lat),
+            lon=float(r.lon),
+            obs_date=_iso(r.obs_date),
+            temp_max_c=_float(r.temp_max_c),
+            avg5_temp_c=_float(r.avg5_temp_c),
+            anomaly_c=_float(r.anomaly_c),
+            alert_level=str(r.alert_level),
+            days_above_35_last5=int(r.days_above_35_last5),
+            peak_fc_temp_c=_float(r.peak_fc_temp_c),
+            peak_fc_date=_iso(r.peak_fc_date),
+            fc_alert_level=str(r.fc_alert_level),
+        )
+        for r in plants_df.itertuples()
+    ]
+
+    trend = [
+        NuclearHeatRiskTrendPoint(
+            plant_code=str(r.plant_code),
+            river=str(r.river),
+            obs_date=str(r.obs_date),
+            temp_max_c=_float(r.temp_max_c),
+            is_forecast=bool(r.is_forecast),
+        )
+        for r in (trend_df if trend_df is not None else pd.DataFrame()).itertuples()
+    ]
+
+    cap_critical = sum(p.capacity_mw for p in plants if p.alert_level == "critical")
+    cap_warning  = sum(p.capacity_mw for p in plants if p.alert_level == "warning")
+
+    return NuclearHeatRiskResponse(
+        plants=plants,
+        trend=trend,
+        capacity_critical_mw=cap_critical,
+        capacity_warning_mw=cap_warning,
+        refreshed_at=_meta_val("refreshed_at_heat_risk"),
     )
 
 

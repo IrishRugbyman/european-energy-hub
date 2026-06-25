@@ -213,6 +213,40 @@ export interface NuclearTrackerResponse {
   fr_scatter: NuclearScatterPoint[]
 }
 
+export interface NuclearHeatRiskPlant {
+  plant_code: string
+  plant_name: string
+  river: string
+  capacity_mw: number
+  lat: number
+  lon: number
+  obs_date: string | null
+  temp_max_c: number | null
+  avg5_temp_c: number | null
+  anomaly_c: number | null
+  alert_level: 'normal' | 'watch' | 'warning' | 'critical'
+  days_above_35_last5: number
+  peak_fc_temp_c: number | null
+  peak_fc_date: string | null
+  fc_alert_level: 'normal' | 'watch' | 'warning' | 'critical'
+}
+
+export interface NuclearHeatRiskTrendPoint {
+  plant_code: string
+  river: string
+  obs_date: string
+  temp_max_c: number | null
+  is_forecast: boolean
+}
+
+export interface NuclearHeatRiskResponse {
+  plants: NuclearHeatRiskPlant[]
+  trend: NuclearHeatRiskTrendPoint[]
+  capacity_critical_mw: number
+  capacity_warning_mw: number
+  refreshed_at: string | null
+}
+
 export interface PowerLatestRow {
   zone: string
   price_date: string
@@ -1073,6 +1107,7 @@ export const api = {
   pricesRegime: () => get<PriceRegimeResponse>('/prices/regime'),
   flows: () => get<FlowsResponse>('/flows'),
   genNuclearTracker: () => get<NuclearTrackerResponse>('/generation/nuclear-tracker'),
+  genHeatRisk: () => get<NuclearHeatRiskResponse>('/generation/heat-risk'),
   genMap: (date?: string) => get<GenMapResponse>(date ? `/generation/map?date=${date}` : '/generation/map'),
   genTrends: () => get<GenTrendsResponse>('/generation/trends'),
   genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),

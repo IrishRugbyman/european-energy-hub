@@ -36,6 +36,7 @@ from analytics.congestion import build_congestion_tables
 from analytics.divergence import build_divergence_tables
 from analytics.gas import build_facilities_table, build_storage_tables
 from analytics.lng import build_lng_tables
+from analytics.heat_risk import build_heat_risk_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables, compute_forecast_accuracy
 from analytics.imbalance import build_imbalance_tables
@@ -84,6 +85,9 @@ def rebuild(skip_ingest: bool = False) -> None:
 
     logger.info("Building LNG terminal tables from market_data (PostgreSQL)...")
     lng_tables = build_lng_tables()
+
+    logger.info("Building nuclear heat risk tables from Open-Meteo...")
+    heat_risk_tables = build_heat_risk_tables()
 
     logger.info("Building UGS facilities reference table...")
     facilities_df = build_facilities_table()
@@ -159,6 +163,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_us_storage(conn, us_storage_tables)
         _write_us_power(conn, us_power_tables)
         _write_us_plants(conn, us_plants_df)
+        _write_heat_risk(conn, heat_risk_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
         conn.execute(
@@ -172,6 +177,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_us_power", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", now_iso])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -916,6 +922,82 @@ def _write_us_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
     n = len(latest) if latest is not None else 0
     logger.info(f"us_storage: {n} region-latest rows")
+
+
+def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    latest   = tables.get("nuclear_heat_risk_latest",   pd.DataFrame())
+    trend    = tables.get("nuclear_heat_risk_trend",    pd.DataFrame())
+    seasonal = tables.get("nuclear_heat_risk_seasonal", pd.DataFrame())
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE nuclear_heat_risk_latest (
+            plant_code          VARCHAR,
+            plant_name          VARCHAR,
+            river               VARCHAR,
+            capacity_mw         INTEGER,
+            lat                 REAL,
+            lon                 REAL,
+            obs_date            DATE,
+            temp_max_c          REAL,
+            avg5_temp_c         REAL,
+            anomaly_c           REAL,
+            alert_level         VARCHAR,
+            days_above_35_last5 INTEGER,
+            peak_fc_temp_c      REAL,
+            peak_fc_date        DATE,
+            fc_alert_level      VARCHAR
+        )
+    """)
+    if not latest.empty:
+        conn.register("_hr_l", latest)
+        conn.execute("""
+            INSERT INTO nuclear_heat_risk_latest
+            SELECT plant_code, plant_name, river, capacity_mw, lat, lon,
+                   obs_date::DATE, temp_max_c, avg5_temp_c, anomaly_c,
+                   alert_level, days_above_35_last5, peak_fc_temp_c,
+                   peak_fc_date::DATE, fc_alert_level
+            FROM _hr_l
+        """)
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE nuclear_heat_risk_trend (
+            plant_code  VARCHAR,
+            plant_name  VARCHAR,
+            river       VARCHAR,
+            obs_date    DATE,
+            temp_max_c  REAL,
+            is_forecast BOOLEAN
+        )
+    """)
+    if not trend.empty:
+        conn.register("_hr_t", trend)
+        conn.execute("""
+            INSERT INTO nuclear_heat_risk_trend
+            SELECT plant_code, plant_name, river,
+                   obs_date::DATE, temp_max_c, is_forecast
+            FROM _hr_t
+        """)
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE nuclear_heat_risk_seasonal (
+            plant_code  VARCHAR,
+            doy         SMALLINT,
+            avg5        REAL,
+            min5        REAL,
+            max5        REAL
+        )
+    """)
+    if not seasonal.empty:
+        conn.register("_hr_s", seasonal)
+        conn.execute("""
+            INSERT INTO nuclear_heat_risk_seasonal
+            SELECT plant_code, doy::SMALLINT, avg5, min5, max5
+            FROM _hr_s
+        """)
+
+    n_plants = len(latest) if not latest.empty else 0
+    n_trend  = len(trend)  if not trend.empty  else 0
+    logger.info(f"heat_risk: {n_plants} plants, {n_trend} trend rows")
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
-import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint, type ZoneNetFlowRow, type NuclearCountryRow, type NuclearFrTrendPoint, type NuclearScatterPoint } from '@/lib/api'
+import { api, type EuAnnualFuelRow, type GenMonthlyRow, type EuCiDailyPoint, type ZoneCfRow, type EuPriceRePoint, type EuGenHourlyPoint, type EuDuckCurvePoint, type CapacityAnnualRow, type NegHoursMonthlyRow, type NegHoursZoneRow, type ZonePriceReCorrRow, type MonthlyFuelMixRow, type ZoneHourlyProfileRow, type ZoneTtfCorrRow, type ZoneCarbonIntensityRow, type ForecastAccuracyRow, type CrossZoneSpreadPoint, type ZoneNetFlowRow, type NuclearCountryRow, type NuclearFrTrendPoint, type NuclearScatterPoint, type NuclearHeatRiskPlant, type NuclearHeatRiskTrendPoint } from '@/lib/api'
 import {
   BarChart, Bar, Cell, LineChart, Line, ComposedChart, Area, AreaChart,
   ScatterChart, Scatter,
@@ -1375,6 +1375,258 @@ function ZoneHourlyComparisonChart({ rows }: { rows: ZoneHourlyProfileRow[] }) {
   )
 }
 
+const ALERT_COLORS: Record<string, string> = {
+  critical: '#ef4444',
+  warning:  '#f97316',
+  watch:    '#eab308',
+  normal:   '#22c55e',
+}
+const ALERT_BG: Record<string, string> = {
+  critical: 'rgba(239,68,68,0.15)',
+  warning:  'rgba(249,115,22,0.12)',
+  watch:    'rgba(234,179,8,0.10)',
+  normal:   'rgba(34,197,94,0.08)',
+}
+const ALERT_LABELS: Record<string, string> = {
+  critical: 'Critical',
+  warning:  'Warning',
+  watch:    'Watch',
+  normal:   'Normal',
+}
+const RIVER_COLORS: Record<string, string> = {
+  Rhone:   '#3b82f6',
+  Garonne: '#f97316',
+  Loire:   '#22c55e',
+  Moselle: '#a855f7',
+}
+
+function HeatRiskSection({
+  plants,
+  trend,
+  capacityCriticalMw,
+  capacityWarningMw,
+}: {
+  plants: NuclearHeatRiskPlant[]
+  trend: NuclearHeatRiskTrendPoint[]
+  capacityCriticalMw: number
+  capacityWarningMw: number
+}) {
+  const anyAlert = plants.some((p) => p.alert_level !== 'normal')
+  const maxAlertLevel = plants.some((p) => p.alert_level === 'critical')
+    ? 'critical'
+    : plants.some((p) => p.alert_level === 'warning')
+    ? 'warning'
+    : plants.some((p) => p.alert_level === 'watch')
+    ? 'watch'
+    : 'normal'
+
+  // Group trend by river, compute max per date (for river-level overview chart)
+  const rivers = [...new Set(plants.map((p) => p.river))]
+  const riverTrend: Record<string, Record<string, number | null>> = {}
+  for (const pt of trend) {
+    if (!riverTrend[pt.river]) riverTrend[pt.river] = {}
+    const existing = riverTrend[pt.river][pt.obs_date]
+    if (existing === undefined || (pt.temp_max_c ?? 0) > (existing ?? 0)) {
+      riverTrend[pt.river][pt.obs_date] = pt.temp_max_c
+    }
+  }
+  // Dates sorted (last 60 obs + forecast)
+  const allDates = [...new Set(trend.filter((t) => !t.is_forecast).map((t) => t.obs_date))]
+    .sort()
+    .slice(-60)
+  const fcDates = [...new Set(trend.filter((t) => t.is_forecast).map((t) => t.obs_date))].sort()
+  const chartDates = [...allDates, ...fcDates]
+  const chartData = chartDates.map((d) => {
+    const row: Record<string, string | number | null | boolean> = {
+      date: d,
+      isForecast: fcDates.includes(d),
+    }
+    for (const river of rivers) {
+      row[river] = riverTrend[river]?.[d] ?? null
+    }
+    return row
+  })
+  const firstFcDate = fcDates[0]
+
+  return (
+    <div className="mb-6">
+      {/* Alert banner */}
+      {anyAlert && (
+        <div
+          className="mb-4 px-4 py-3 rounded-lg border flex items-start gap-3"
+          style={{
+            background: ALERT_BG[maxAlertLevel],
+            borderColor: ALERT_COLORS[maxAlertLevel] + '60',
+          }}
+        >
+          <div className="mt-0.5 text-base" style={{ color: ALERT_COLORS[maxAlertLevel] }}>
+            {maxAlertLevel === 'critical' ? '⚠' : '●'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-semibold" style={{ color: ALERT_COLORS[maxAlertLevel] }}>
+              Nuclear thermal curtailment risk: {ALERT_LABELS[maxAlertLevel]}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {capacityCriticalMw > 0 && (
+                <span className="mr-3">
+                  <span style={{ color: ALERT_COLORS.critical }}>
+                    {(capacityCriticalMw / 1000).toFixed(1)} GW critical
+                  </span>{' '}
+                  (&gt;38°C air temp - river approaching permit limit within 1-2 days)
+                </span>
+              )}
+              {capacityWarningMw > 0 && (
+                <span>
+                  <span style={{ color: ALERT_COLORS.warning }}>
+                    {(capacityWarningMw / 1000).toFixed(1)} GW warning
+                  </span>{' '}
+                  (&gt;35°C - river thermal stress building)
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-3">
+        <h1 className="text-base font-semibold">Nuclear Thermal Risk</h1>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Daily max air temperature at French nuclear plant locations. River temp typically
+          lags air temp by 1-3 days and is ~5°C cooler. ASN curtailment thresholds:
+          ~24°C (permit limit), ~27°C (summer derogation). Air &gt;35°C = river at risk.
+        </p>
+      </div>
+
+      {/* River temp multi-line chart */}
+      <div className="mb-4">
+        <div className="text-xs text-muted-foreground mb-1">
+          Max air temperature by river basin - 60-day trailing + 10-day forecast (dashed)
+        </div>
+        <ResponsiveContainer width="100%" height={220}>
+          <ComposedChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+            <XAxis
+              dataKey="date"
+              tickFormatter={(v: string) => v.slice(5)}
+              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              interval={Math.max(1, Math.floor(chartDates.length / 10))}
+            />
+            <YAxis
+              domain={[15, 45]}
+              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              tickFormatter={(v) => `${v}°`}
+              width={30}
+            />
+            <Tooltip
+              contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', fontSize: 11 }}
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              formatter={(v: any, name: any) => [`${(v as number).toFixed(1)}°C`, String(name)]}
+              labelFormatter={(l) => `${l}${fcDates.includes(l as string) ? ' (forecast)' : ''}`}
+            />
+            <ReferenceLine y={35} stroke="#f97316" strokeDasharray="4 2" strokeWidth={1}
+              label={{ value: '35°C', position: 'right', fontSize: 9, fill: '#f97316' }} />
+            <ReferenceLine y={38} stroke="#ef4444" strokeDasharray="4 2" strokeWidth={1}
+              label={{ value: '38°C', position: 'right', fontSize: 9, fill: '#ef4444' }} />
+            {firstFcDate && (
+              <ReferenceLine x={firstFcDate} stroke="#475569" strokeDasharray="3 3"
+                label={{ value: 'forecast', position: 'top', fontSize: 8, fill: '#64748b' }} />
+            )}
+            {rivers.map((river) => (
+              <Line
+                key={river}
+                type="monotone"
+                dataKey={river}
+                stroke={RIVER_COLORS[river] ?? '#94a3b8'}
+                strokeWidth={1.5}
+                dot={false}
+                connectNulls
+                name={river}
+                strokeDasharray={undefined}
+              />
+            ))}
+          </ComposedChart>
+        </ResponsiveContainer>
+        <div className="flex flex-wrap gap-4 mt-1 text-[10px] text-muted-foreground">
+          {rivers.map((r) => (
+            <div key={r} className="flex items-center gap-1.5">
+              <div className="w-5 h-0.5 rounded" style={{ background: RIVER_COLORS[r] ?? '#94a3b8' }} />
+              {r}
+            </div>
+          ))}
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-px border-t border-dashed border-orange-500" />
+            35°C watch threshold
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-5 h-px border-t border-dashed border-red-500" />
+            38°C critical threshold
+          </div>
+        </div>
+      </div>
+
+      {/* Per-plant grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        {plants.map((p) => (
+          <div
+            key={p.plant_code}
+            className="rounded-lg border p-3 text-xs"
+            style={{
+              background: ALERT_BG[p.alert_level],
+              borderColor: ALERT_COLORS[p.alert_level] + '50',
+            }}
+          >
+            <div className="flex items-center justify-between mb-1">
+              <div className="font-semibold text-foreground">{p.plant_name}</div>
+              <div
+                className="px-1.5 py-0.5 rounded text-[10px] font-semibold"
+                style={{
+                  background: ALERT_COLORS[p.alert_level] + '30',
+                  color: ALERT_COLORS[p.alert_level],
+                }}
+              >
+                {ALERT_LABELS[p.alert_level]}
+              </div>
+            </div>
+            <div className="text-muted-foreground mb-1.5" style={{ color: RIVER_COLORS[p.river] }}>
+              {p.river} • {(p.capacity_mw / 1000).toFixed(1)} GW
+            </div>
+            <div className="flex items-end gap-2 mb-1">
+              <span
+                className="text-xl font-bold tabular-nums"
+                style={{ color: ALERT_COLORS[p.alert_level] }}
+              >
+                {p.temp_max_c?.toFixed(1)}°C
+              </span>
+              {p.anomaly_c != null && (
+                <span className={`text-[10px] mb-0.5 ${p.anomaly_c >= 0 ? 'text-red-400' : 'text-green-400'}`}>
+                  {p.anomaly_c >= 0 ? '+' : ''}{p.anomaly_c.toFixed(1)}° vs avg
+                </span>
+              )}
+            </div>
+            <div className="text-muted-foreground text-[10px] space-y-0.5">
+              <div>5yr avg at this DOY: {p.avg5_temp_c?.toFixed(1)}°C</div>
+              <div>{p.days_above_35_last5}/5 recent days &gt;35°C</div>
+              {p.peak_fc_temp_c != null && (
+                <div>
+                  Forecast peak: <span style={{ color: ALERT_COLORS[p.fc_alert_level] }}>
+                    {p.peak_fc_temp_c.toFixed(1)}°C
+                  </span>{' '}
+                  {p.peak_fc_date ? `on ${p.peak_fc_date}` : ''}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="text-[10px] text-muted-foreground mt-2">
+        Source: Open-Meteo (ERA5 reanalysis + ECMWF forecast). River temp typically 5°C below
+        air max in sustained heat. ASN permit limits: 24-28°C depending on plant and season.
+        Forecasts update twice daily with refresh.
+      </div>
+    </div>
+  )
+}
+
 // Zone display names for nuclear tracker
 const NUCLEAR_ZONE_NAMES: Record<string, string> = {
   FR: 'France', ES: 'Spain', FI: 'Finland', CZ: 'Czech Rep.', BE: 'Belgium',
@@ -1770,6 +2022,12 @@ function GenerationTrends() {
     staleTime: 6 * 60 * 60 * 1000,
   })
 
+  const { data: heatRiskData } = useQuery({
+    queryKey: ['generation-heat-risk'],
+    queryFn: api.genHeatRisk,
+    staleTime: 6 * 60 * 60 * 1000,
+  })
+
   // Fetch power map to derive the country with the biggest live congestion spread
   const { data: powerMapData } = useQuery({
     queryKey: ['power-map'],
@@ -1891,6 +2149,14 @@ function GenerationTrends() {
       </div>
 
       <div id="gen-nuclear">
+        {(heatRiskData?.plants.length ?? 0) > 0 && (
+          <HeatRiskSection
+            plants={heatRiskData!.plants}
+            trend={heatRiskData!.trend}
+            capacityCriticalMw={heatRiskData!.capacity_critical_mw}
+            capacityWarningMw={heatRiskData!.capacity_warning_mw}
+          />
+        )}
         {(nuclearData?.country_latest.length ?? 0) > 0 && (
           <NuclearTrackerSection
             countryLatest={nuclearData!.country_latest}
