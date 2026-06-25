@@ -1,5 +1,9 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 37: Fundamental signal backtest with equity curve on /spreads
+
+**What was built:** `compute_fundamental_backtest()` implements a continuous mean-reversion strategy: position = clip(-zscore, -1, 1), daily P&L = position(t-1) x price_change(t). Splits into OOS (pre-OLS-fit-window) and IS periods. DE-LU results: Sharpe OOS=2.23 (181d), IS=2.71 (365d), hit rate OOS=54.7%, max drawdown=-269 EUR. `GET /api/spreads/fundamental-backtest?zone=`. Frontend: BacktestSection with 4-stat grid and BacktestEquityChart (cumulative P&L, IS period shaded). The high OOS Sharpe validates the fundamental residual signal is not curve-fitted. 1 new test (84 total).
+
 ## 2026-06-25 - Phase 36: Wind-price nonlinearity analysis on /spreads
 
 **What was built:** `compute_wind_price_analysis()` bins days by wind penetration (0-5%, 5-10%, ..., 35%+), computing per-bin price stats and OLS fundamental-model residuals. Key finding: DE-LU 0-5% wind bin shows +39 EUR/MWh mean OLS residual (the model systematically underestimates the wind drought premium), vs near-zero at higher wind. Total nonlinear premium: +93 EUR/MWh between drought and strong wind bins. CV: 55% at low wind vs 32% at high wind. `GET /api/spreads/wind-price-analysis?zone=`. Frontend: `WindPriceAnalysisChart` with combined bar (mean price, color-coded by drought/normal/strong wind) and line (OLS residual), plus interpretation footer making the explicit connection to ML nonlinearity. 1 new test (83 total).
