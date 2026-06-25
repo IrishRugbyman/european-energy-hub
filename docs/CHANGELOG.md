@@ -1,5 +1,9 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 36: Wind-price nonlinearity analysis on /spreads
+
+**What was built:** `compute_wind_price_analysis()` bins days by wind penetration (0-5%, 5-10%, ..., 35%+), computing per-bin price stats and OLS fundamental-model residuals. Key finding: DE-LU 0-5% wind bin shows +39 EUR/MWh mean OLS residual (the model systematically underestimates the wind drought premium), vs near-zero at higher wind. Total nonlinear premium: +93 EUR/MWh between drought and strong wind bins. CV: 55% at low wind vs 32% at high wind. `GET /api/spreads/wind-price-analysis?zone=`. Frontend: `WindPriceAnalysisChart` with combined bar (mean price, color-coded by drought/normal/strong wind) and line (OLS residual), plus interpretation footer making the explicit connection to ML nonlinearity. 1 new test (83 total).
+
 ## 2026-06-25 - Phase 35: Rolling coefficient stability + AR(1) half-life on /spreads
 
 **What was built:** `compute_fundamental_model` now computes two additional analytics: (1) `half_life_days` via AR(1) regression of residuals (DE-LU = 0.7d, meaning fast daily mean reversion); (2) `rolling_coefs` - 90-day rolling OLS stepped weekly over trailing 2 years (~66 points), exposing structural changes in factor loadings. Key finding: DE-LU's EUA coefficient rose from ~0.01 to ~4.25 between Sep 2024 and Jun 2026, reflecting carbon becoming increasingly significant for power prices post-gas-crisis normalization. Frontend: new 'Mean-reversion half-life' stat card; `RollingCoefChart` showing TTF, EUA, wind%, solar% loadings over time with R² on the right axis, including interpretation note. 82 tests passing.
