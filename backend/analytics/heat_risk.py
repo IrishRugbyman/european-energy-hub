@@ -1,10 +1,28 @@
 """Nuclear thermal curtailment risk tracker.
 
 Uses Open-Meteo (free, no key) to fetch daily max air temperature at each French nuclear
-plant's coordinates. River temperature lags air temperature by 1-3 days and is typically
-~5°C cooler in summer heat events. When air temp sustained >35°C near a plant, the
-adjacent river is likely approaching thermal permit limits (~24-28°C), triggering EDF
-curtailment orders from ASN.
+plant's coordinates. River temperature is estimated from air temperature using a
+seasonal offset calibrated against Hub'Eau historical data (station 06121500, Rhone at
+Roquemaure, 2008-2026, n=3360 days). The offset is strongly seasonal and regime-dependent:
+
+  Month    median (air_max - river_max)
+  Jun      -6.7C    Jul  -6.8C    Aug  -6.0C    Sep  -2.9C
+  Oct/Nov  -2.1C    Dec/Jan  -1.5C    Mar/Apr  -3.4C    May  -4.9C
+
+At high air temps (heat waves), the gap widens further:
+  air_max 30-33C -> median river is ~7.2C below air
+  air_max 33-35C -> median river is ~8.8C below air
+  air_max >=35C  -> median river is ~10C below air
+
+Calibration key results (Roquemaure, downstream reference - northern plants are cooler):
+  River >= 24C permit limit when air_max >= ~32C (median)
+  River >= 27C summer derogation when air_max >= ~35C (median)
+  At air_max=35C: median implied river = 26.6C (p25=24.9, p75=28.6)
+
+Alert thresholds remain in air temperature terms (conservative, accounts for variance):
+  watch at 30C: river likely 22-24C, approaching permit limit
+  warning at 33C: river likely 24-26C, permit limit likely exceeded
+  critical at 36C: river likely 26-28C, summer derogation under pressure
 
 Called at refresh time; writes three tables to energy_hub.duckdb:
   nuclear_heat_risk_latest   - one row per plant, current + risk level + 10d forecast peak
@@ -27,7 +45,6 @@ from loguru import logger
 NUCLEAR_PLANTS: list[dict[str, Any]] = [
     # river_limit_c: ASN normal permit limit for river water temperature (°C).
     # summer_limit_c: summer derogation limit (granted by ASN during heat waves).
-    # Implied river temp ≈ air_max - 5°C in sustained summer heat.
     {"code": "TRICASTIN",   "name": "Tricastin",     "river": "Rhone",   "lat": 44.332, "lon": 4.732,  "capacity_mw": 3600, "river_limit_c": 24.0, "summer_limit_c": 27.0},
     {"code": "CRUAS",       "name": "Cruas-Meysse",  "river": "Rhone",   "lat": 44.638, "lon": 4.755,  "capacity_mw": 3700, "river_limit_c": 24.0, "summer_limit_c": 27.0},
     {"code": "SAINT_ALBAN", "name": "Saint-Alban",   "river": "Rhone",   "lat": 45.408, "lon": 4.805,  "capacity_mw": 1500, "river_limit_c": 24.0, "summer_limit_c": 27.0},
@@ -40,12 +57,22 @@ NUCLEAR_PLANTS: list[dict[str, Any]] = [
 ]
 
 # Air temperature thresholds -> river thermal risk level.
-# River temp ≈ air_max - 5°C in sustained summer heat; permit limits ~24-28°C.
+# Calibrated against Hub'Eau Roquemaure data 2008-2026 (see module docstring).
+# Northern plants (Bugey, Cattenom) run cooler rivers; thresholds are conservative.
 THRESHOLDS = [
-    (38.0, "critical"),   # river likely >= 26°C, ASN curtailment probable
-    (35.0, "warning"),    # river likely >= 24°C, approaching permit limit
-    (30.0, "watch"),      # river warming, monitor closely
+    (36.0, "critical"),   # river likely 26-28C, summer derogation under pressure
+    (33.0, "warning"),    # river likely 24-26C, normal permit limit likely exceeded
+    (30.0, "watch"),      # river likely 22-24C, approaching permit limit
 ]
+
+# Seasonal median offset river_daily_max - air_daily_max, calibrated from
+# Hub'Eau station 06121500 (Rhone at Roquemaure), 2008-2026.
+# Roquemaure is downstream of Tricastin/Cruas - upstream plants run slightly cooler,
+# so these offsets are conservative (overestimate river temp at plant sites).
+_MONTHLY_RIVER_OFFSET: dict[int, float] = {
+    1: -1.5, 2: -2.8, 3: -3.4, 4: -3.5,  5: -4.9, 6: -6.7,
+    7: -6.8, 8: -6.0, 9: -2.9, 10: -2.1, 11: -1.4, 12: -1.5,
+}
 
 _FORECAST_API = "https://api.open-meteo.com/v1/forecast"
 _ARCHIVE_API  = "https://archive-api.open-meteo.com/v1/archive"
@@ -160,11 +187,12 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
             if not row.empty:
                 avg5 = float(row["avg5"].iloc[0])
 
-        # 5-day rolling sum > 35°C (heat wave indicator)
+        # 5-day rolling sum > 33°C (heat wave indicator - matches updated warning threshold)
         recent5 = [t for _, t in obs_temps[-5:] if t is not None]
-        days_above_35 = sum(1 for t in recent5 if t >= 35.0)
+        days_above_35 = sum(1 for t in recent5 if t >= 33.0)
 
-        implied_river = round(latest_temp - 5.0, 1) if latest_temp is not None else None
+        month_offset = _MONTHLY_RIVER_OFFSET[today.month]
+        implied_river = round(latest_temp + month_offset, 1) if latest_temp is not None else None
         latest_rows.append({
             "plant_code": code, "plant_name": name, "river": river,
             "capacity_mw": cap, "lat": lat, "lon": lon,

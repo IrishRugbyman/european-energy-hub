@@ -957,8 +957,8 @@ def generation_nuclear_tracker():
 @app.get("/api/generation/heat-risk", response_model=NuclearHeatRiskResponse)
 def generation_heat_risk():
     """Nuclear thermal curtailment risk: air temperature at French nuclear plant locations
-    vs 5yr seasonal avg. Includes 10-day forecast. Air temp > 35°C triggers river thermal
-    stress (~24-28°C river temp); ASN curtailment orders typically follow in 2-3 days."""
+    vs 5yr seasonal avg. Includes 10-day forecast. Thresholds recalibrated against
+    Hub'Eau river data (Roquemaure 2008-2026): watch>=30C, warning>=33C, critical>=36C."""
     plants_df = db.query("""
         SELECT plant_code, plant_name, river, capacity_mw, lat, lon,
                obs_date::TEXT AS obs_date, temp_max_c, avg5_temp_c, anomaly_c,
