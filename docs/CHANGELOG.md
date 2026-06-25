@@ -1,5 +1,9 @@
 # Energy Hub Changelog
 
+## 2026-06-25 - Phase 34: Wind CF and Solar CF choropleth modes on /map
+
+**What was built:** `GET /api/power/cf-map` returns latest wind capacity factor (wind_cf) and solar capacity factor (solar_cf) for all 27 ENTSO-E zones from capacity_factors_daily. Two new map metric modes on /map: Wind CF (red=drought <5%, green=strong >45%) and Solar CF (dark amber=near-zero, bright gold=peak >24%). CF data is lazy-fetched and merged into genByZone only when a CF mode is selected. The Wind CF layer directly visualises the cause of the current fundamental model signal: DE-LU wind_cf=2.1% on 2026-06-24 caused the +4.03-sigma price residual on /spreads - the two views now tell the same story. 1 new test (82 total).
+
 ## 2026-06-25 - Phase 33: Cross-zone signal snapshot panel on /spreads
 
 **What was built:** `GET /api/spreads/signal-snapshot` computes the OLS fundamental model for all 5 European zones (DE-LU, FR, NL, IT-NORD, BE) in a single request and returns current z-scores ranked by |z|. `SignalSnapshotPanel` on /spreads shows a 5-card grid above the detailed zone model: each card displays zone code, z-score with color (red=overbought/green=oversold), EUR/MWh residual vs fair value, 1yr percentile rank, and R2. Clicking jumps to the detailed model for that zone. On 2026-06-24 all zones showed +2.8 to +4.2-sigma residuals from a synchronized European heat event (wind drought + TTF/EUA pressure). 1 new test (81 total).
