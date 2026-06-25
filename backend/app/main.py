@@ -168,6 +168,9 @@ from .schemas import (
     WindPriceBin,
     WindPriceInterpretation,
     WindPriceAnalysisResponse,
+    BacktestEquityPoint,
+    BacktestStats,
+    FundamentalBacktestResponse,
 )
 
 
@@ -3223,6 +3226,45 @@ def spreads_signal_snapshot():
     # Sort by absolute z-score descending (most extreme signal first)
     rows.sort(key=lambda r: abs(r.zscore), reverse=True)
     return SignalSnapshotResponse(as_of=as_of, rows=rows)
+
+
+@app.get("/api/spreads/fundamental-backtest", response_model=FundamentalBacktestResponse)
+def spreads_fundamental_backtest(zone: str = "DE-LU"):
+    """Backtest of the fundamental z-score mean-reversion signal.
+
+    Position = clip(-z, -1, 1): short when price is above fundamental value,
+    long when below. P&L = position(t-1) × price_change(t). Reports Sharpe,
+    hit rate, and max drawdown split between in-sample (trailing 365d, used
+    to fit the OLS model) and out-of-sample (all earlier data).
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_fundamental_backtest, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_fundamental_backtest(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for backtest")
+
+    stats = result["stats"]
+    return FundamentalBacktestResponse(
+        zone=result["zone"],
+        equity=[BacktestEquityPoint(**p) for p in result["equity"]],
+        stats=BacktestStats(
+            sharpe_oos=stats.get("sharpe_oos"),
+            sharpe_is=stats.get("sharpe_is"),
+            sharpe_all=stats.get("sharpe_all"),
+            hit_rate_pct=stats["hit_rate_pct"],
+            hit_rate_oos_pct=stats["hit_rate_oos_pct"],
+            max_dd_eur=stats["max_dd_eur"],
+            n_oos=stats["n_oos"],
+            n_is=stats["n_is"],
+            avg_daily_pnl=stats["avg_daily_pnl"],
+            pnl_std=stats["pnl_std"],
+        ),
+    )
 
 
 @app.get("/api/spreads/wind-price-analysis", response_model=WindPriceAnalysisResponse)

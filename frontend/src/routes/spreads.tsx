@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1041,6 +1041,8 @@ function SpreadsDashboard() {
 
           <FundamentalModelSection window={window} />
 
+          <BacktestSection zone="DE-LU" />
+
           <div className="bg-card border border-border rounded-lg p-4">
             <SpreadExplainer />
           </div>
@@ -1527,6 +1529,136 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+function BacktestSection({ zone }: { zone: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['fundamental-backtest', zone],
+    queryFn: () => api.spreadsFundamentalBacktest(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const stats = data?.stats
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Signal Backtest</h2>
+        <span className="text-xs text-muted-foreground">
+          Position = -zscore, clipped to [-1, 1]. P&L = position(t-1) x price_change(t).
+        </span>
+        <span className="ml-auto text-xs text-muted-foreground font-medium">{zone}</span>
+      </div>
+
+      {isLoading && <p className="text-xs text-muted-foreground">Running backtest...</p>}
+
+      {stats && (
+        <div className="space-y-4">
+          {/* Stats grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe OOS ({stats.n_oos}d)</p>
+              <p className={`text-sm font-semibold ${stats.sharpe_oos != null && stats.sharpe_oos > 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {stats.sharpe_oos != null ? stats.sharpe_oos.toFixed(2) : '--'}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe IS ({stats.n_is}d)</p>
+              <p className={`text-sm font-semibold ${stats.sharpe_is != null && stats.sharpe_is > 0 ? 'text-sky-400' : 'text-muted-foreground'}`}>
+                {stats.sharpe_is != null ? stats.sharpe_is.toFixed(2) : '--'}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Hit rate (OOS)</p>
+              <p className={`text-sm font-semibold ${stats.hit_rate_oos_pct > 50 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                {stats.hit_rate_oos_pct.toFixed(1)}%
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Max drawdown</p>
+              <p className="text-sm font-semibold text-amber-400">
+                {stats.max_dd_eur.toFixed(0)} EUR
+              </p>
+            </div>
+          </div>
+
+          {/* Equity curve */}
+          {data.equity.length > 0 && (
+            <BacktestEquityChart equity={data.equity} />
+          )}
+
+          <p className="text-[9px] text-muted-foreground">
+            Daily normalized P&L (no notional). Grey shading = in-sample fit period (last {stats.n_is} days).
+            OOS Sharpe above 1.0 indicates a statistically robust signal. Hit rate above 50% = directional edge.
+            Note: no transaction costs, bid-ask spread, or market impact included.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BacktestEquityChart({ equity }: { equity: BacktestEquityPoint[] }) {
+  // Mark the in-sample start
+  const isStart = equity.findIndex((p) => p.in_sample)
+  const isStartDate = isStart >= 0 ? equity[isStart].date : null
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground font-medium">Cumulative P&L - fundamental mean-reversion strategy</p>
+      <ResponsiveContainer width="100%" height={180}>
+        <ComposedChart data={equity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={Math.floor(equity.length / 5)} />
+          <YAxis
+            yAxisId="pnl"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            label={{ value: 'EUR', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          {isStartDate && (
+            <ReferenceLine
+              yAxisId="pnl"
+              x={isStartDate}
+              stroke="#64748b"
+              strokeDasharray="4 2"
+              label={{ value: 'IS start', fill: '#64748b', fontSize: 8 }}
+            />
+          )}
+          {isStartDate && (
+            <ReferenceArea
+              yAxisId="pnl"
+              x1={isStartDate}
+              x2={equity[equity.length - 1].date}
+              fill="#1e293b"
+              fillOpacity={0.5}
+              strokeOpacity={0}
+            />
+          )}
+          <ReferenceLine yAxisId="pnl" y={0} stroke="#475569" strokeWidth={1} />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(val: unknown, name: unknown) => {
+              const v = typeof val === 'number' ? val.toFixed(1) : '--'
+              return [v + ' EUR', name === 'cum_pnl' ? 'Cum. P&L' : String(name)]
+            }}
+            labelFormatter={(l) => String(l)}
+          />
+          <Line
+            yAxisId="pnl"
+            dataKey="cum_pnl"
+            stroke="#22c55e"
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+            name="cum_pnl"
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
     </div>
   )
 }

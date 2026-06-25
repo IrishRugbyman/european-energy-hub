@@ -977,6 +977,7 @@ export const api = {
   powerMap: () => get<PowerMapResponse>('/power/map'),
   powerCfMap: () => get<CfMapResponse>('/power/cf-map'),
   spreadsWindPriceAnalysis: (zone?: string) => get<WindPriceAnalysisResponse>(`/spreads/wind-price-analysis${zone ? `?zone=${zone}` : ''}`),
+  spreadsFundamentalBacktest: (zone?: string) => get<FundamentalBacktestResponse>(`/spreads/fundamental-backtest${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1188,4 +1189,32 @@ export interface WindPriceAnalysisResponse {
   as_of: string | null
   bins: WindPriceBin[]
   interpretation: WindPriceInterpretation
+}
+
+export interface BacktestEquityPoint {
+  date: string
+  daily_pnl: number
+  cum_pnl: number
+  zscore: number
+  position: number
+  in_sample: boolean
+}
+
+export interface BacktestStats {
+  sharpe_oos: number | null
+  sharpe_is: number | null
+  sharpe_all: number | null
+  hit_rate_pct: number
+  hit_rate_oos_pct: number
+  max_dd_eur: number
+  n_oos: number
+  n_is: number
+  avg_daily_pnl: number
+  pnl_std: number
+}
+
+export interface FundamentalBacktestResponse {
+  zone: string
+  equity: BacktestEquityPoint[]
+  stats: BacktestStats
 }

@@ -326,3 +326,102 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU") -> dict
             "cv_high_wind_pct": cv_high,
         },
     }
+
+
+def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
+    """Backtest of the z-score mean-reversion signal.
+
+    Strategy: continuous position = -zscore(t-1) (short when overbought, long when
+    undersold), scaled to [-1, +1] by clipping at 3 sigma. Daily P&L is position ×
+    price change (direction only, no notional - tracks sign accuracy).
+
+    Reports performance split between in-sample (trailing 365 days used for OLS fit)
+    and out-of-sample (all earlier data).
+
+    Args:
+        query_fn: db.query callable
+        zone: bidding zone code
+
+    Returns a dict with:
+      - equity: [{date, daily_pnl, cum_pnl, zscore, position, in_sample}]
+      - stats: {sharpe_oos, sharpe_is, sharpe_all, hit_rate_pct, max_dd_eur, n_oos, n_is}
+    """
+    model = compute_fundamental_model(query_fn, zone)
+    if not model or not model.get("series"):
+        return {}
+
+    series = model["series"]
+    if len(series) < 20:
+        return {}
+
+    prices = np.array([s["actual"] for s in series])
+    zscores = np.array([s["zscore"] for s in series])
+    dates = [s["price_date"] for s in series]
+
+    # Daily price changes (today - yesterday): we profit if we predicted direction
+    price_changes = np.diff(prices)  # length n-1
+
+    # Position yesterday determines today's P&L
+    # position = clip(-z, -1, 1): short when z>0, long when z<0
+    positions = np.clip(-zscores[:-1], -1.0, 1.0)  # length n-1
+
+    # Daily P&L (normalized: position × price_change)
+    daily_pnl = positions * price_changes  # length n-1
+
+    # Cumulative P&L
+    cum_pnl = np.cumsum(daily_pnl)
+
+    # In-sample = last OLS_WINDOW days; out-of-sample = everything before
+    n = len(daily_pnl)
+    is_start = max(0, n - OLS_WINDOW)
+
+    def sharpe(pnl: np.ndarray) -> float | None:
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    def max_drawdown(cum: np.ndarray) -> float:
+        if len(cum) == 0:
+            return 0.0
+        peak = np.maximum.accumulate(cum)
+        dd = cum - peak
+        return float(round(dd.min(), 2))
+
+    def hit_rate(pnl: np.ndarray) -> float:
+        if len(pnl) == 0:
+            return 0.0
+        return float(round(100 * np.mean(pnl > 0), 1))
+
+    pnl_oos = daily_pnl[:is_start]
+    pnl_is = daily_pnl[is_start:]
+
+    equity = [
+        {
+            "date": dates[i + 1],
+            "daily_pnl": round(float(daily_pnl[i]), 2),
+            "cum_pnl": round(float(cum_pnl[i]), 2),
+            "zscore": round(float(zscores[i]), 3),
+            "position": round(float(positions[i]), 3),
+            "in_sample": i >= is_start,
+        }
+        for i in range(n)
+    ]
+
+    stats = {
+        "sharpe_oos": sharpe(pnl_oos),
+        "sharpe_is": sharpe(pnl_is),
+        "sharpe_all": sharpe(daily_pnl),
+        "hit_rate_pct": hit_rate(daily_pnl),
+        "hit_rate_oos_pct": hit_rate(pnl_oos),
+        "max_dd_eur": max_drawdown(cum_pnl),
+        "n_oos": int(len(pnl_oos)),
+        "n_is": int(len(pnl_is)),
+        "avg_daily_pnl": round(float(daily_pnl.mean()), 3),
+        "pnl_std": round(float(daily_pnl.std()), 3),
+    }
+
+    return {
+        "zone": zone,
+        "equity": equity,
+        "stats": stats,
+    }

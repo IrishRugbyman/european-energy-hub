@@ -1110,3 +1110,29 @@ def test_spreads_wind_price_analysis(client):
     # Invalid zone -> 400
     r2 = client.get("/api/spreads/wind-price-analysis?zone=FAKE")
     assert r2.status_code == 400
+
+
+def test_spreads_fundamental_backtest(client):
+    r = client.get("/api/spreads/fundamental-backtest?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    equity = data["equity"]
+    assert len(equity) > 0
+    for point in equity:
+        assert "date" in point
+        assert isinstance(point["daily_pnl"], float)
+        assert isinstance(point["cum_pnl"], float)
+        assert isinstance(point["zscore"], float)
+        assert isinstance(point["position"], float)
+        assert -1.0 <= point["position"] <= 1.0
+        assert isinstance(point["in_sample"], bool)
+    stats = data["stats"]
+    assert "hit_rate_pct" in stats
+    assert 0 <= stats["hit_rate_pct"] <= 100
+    assert "n_oos" in stats
+    assert "n_is" in stats
+    assert stats["n_oos"] + stats["n_is"] == len(equity)
+    # Invalid zone -> 400
+    r2 = client.get("/api/spreads/fundamental-backtest?zone=FAKE")
+    assert r2.status_code == 400

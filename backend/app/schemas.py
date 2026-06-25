@@ -1143,3 +1143,31 @@ class WindPriceAnalysisResponse(BaseModel):
     as_of: str | None
     bins: list[WindPriceBin]
     interpretation: WindPriceInterpretation
+
+
+class BacktestEquityPoint(BaseModel):
+    date: str
+    daily_pnl: float
+    cum_pnl: float
+    zscore: float
+    position: float
+    in_sample: bool
+
+
+class BacktestStats(BaseModel):
+    sharpe_oos: float | None
+    sharpe_is: float | None
+    sharpe_all: float | None
+    hit_rate_pct: float
+    hit_rate_oos_pct: float
+    max_dd_eur: float
+    n_oos: int
+    n_is: int
+    avg_daily_pnl: float
+    pnl_std: float
+
+
+class FundamentalBacktestResponse(BaseModel):
+    zone: str
+    equity: list[BacktestEquityPoint]
+    stats: BacktestStats
