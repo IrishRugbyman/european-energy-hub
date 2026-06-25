@@ -1017,6 +1017,7 @@ export const api = {
   usPowerMix: () => get<UsPowerMixResponse>('/us-power/mix'),
   usPowerHistory: (region: string) => get<UsPowerHistoryResponse>(`/us-power/history/${encodeURIComponent(region)}`),
   usNgPlants: () => get<UsNgPlantsResponse>('/us-power/plants'),
+  spreadsFundamentalModel: (zone?: string) => get<FundamentalModelResponse>(`/spreads/fundamental-model${zone ? `?zone=${zone}` : ''}`),
 }
 
 // US power generation
@@ -1076,4 +1077,39 @@ export interface UsNgPlant {
 export interface UsNgPlantsResponse {
   count: number
   plants: UsNgPlant[]
+}
+
+// Fundamental value model
+
+export interface FundamentalCoefficients {
+  intercept: number
+  ttf_eur_mwh: number
+  eua_eur_t: number
+  wind_pct: number
+  solar_pct: number
+  r2: number
+  n: number
+}
+
+export interface FundamentalPoint {
+  price_date: string
+  actual: number
+  fitted: number
+  residual: number
+  zscore: number
+}
+
+export interface FundamentalCurrent {
+  actual: number
+  fitted: number
+  residual: number
+  zscore: number
+  pct_rank_1yr: number
+}
+
+export interface FundamentalModelResponse {
+  zone: string
+  coefficients: FundamentalCoefficients
+  series: FundamentalPoint[]
+  current: FundamentalCurrent
 }

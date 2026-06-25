@@ -156,6 +156,10 @@ from .schemas import (
     UsPowerHistoryResponse,
     UsNgPlant,
     UsNgPlantsResponse,
+    FundamentalCoefficients,
+    FundamentalPoint,
+    FundamentalCurrent,
+    FundamentalModelResponse,
 )
 
 
@@ -3118,3 +3122,55 @@ def us_ng_plants(min_mw: float = 0.0, state: str | None = None):
         for _, row in df.iterrows()
     ]
     return UsNgPlantsResponse(count=len(plants), plants=plants)
+
+
+@app.get("/api/spreads/fundamental-model", response_model=FundamentalModelResponse)
+def spreads_fundamental_model(zone: str = "DE-LU"):
+    """OLS fundamental value model: DA price ~ TTF + EUA + wind% + solar%.
+
+    Returns coefficients, fitted values, residuals, and rolling 30-day z-score
+    of the residual (the mean-reversion signal). Available zones: DE-LU, FR, NL,
+    IT-NORD, BE.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_fundamental_model(db.query, zone)
+
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for fundamental model")
+
+    coef = result["coefficients"]
+    return FundamentalModelResponse(
+        zone=result["zone"],
+        coefficients=FundamentalCoefficients(
+            intercept=coef["intercept"],
+            ttf_eur_mwh=coef["ttf_eur_mwh"],
+            eua_eur_t=coef["eua_eur_t"],
+            wind_pct=coef["wind_pct"],
+            solar_pct=coef["solar_pct"],
+            r2=coef["r2"],
+            n=coef["n"],
+        ),
+        series=[
+            FundamentalPoint(
+                price_date=p["price_date"],
+                actual=p["actual"],
+                fitted=p["fitted"],
+                residual=p["residual"],
+                zscore=p["zscore"],
+            )
+            for p in result["series"]
+        ],
+        current=FundamentalCurrent(
+            actual=result["current"]["actual"],
+            fitted=result["current"]["fitted"],
+            residual=result["current"]["residual"],
+            zscore=result["current"]["zscore"],
+            pct_rank_1yr=result["current"]["pct_rank_1yr"],
+        ),
+    )

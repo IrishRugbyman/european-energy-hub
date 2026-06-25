@@ -1040,3 +1040,38 @@ class UsNgPlant(BaseModel):
 class UsNgPlantsResponse(BaseModel):
     count: int
     plants: list[UsNgPlant]
+
+
+# Fundamental value model
+
+class FundamentalCoefficients(BaseModel):
+    intercept: float
+    ttf_eur_mwh: float
+    eua_eur_t: float
+    wind_pct: float
+    solar_pct: float
+    r2: float
+    n: int
+
+
+class FundamentalPoint(BaseModel):
+    price_date: str
+    actual: float
+    fitted: float
+    residual: float
+    zscore: float
+
+
+class FundamentalCurrent(BaseModel):
+    actual: float
+    fitted: float
+    residual: float
+    zscore: float
+    pct_rank_1yr: int
+
+
+class FundamentalModelResponse(BaseModel):
+    zone: str
+    coefficients: FundamentalCoefficients
+    series: list[FundamentalPoint]
+    current: FundamentalCurrent

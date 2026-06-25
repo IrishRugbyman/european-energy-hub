@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1039,6 +1039,8 @@ function SpreadsDashboard() {
 
           <SpreadMonthlySeasonalityChart rows={rows} />
 
+          <FundamentalModelSection window={window} />
+
           <div className="bg-card border border-border rounded-lg p-4">
             <SpreadExplainer />
           </div>
@@ -1055,6 +1057,229 @@ function StatChip({ label, value, color }: { label: string; value: string; color
       <span className="text-sm font-semibold" style={{ color }}>
         {value}
       </span>
+    </div>
+  )
+}
+
+// ---------- Fundamental Value Model ----------------------------------------
+
+const FUNDAMENTAL_ZONES = ['DE-LU', 'FR', 'NL', 'IT-NORD', 'BE'] as const
+type FundZone = typeof FUNDAMENTAL_ZONES[number]
+
+function zscoreColor(z: number): string {
+  if (z > 2)   return '#f87171'  // overbought red
+  if (z > 1)   return '#fb923c'
+  if (z < -2)  return '#4ade80'  // oversold green
+  if (z < -1)  return '#86efac'
+  return '#94a3b8'               // neutral grey
+}
+
+function zscoreLabel(z: number): string {
+  if (z > 2)  return 'overbought'
+  if (z > 1)  return 'elevated'
+  if (z < -2) return 'oversold'
+  if (z < -1) return 'depressed'
+  return 'neutral'
+}
+
+function CoefTable({ coef }: { coef: FundamentalCoefficients }) {
+  const rows = [
+    { label: 'Intercept (base)',     value: coef.intercept.toFixed(1),     unit: 'EUR/MWh', hint: 'structural base load' },
+    { label: 'TTF coefficient',      value: (coef.ttf_eur_mwh > 0 ? '+' : '') + coef.ttf_eur_mwh.toFixed(3), unit: 'EUR per EUR/MWh TTF', hint: '~0.49 = full gas passthrough' },
+    { label: 'EUA coefficient',      value: (coef.eua_eur_t > 0 ? '+' : '') + coef.eua_eur_t.toFixed(3), unit: 'EUR per EUR/t EUA', hint: '~0.36 = gas CO2 cost passthrough' },
+    { label: 'Wind penetration',     value: coef.wind_pct.toFixed(3),       unit: 'EUR per % wind', hint: 'negative = price suppression' },
+    { label: 'Solar penetration',    value: coef.solar_pct.toFixed(3),      unit: 'EUR per % solar', hint: 'negative = price suppression' },
+  ]
+  return (
+    <div className="space-y-1">
+      {rows.map(({ label, value, unit, hint }) => (
+        <div key={label} className="flex items-center gap-2 text-xs">
+          <span className="text-muted-foreground w-36 shrink-0">{label}</span>
+          <span className="font-mono text-foreground w-16 text-right">{value}</span>
+          <span className="text-muted-foreground/60 text-[10px]">{unit}</span>
+          <span className="text-muted-foreground/40 text-[10px] hidden lg:block">({hint})</span>
+        </div>
+      ))}
+      <div className="flex items-center gap-2 text-xs pt-1 border-t border-border mt-1">
+        <span className="text-muted-foreground w-36 shrink-0">R-squared</span>
+        <span className="font-mono font-semibold" style={{ color: coef.r2 > 0.7 ? '#4ade80' : coef.r2 > 0.5 ? '#fb923c' : '#f87171' }}>
+          {(coef.r2 * 100).toFixed(1)}%
+        </span>
+        <span className="text-muted-foreground/60 text-[10px]">on {coef.n}-day fit window</span>
+      </div>
+    </div>
+  )
+}
+
+function FundamentalModelChart({
+  series,
+  window: w,
+}: {
+  series: FundamentalPoint[]
+  window: DateWindow
+}) {
+  const cutoff = cutoffDate(w)
+  const filtered = cutoff ? series.filter((r) => r.price_date >= cutoff) : series
+  if (!filtered.length) return null
+
+  // Downsample for render performance (keep at most 500 points)
+  const step = Math.max(1, Math.floor(filtered.length / 500))
+  const data = filtered.filter((_, i) => i % step === 0)
+
+  return (
+    <div className="space-y-4">
+      {/* Actual vs Fitted */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2 font-medium">Actual vs fundamental value (EUR/MWh)</p>
+        <ResponsiveContainer width="100%" height={200}>
+          <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis dataKey="price_date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={Math.floor(data.length / 6)} />
+            <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} width={36} />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+              formatter={(val: unknown, name: unknown) => {
+                const v = typeof val === 'number' ? val.toFixed(1) : '--'
+                return [v, name === 'actual' ? 'Actual' : 'Fundamental']
+              }}
+              labelFormatter={(l) => String(l)}
+            />
+            <Line dataKey="actual" stroke="#60a5fa" strokeWidth={1.5} dot={false} isAnimationActive={false} name="actual" />
+            <Line dataKey="fitted" stroke="#f59e0b" strokeWidth={1.5} dot={false} strokeDasharray="4 2" isAnimationActive={false} name="fitted" />
+          </ComposedChart>
+        </ResponsiveContainer>
+        <div className="flex gap-4 mt-1">
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="w-4 h-0.5 bg-blue-400 rounded" />
+            <span>Actual DA price</span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <div className="w-4 h-0.5 bg-amber-400 rounded" style={{ borderStyle: 'dashed', borderWidth: '1px 0 0 0', height: 0, borderColor: '#f59e0b' }} />
+            <span>Fundamental value</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Residual z-score signal */}
+      <div>
+        <p className="text-xs text-muted-foreground mb-2 font-medium">Price residual z-score (30-day window) - mean-reversion signal</p>
+        <ResponsiveContainer width="100%" height={130}>
+          <ComposedChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis dataKey="price_date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} interval={Math.floor(data.length / 6)} />
+            <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} width={28} domain={['auto', 'auto']} />
+            <ReferenceLine y={2}  stroke="#f87171" strokeDasharray="3 2" strokeWidth={1} label={{ value: '+2σ', fill: '#f87171', fontSize: 8 }} />
+            <ReferenceLine y={-2} stroke="#4ade80" strokeDasharray="3 2" strokeWidth={1} label={{ value: '-2σ', fill: '#4ade80', fontSize: 8 }} />
+            <ReferenceLine y={0}  stroke="#475569" strokeWidth={1} />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+              formatter={(val: unknown) => [typeof val === 'number' ? val.toFixed(2) + 'σ' : '--', 'Z-score']}
+              labelFormatter={(l) => String(l)}
+            />
+            <Line
+              dataKey="zscore"
+              stroke="#a78bfa"
+              strokeWidth={1.5}
+              dot={false}
+              isAnimationActive={false}
+            />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  )
+}
+
+function FundamentalModelSection({ window: w }: { window: DateWindow }) {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['fundamental-model', zone],
+    queryFn: () => api.spreadsFundamentalModel(zone),
+    staleTime: 30 * 60 * 1000,
+  })
+
+  const cur = data?.current
+  const coef = data?.coefficients
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Fundamental Value Model</h2>
+        <span className="text-xs text-muted-foreground">OLS: DA price ~ TTF + EUA + wind% + solar%</span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Computing model...</p>}
+
+      {cur && coef && (
+        <div className="space-y-4">
+          {/* Current signal */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Actual DA price</p>
+              <p className="text-sm font-semibold text-foreground">{cur.actual.toFixed(1)} EUR/MWh</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Fundamental value</p>
+              <p className="text-sm font-semibold text-amber-400">{cur.fitted.toFixed(1)} EUR/MWh</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Residual (actual - model)</p>
+              <p className="text-sm font-semibold" style={{ color: cur.residual > 0 ? '#f87171' : '#4ade80' }}>
+                {cur.residual >= 0 ? '+' : ''}{cur.residual.toFixed(1)} EUR/MWh
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Z-score (30d) / 1yr rank</p>
+              <p className="text-sm font-semibold" style={{ color: zscoreColor(cur.zscore) }}>
+                {cur.zscore >= 0 ? '+' : ''}{cur.zscore.toFixed(2)}σ
+                <span className="text-xs text-muted-foreground ml-1">({zscoreLabel(cur.zscore)}, p{cur.pct_rank_1yr})</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Coefficients */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">Regression coefficients (trailing {coef.n}d)</p>
+              <CoefTable coef={coef} />
+            </div>
+            <div className="text-xs text-muted-foreground space-y-1.5">
+              <p className="font-medium text-foreground text-xs">Signal interpretation</p>
+              <p>
+                The model decomposes the DA base price into contributions from gas cost (TTF), carbon cost (EUA),
+                and renewable output (wind%, solar%). The residual is the portion unexplained by these fundamentals.
+              </p>
+              <p>
+                A positive z-score (residual {'>'}0) means the market is pricing above fundamentals - a
+                potential short signal for a mean-reversion strategy. Negative z-score means underpricing vs fundamentals.
+              </p>
+              <p className="text-muted-foreground/60">
+                R² measures how much of the price variance is explained. Higher = fundamentals dominate;
+                lower = other factors (congestion, demand shocks, supply outages) matter more.
+              </p>
+            </div>
+          </div>
+
+          {/* Chart */}
+          <FundamentalModelChart series={data.series} window={w} />
+        </div>
+      )}
     </div>
   )
 }

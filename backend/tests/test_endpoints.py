@@ -1018,3 +1018,31 @@ def test_power_cross_zone_spreads(client):
     # Unknown country -> 400
     r2 = client.get("/api/power/cross-zone-spreads?country=XX")
     assert r2.status_code == 400
+
+
+def test_spreads_fundamental_model(client):
+    r = client.get("/api/spreads/fundamental-model?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    coef = data["coefficients"]
+    assert isinstance(coef["r2"], float)
+    assert 0.0 <= coef["r2"] <= 1.0
+    assert isinstance(coef["ttf_eur_mwh"], float)
+    assert isinstance(coef["wind_pct"], float)
+    assert isinstance(coef["solar_pct"], float)
+    assert coef["n"] > 0
+    series = data["series"]
+    assert len(series) > 0
+    for pt in series:
+        assert "price_date" in pt
+        assert isinstance(pt["actual"], float)
+        assert isinstance(pt["fitted"], float)
+        assert isinstance(pt["residual"], float)
+        assert isinstance(pt["zscore"], float)
+    cur = data["current"]
+    assert isinstance(cur["zscore"], float)
+    assert 0 <= cur["pct_rank_1yr"] <= 100
+    # Invalid zone -> 400
+    r2 = client.get("/api/spreads/fundamental-model?zone=FAKE")
+    assert r2.status_code == 400
