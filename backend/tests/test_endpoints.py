@@ -1112,6 +1112,34 @@ def test_spreads_wind_price_analysis(client):
     assert r2.status_code == 400
 
 
+def test_spreads_nonlinear_model(client):
+    r = client.get("/api/spreads/nonlinear-model?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_oos"] > 0
+    assert data["knot_pct"] == 8.0
+    assert isinstance(data["hinge_coef_eur_per_pp"], float)
+    for model_key in ("linear", "nonlinear"):
+        m = data[model_key]
+        for regime in ("overall", "low_wind", "high_wind"):
+            assert regime in m
+        ov = m["overall"]
+        assert ov["n"] == data["n_oos"]
+        assert ov["rmse"] is not None and ov["rmse"] >= 0
+        assert ov["r2"] is not None
+    # Improvement block present
+    imp = data["improvement"]
+    assert "rmse_pct" in imp
+    assert "r2_delta" in imp
+    # Scatter points carry both predictions
+    assert len(data["scatter"]) > 0
+    pt = data["scatter"][0]
+    assert {"price_date", "wind_pct", "actual", "pred_linear", "pred_nonlinear"} <= pt.keys()
+    # Invalid zone -> 400
+    assert client.get("/api/spreads/nonlinear-model?zone=FAKE").status_code == 400
+
+
 def test_spreads_fundamental_backtest(client):
     r = client.get("/api/spreads/fundamental-backtest?zone=DE-LU")
     assert r.status_code == 200

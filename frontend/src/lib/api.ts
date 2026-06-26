@@ -1099,6 +1099,7 @@ export const api = {
   powerCfMap: () => get<CfMapResponse>('/power/cf-map'),
   spreadsWindPriceAnalysis: (zone?: string) => get<WindPriceAnalysisResponse>(`/spreads/wind-price-analysis${zone ? `?zone=${zone}` : ''}`),
   spreadsFundamentalBacktest: (zone?: string) => get<FundamentalBacktestResponse>(`/spreads/fundamental-backtest${zone ? `?zone=${zone}` : ''}`),
+  spreadsNonlinearModel: (zone?: string) => get<NonlinearModelResponse>(`/spreads/nonlinear-model${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1312,6 +1313,45 @@ export interface WindPriceAnalysisResponse {
   as_of: string | null
   bins: WindPriceBin[]
   interpretation: WindPriceInterpretation
+}
+
+export interface ModelFitMetrics {
+  rmse: number | null
+  mae: number | null
+  r2: number | null
+  n: number
+}
+
+export interface ModelMetricsByRegime {
+  overall: ModelFitMetrics
+  low_wind: ModelFitMetrics
+  high_wind: ModelFitMetrics
+}
+
+export interface NonlinearImprovement {
+  rmse_pct: number | null
+  low_wind_rmse_pct: number | null
+  r2_delta: number | null
+}
+
+export interface NonlinearScatterPoint {
+  price_date: string
+  wind_pct: number
+  actual: number
+  pred_linear: number
+  pred_nonlinear: number
+}
+
+export interface NonlinearModelResponse {
+  zone: string
+  as_of: string | null
+  n_oos: number
+  knot_pct: number
+  hinge_coef_eur_per_pp: number
+  linear: ModelMetricsByRegime
+  nonlinear: ModelMetricsByRegime
+  improvement: NonlinearImprovement
+  scatter: NonlinearScatterPoint[]
 }
 
 export interface BacktestEquityPoint {

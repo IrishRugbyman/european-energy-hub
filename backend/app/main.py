@@ -168,6 +168,11 @@ from .schemas import (
     WindPriceBin,
     WindPriceInterpretation,
     WindPriceAnalysisResponse,
+    ModelFitMetrics,
+    ModelMetricsByRegime,
+    NonlinearImprovement,
+    NonlinearScatterPoint,
+    NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
     FundamentalBacktestResponse,
@@ -3534,6 +3539,47 @@ def spreads_wind_price_analysis(zone: str = "DE-LU"):
             cv_low_wind_pct=interp["cv_low_wind_pct"],
             cv_high_wind_pct=interp["cv_high_wind_pct"],
         ),
+    )
+
+
+@app.get("/api/spreads/nonlinear-model", response_model=NonlinearModelResponse)
+def spreads_nonlinear_model(zone: str = "DE-LU"):
+    """Walk-forward linear vs nonlinear fair-value model comparison.
+
+    Both models regress DA base price on TTF, EUA, wind%, solar%. The nonlinear model
+    adds a low-wind hinge, squared wind/solar, and a TTF x wind interaction (OLS, no
+    extra dependency). Evaluation is strictly out-of-sample (daily refit, predict next
+    day). Reports OOS RMSE/MAE/R2 overall and split by wind regime, quantifying whether
+    the low-wind convexity the wind-price analysis surfaces is actually capturable.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_nonlinear_model, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_nonlinear_model(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for nonlinear model")
+
+    def _regime(d):
+        return ModelMetricsByRegime(
+            overall=ModelFitMetrics(**d["overall"]),
+            low_wind=ModelFitMetrics(**d["low_wind"]),
+            high_wind=ModelFitMetrics(**d["high_wind"]),
+        )
+
+    return NonlinearModelResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_oos=result["n_oos"],
+        knot_pct=result["knot_pct"],
+        hinge_coef_eur_per_pp=result["hinge_coef_eur_per_pp"],
+        linear=_regime(result["linear"]),
+        nonlinear=_regime(result["nonlinear"]),
+        improvement=NonlinearImprovement(**result["improvement"]),
+        scatter=[NonlinearScatterPoint(**p) for p in result["scatter"]],
     )
 
 

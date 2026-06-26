@@ -1,5 +1,17 @@
 # Energy Hub Changelog
 
+## 2026-06-26 - Phase 42: Nonlinear vs linear fair-value model on /spreads
+
+**Tried:** The wind-price analysis (Phase 36) surfaced that the OLS fundamental model systematically under-prices the low-wind drought premium (a +39 EUR/MWh DE-LU residual in the 0-5% wind bin) and explicitly flagged this as "the empirical motivation for nonlinear ML." That motivation was never tested out-of-sample. Built `compute_nonlinear_model()`: a strict walk-forward comparison of two OLS models on the same DA-price target. The linear model uses TTF, EUA, wind%, solar%; the nonlinear model adds a low-wind hinge max(0, 8% - wind%), squared wind/solar, and a TTF x wind interaction. At each day t (after 250-day minimum training) both models are refit on rows [0..t-1] and predict day t, so every metric is genuinely OOS. Pure numpy lstsq, no new dependency (sklearn is not in the energy venv). `GET /api/spreads/nonlinear-model?zone=`.
+
+**Found:** DE-LU over 297 OOS days: overall RMSE drops from 16.78 to 16.32 EUR/MWh (-2.7%), but the gain concentrates exactly where predicted - low-wind (<8% penetration) RMSE drops 40.63 to 35.31 (-13.1%). Full-sample hinge coefficient is +10.1 EUR/MWh per point of wind below the 8% knot, on top of the linear wind slope - a quantified, capturable convexity. Overall R2 improves +0.018. This confirms the low-wind premium is not just visible in hindsight: a nonlinear basis recovers a meaningful chunk of it out-of-sample.
+
+**Decision:** A hinge/polynomial basis fit by OLS is the right first nonlinear step - it captures the convexity the linear model misses while staying interpretable (one extra coefficient with a clear EUR/MWh meaning) and dependency-free. Frontend: `NonlinearModelSection` on /spreads with zone selector, 4 stat cards (linear->nonlinear RMSE, overall and low-wind reduction, hinge slope), a grouped RMSE-by-regime bar chart (low-wind / high-wind / overall, linear vs nonlinear), and a methodology footer making the ML-alpha case explicit. Placed directly below the fundamental model so the "OLS under-prices low wind -> nonlinear recovers it OOS" story reads top to bottom.
+
+**Artifacts:** `backend/analytics/fundamental.py` (`compute_nonlinear_model`, `_design_linear`, `_design_nonlinear`), `backend/app/main.py` (endpoint), `backend/app/schemas.py` (5 models), `backend/tests/test_endpoints.py` (`test_spreads_nonlinear_model`), `frontend/src/routes/spreads.tsx` (`NonlinearModelSection`), `frontend/src/lib/api.ts` (types + `spreadsNonlinearModel`). 100 tests passing.
+
+**Also fixed:** the Phase 41 calibration addendum added `implied_river_c`/`river_limit_c`/`summer_limit_c` to `nuclear_heat_risk_latest` and the endpoint now selects them, but the test fixture table was never updated - the mismatched query errored silently and returned an empty plants list. Added the three columns to the conftest fixture.
+
 ## 2026-06-25 - Phase 41: Nuclear thermal curtailment risk tracker
 
 **Tried:** Built a real-time thermal risk monitor for French nuclear plants on thermally-constrained rivers (Rhone, Garonne, Loire, Moselle). Initial data source was Hub'Eau (BRGM French water temperature API) but the chronique endpoint only had data through ~2016. Pivoted to Open-Meteo (free, no key, ECMWF-derived), which provides 90-day trailing daily max air temperature + 10-day forecast + 5yr historical archive at arbitrary coordinates. Air temp at plant location is a 2-3 day leading indicator for river thermal stress (river temp typically air_max - 5°C in sustained heat).

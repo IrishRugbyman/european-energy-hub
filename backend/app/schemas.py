@@ -1173,6 +1173,45 @@ class FundamentalBacktestResponse(BaseModel):
     stats: BacktestStats
 
 
+class ModelFitMetrics(BaseModel):
+    rmse: float | None
+    mae: float | None
+    r2: float | None
+    n: int
+
+
+class ModelMetricsByRegime(BaseModel):
+    overall: ModelFitMetrics
+    low_wind: ModelFitMetrics
+    high_wind: ModelFitMetrics
+
+
+class NonlinearImprovement(BaseModel):
+    rmse_pct: float | None
+    low_wind_rmse_pct: float | None
+    r2_delta: float | None
+
+
+class NonlinearScatterPoint(BaseModel):
+    price_date: str
+    wind_pct: float
+    actual: float
+    pred_linear: float
+    pred_nonlinear: float
+
+
+class NonlinearModelResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_oos: int
+    knot_pct: float
+    hinge_coef_eur_per_pp: float
+    linear: ModelMetricsByRegime
+    nonlinear: ModelMetricsByRegime
+    improvement: NonlinearImprovement
+    scatter: list[NonlinearScatterPoint]
+
+
 class LngLatestRow(BaseModel):
     country: str
     gas_day: str

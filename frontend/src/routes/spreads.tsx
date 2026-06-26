@@ -1041,6 +1041,8 @@ function SpreadsDashboard() {
 
           <FundamentalModelSection window={window} />
 
+          <NonlinearModelSection />
+
           <BacktestSection zone="DE-LU" />
 
           <div className="bg-card border border-border rounded-lg p-4">
@@ -1527,6 +1529,131 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
               />
             </div>
           )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NonlinearModelSection() {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['nonlinear-model', zone],
+    queryFn: () => api.spreadsNonlinearModel(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const chartData = data
+    ? [
+        { regime: `Low wind (<${data.knot_pct}%)`, linear: data.linear.low_wind.rmse, nonlinear: data.nonlinear.low_wind.rmse, n: data.linear.low_wind.n },
+        { regime: 'High wind', linear: data.linear.high_wind.rmse, nonlinear: data.nonlinear.high_wind.rmse, n: data.linear.high_wind.n },
+        { regime: 'Overall', linear: data.linear.overall.rmse, nonlinear: data.nonlinear.overall.rmse, n: data.linear.overall.n },
+      ].filter((d) => d.linear != null && d.nonlinear != null)
+    : []
+
+  const imp = data?.improvement
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Nonlinear vs Linear Fair Value</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Walk-forward OOS: low-wind hinge + wind²/solar² + TTF×wind
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running walk-forward comparison...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">OOS RMSE (linear → nonlinear)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {data.linear.overall.rmse?.toFixed(1)} → <span className="text-emerald-400">{data.nonlinear.overall.rmse?.toFixed(1)}</span>
+                <span className="text-xs text-muted-foreground ml-1">€/MWh</span>
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Overall RMSE reduction</p>
+              <p className="text-sm font-semibold" style={{ color: (imp?.rmse_pct ?? 0) > 0 ? '#4ade80' : '#94a3b8' }}>
+                {imp?.rmse_pct != null ? `${imp.rmse_pct >= 0 ? '-' : '+'}${Math.abs(imp.rmse_pct).toFixed(1)}%` : '--'}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Low-wind RMSE reduction</p>
+              <p className="text-sm font-semibold text-amber-400">
+                {imp?.low_wind_rmse_pct != null ? `${imp.low_wind_rmse_pct >= 0 ? '-' : '+'}${Math.abs(imp.low_wind_rmse_pct).toFixed(1)}%` : '--'}
+                <span className="text-xs text-muted-foreground ml-1">n={data.linear.low_wind.n}</span>
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Low-wind hinge slope</p>
+              <p className="text-sm font-semibold text-foreground">
+                +{data.hinge_coef_eur_per_pp.toFixed(1)}
+                <span className="text-xs text-muted-foreground ml-1">€/MWh per pp below {data.knot_pct}%</span>
+              </p>
+            </div>
+          </div>
+
+          {/* RMSE by regime */}
+          {chartData.length > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground font-medium mb-2">
+                Out-of-sample RMSE by wind regime ({data.n_oos} OOS days, lower is better)
+              </p>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="regime" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: '#64748b' }}
+                    tickLine={false}
+                    axisLine={false}
+                    width={36}
+                    label={{ value: 'RMSE €/MWh', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+                  />
+                  <Tooltip
+                    contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                    formatter={(val: unknown, name: unknown) => {
+                      const v = typeof val === 'number' ? val.toFixed(2) : '--'
+                      return [v + ' €/MWh', name === 'linear' ? 'Linear OLS' : 'Nonlinear']
+                    }}
+                  />
+                  <Legend wrapperStyle={{ fontSize: 10 }} />
+                  <Bar dataKey="linear" name="Linear OLS" fill="#60a5fa" isAnimationActive={false} radius={[2, 2, 0, 0]} />
+                  <Bar dataKey="nonlinear" name="Nonlinear" fill="#a78bfa" isAnimationActive={false} radius={[2, 2, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Both models regress the DA base price on TTF, EUA, wind% and solar% by ordinary least squares.
+            The nonlinear model adds a low-wind hinge (max(0, {data.knot_pct}% − wind%)), squared wind/solar terms,
+            and a TTF×wind interaction. Evaluation is strictly walk-forward: both models are refit daily on all prior
+            data and predict the next day, so the comparison is out-of-sample. The gain concentrates in the low-wind
+            regime, where scarcity pricing turns convex and the linear model systematically under-prices the drought
+            premium the wind-price analysis above surfaces. This is the empirical case that nonlinear ML adds capturable
+            alpha, not just in-sample fit.
+          </p>
         </div>
       )}
     </div>

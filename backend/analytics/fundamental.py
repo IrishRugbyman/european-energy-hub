@@ -425,3 +425,175 @@ def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU") -> dic
         "equity": equity,
         "stats": stats,
     }
+
+
+# Knot for the low-wind hinge basis (wind penetration, percentage points). Below this,
+# scarcity pricing turns convex; the hinge max(0, KNOT - wind%) lets the regression bend.
+LOW_WIND_KNOT_PCT = 8.0
+
+# Walk-forward settings for the nonlinear vs linear comparison.
+WF_MIN_TRAIN = 250   # minimum training rows before the first OOS prediction
+WF_MAX_OOS = 730     # cap OOS evaluation window (days) to bound response + compute
+
+
+def _design_linear(ttf, eua, wind, solar):
+    """Linear design matrix: [1, TTF, EUA, wind%, solar%]."""
+    return np.column_stack([np.ones(len(ttf)), ttf, eua, wind, solar])
+
+
+def _design_nonlinear(ttf, eua, wind, solar):
+    """Nonlinear design matrix: linear terms plus a low-wind hinge, wind^2, solar^2,
+    and a TTF x wind interaction. Captures the convexity OLS misses at low wind."""
+    hinge = np.maximum(0.0, LOW_WIND_KNOT_PCT - wind)
+    return np.column_stack([
+        np.ones(len(ttf)), ttf, eua, wind, solar,
+        hinge, wind ** 2, solar ** 2, (ttf * wind) / 100.0,
+    ])
+
+
+def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
+    """Walk-forward comparison of a linear vs a nonlinear (basis-expansion) fair-value model.
+
+    Both models regress the daily DA base price on TTF, EUA, wind%, solar%. The nonlinear
+    model adds a low-wind hinge max(0, KNOT - wind%), squared wind/solar, and a TTF x wind
+    interaction - all fit by ordinary least squares (numpy lstsq), no extra dependency.
+
+    Evaluation is strictly out-of-sample: at each day t (after WF_MIN_TRAIN history) both
+    models are refit on rows [0..t-1] and predict day t. We compare OOS RMSE/MAE/R2
+    overall and split by wind regime (low <KNOT pp vs the rest), where the linear model's
+    convexity error concentrates. This answers the question the wind-price analysis raises:
+    is the low-wind premium actually capturable, or just visible in hindsight?
+
+    Returns dict with: zone, as_of, n_oos, knot_pct, linear{}, nonlinear{}, improvement{},
+    scatter[] (per-OOS-day actual + both predictions + wind%).
+    """
+    try:
+        rows = query_fn("""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
+                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.total_mw > 0
+              AND g.wind IS NOT NULL
+              AND g.solar IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"nonlinear model query failed for {zone}: {exc!r}")
+        return {}
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 30:
+        logger.warning(f"nonlinear model: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df = df.reset_index(drop=True)
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    Xlin = _design_linear(ttf, eua, wind, solar)
+    Xnl = _design_nonlinear(ttf, eua, wind, solar)
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, pred_lin, pred_nl = [], [], []
+    for t in range(start, n):
+        clin, _, _, _ = np.linalg.lstsq(Xlin[:t], y[:t], rcond=None)
+        cnl, _, _, _ = np.linalg.lstsq(Xnl[:t], y[:t], rcond=None)
+        idx.append(t)
+        pred_lin.append(float(Xlin[t] @ clin))
+        pred_nl.append(float(Xnl[t] @ cnl))
+
+    if not idx:
+        return {}
+
+    idx = np.array(idx)
+    y_oos = y[idx]
+    w_oos = wind[idx]
+    pred_lin = np.array(pred_lin)
+    pred_nl = np.array(pred_nl)
+
+    def metrics(actual, pred, mask=None):
+        a, p = (actual, pred) if mask is None else (actual[mask], pred[mask])
+        if len(a) == 0:
+            return {"rmse": None, "mae": None, "r2": None, "n": 0}
+        err = a - p
+        rmse = float(np.sqrt(np.mean(err ** 2)))
+        mae = float(np.mean(np.abs(err)))
+        ss_tot = float(np.sum((a - a.mean()) ** 2))
+        r2 = float(1 - np.sum(err ** 2) / ss_tot) if ss_tot > 0 else None
+        return {"rmse": round(rmse, 2), "mae": round(mae, 2),
+                "r2": round(r2, 4) if r2 is not None else None, "n": int(len(a))}
+
+    low = w_oos < LOW_WIND_KNOT_PCT
+    high = ~low
+
+    lin = {
+        "overall": metrics(y_oos, pred_lin),
+        "low_wind": metrics(y_oos, pred_lin, low),
+        "high_wind": metrics(y_oos, pred_lin, high),
+    }
+    nl = {
+        "overall": metrics(y_oos, pred_nl),
+        "low_wind": metrics(y_oos, pred_nl, low),
+        "high_wind": metrics(y_oos, pred_nl, high),
+    }
+
+    def pct_drop(a, b):
+        if a is None or b is None or a == 0:
+            return None
+        return round(100.0 * (a - b) / a, 1)
+
+    improvement = {
+        "rmse_pct": pct_drop(lin["overall"]["rmse"], nl["overall"]["rmse"]),
+        "low_wind_rmse_pct": pct_drop(lin["low_wind"]["rmse"], nl["low_wind"]["rmse"]),
+        "r2_delta": (round(nl["overall"]["r2"] - lin["overall"]["r2"], 4)
+                     if lin["overall"]["r2"] is not None and nl["overall"]["r2"] is not None
+                     else None),
+    }
+
+    # Full-sample fit of the nonlinear hinge coefficient: the EUR/MWh of extra price per
+    # point of wind below the knot, beyond the linear wind slope.
+    cnl_full, _, _, _ = np.linalg.lstsq(Xnl, y, rcond=None)
+    hinge_coef = round(float(cnl_full[5]), 2)  # index 5 is the hinge column
+
+    # Downsample scatter to <= 365 points to bound payload.
+    step = max(1, len(idx) // 365)
+    scatter = [
+        {
+            "price_date": dates.iloc[int(idx[i])].strftime("%Y-%m-%d"),
+            "wind_pct": round(float(w_oos[i]), 1),
+            "actual": round(float(y_oos[i]), 2),
+            "pred_linear": round(float(pred_lin[i]), 2),
+            "pred_nonlinear": round(float(pred_nl[i]), 2),
+        }
+        for i in range(0, len(idx), step)
+    ]
+
+    return {
+        "zone": zone,
+        "as_of": dates.iloc[-1].strftime("%Y-%m-%d"),
+        "n_oos": int(len(idx)),
+        "knot_pct": LOW_WIND_KNOT_PCT,
+        "hinge_coef_eur_per_pp": hinge_coef,
+        "linear": lin,
+        "nonlinear": nl,
+        "improvement": improvement,
+        "scatter": scatter,
+    }
