@@ -618,21 +618,25 @@ def _seed_db(path: str) -> None:
             capacity_mw INTEGER, lat REAL, lon REAL,
             obs_date DATE, temp_max_c REAL, avg5_temp_c REAL, anomaly_c REAL,
             alert_level VARCHAR, days_above_35_last5 INTEGER,
-            peak_fc_temp_c REAL, peak_fc_date DATE, fc_alert_level VARCHAR
+            peak_fc_temp_c REAL, peak_fc_date DATE, fc_alert_level VARCHAR,
+            implied_river_c REAL, river_limit_c REAL, summer_limit_c REAL
         )
     """)
     conn.executemany(
-        "INSERT INTO nuclear_heat_risk_latest VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO nuclear_heat_risk_latest VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             ["TRICASTIN",  "Tricastin",   "Rhone",   3600, 44.332, 4.732,
              (date.today() - timedelta(days=1)).isoformat(),
-             38.5, 28.1, 10.4, "critical", 4, 39.4, date.today().isoformat(), "critical"],
+             38.5, 28.1, 10.4, "critical", 4, 39.4, date.today().isoformat(), "critical",
+             30.5, 24.0, 27.0],
             ["GOLFECH",    "Golfech",     "Garonne", 1400, 44.107, 0.851,
              (date.today() - timedelta(days=1)).isoformat(),
-             34.0, 27.5, 6.5,  "warning",  2, 32.0, date.today().isoformat(), "warning"],
+             34.0, 27.5, 6.5,  "warning",  2, 32.0, date.today().isoformat(), "warning",
+             27.3, 24.0, 28.0],
             ["CATTENOM",   "Cattenom",    "Moselle", 5400, 49.400, 6.218,
              (date.today() - timedelta(days=1)).isoformat(),
-             27.0, 25.0, 2.0,  "normal",   0, 28.0, date.today().isoformat(), "normal"],
+             27.0, 25.0, 2.0,  "normal",   0, 28.0, date.today().isoformat(), "normal",
+             21.0, 24.0, 28.0],
         ],
     )
     conn.execute("""
