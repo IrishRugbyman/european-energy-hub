@@ -1100,6 +1100,7 @@ export const api = {
   spreadsWindPriceAnalysis: (zone?: string) => get<WindPriceAnalysisResponse>(`/spreads/wind-price-analysis${zone ? `?zone=${zone}` : ''}`),
   spreadsFundamentalBacktest: (zone?: string) => get<FundamentalBacktestResponse>(`/spreads/fundamental-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearModel: (zone?: string) => get<NonlinearModelResponse>(`/spreads/nonlinear-model${zone ? `?zone=${zone}` : ''}`),
+  spreadsNonlinearBacktest: (zone?: string) => get<NonlinearBacktestResponse>(`/spreads/nonlinear-backtest${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1352,6 +1353,43 @@ export interface NonlinearModelResponse {
   nonlinear: ModelMetricsByRegime
   improvement: NonlinearImprovement
   scatter: NonlinearScatterPoint[]
+}
+
+export interface BacktestModelStats {
+  sharpe: number | null
+  sharpe_low_wind: number | null
+  hit_rate_pct: number
+  cum_pnl: number
+  max_dd_eur: number
+  avg_daily_pnl: number
+  n: number
+  n_low_wind: number
+}
+
+export interface NonlinearBacktestImprovement {
+  sharpe_delta: number | null
+  sharpe_low_wind_delta: number | null
+  cum_pnl_delta: number
+  hit_rate_delta: number
+}
+
+export interface NonlinearBacktestEquityPoint {
+  date: string
+  cum_linear: number
+  cum_nonlinear: number
+  wind_pct: number
+}
+
+export interface NonlinearBacktestResponse {
+  zone: string
+  as_of: string | null
+  n_eval: number
+  signal_window: number
+  knot_pct: number
+  linear: BacktestModelStats
+  nonlinear: BacktestModelStats
+  improvement: NonlinearBacktestImprovement
+  equity: NonlinearBacktestEquityPoint[]
 }
 
 export interface BacktestEquityPoint {

@@ -172,6 +172,10 @@ from .schemas import (
     ModelMetricsByRegime,
     NonlinearImprovement,
     NonlinearScatterPoint,
+    NonlinearBacktestResponse,
+    NonlinearBacktestImprovement,
+    NonlinearBacktestEquityPoint,
+    BacktestModelStats,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3580,6 +3584,42 @@ def spreads_nonlinear_model(zone: str = "DE-LU"):
         nonlinear=_regime(result["nonlinear"]),
         improvement=NonlinearImprovement(**result["improvement"]),
         scatter=[NonlinearScatterPoint(**p) for p in result["scatter"]],
+    )
+
+
+@app.get("/api/spreads/nonlinear-backtest", response_model=NonlinearBacktestResponse)
+def spreads_nonlinear_backtest(zone: str = "DE-LU"):
+    """Trade the linear vs nonlinear residual signals OOS and compare P&L.
+
+    Closes the loop on the nonlinear fair-value model: Phase 42 showed it recovers the
+    low-wind premium in RMSE terms; this asks whether that translates into tradeable
+    alpha. Both models are refit walk-forward (daily, OOS), their OOS residuals turned
+    into a rolling-z-score contrarian signal, and traded with identical accounting so the
+    only difference between the two equity curves is the fair-value model. Reports Sharpe,
+    hit-rate, cumulative P&L and max drawdown for each, plus the low-wind-regime split
+    where the nonlinear edge should concentrate.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_nonlinear_backtest, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_nonlinear_backtest(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for nonlinear backtest")
+
+    return NonlinearBacktestResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_eval=result["n_eval"],
+        signal_window=result["signal_window"],
+        knot_pct=result["knot_pct"],
+        linear=BacktestModelStats(**result["linear"]),
+        nonlinear=BacktestModelStats(**result["nonlinear"]),
+        improvement=NonlinearBacktestImprovement(**result["improvement"]),
+        equity=[NonlinearBacktestEquityPoint(**p) for p in result["equity"]],
     )
 
 

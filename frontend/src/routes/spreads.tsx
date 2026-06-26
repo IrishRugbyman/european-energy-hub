@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1043,6 +1043,8 @@ function SpreadsDashboard() {
 
           <NonlinearModelSection />
 
+          <NonlinearBacktestSection />
+
           <BacktestSection zone="DE-LU" />
 
           <div className="bg-card border border-border rounded-lg p-4">
@@ -1656,6 +1658,178 @@ function NonlinearModelSection() {
           </p>
         </div>
       )}
+    </div>
+  )
+}
+
+function NonlinearBacktestSection() {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['nonlinear-backtest', zone],
+    queryFn: () => api.spreadsNonlinearBacktest(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const imp = data?.improvement
+  const fmtSharpe = (v: number | null | undefined) => (v != null ? v.toFixed(2) : '--')
+  const fmtDelta = (v: number | null | undefined, dp = 2) =>
+    v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(dp)}` : '--'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Does the Nonlinear Edge Trade?</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Walk-forward P&L: fade each model's OOS residual
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running walk-forward backtest...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe (linear → nonlinear)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmtSharpe(data.linear.sharpe)} →{' '}
+                <span className="text-emerald-400">{fmtSharpe(data.nonlinear.sharpe)}</span>
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe gain</p>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: (imp?.sharpe_delta ?? 0) > 0 ? '#4ade80' : '#94a3b8' }}
+              >
+                {fmtDelta(imp?.sharpe_delta)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Cum P&L gain ({data.n_eval}d)</p>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: (imp?.cum_pnl_delta ?? 0) > 0 ? '#4ade80' : '#94a3b8' }}
+              >
+                {fmtDelta(imp?.cum_pnl_delta, 0)}
+                <span className="text-xs text-muted-foreground ml-1">€/MWh·u</span>
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Low-wind Sharpe gain</p>
+              <p className="text-sm font-semibold text-amber-400">
+                {fmtDelta(imp?.sharpe_low_wind_delta)}
+                <span className="text-xs text-muted-foreground ml-1">n={data.linear.n_low_wind}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Equity curves */}
+          {data.equity.length > 0 && <NonlinearBacktestEquityChart equity={data.equity} />}
+
+          {/* Per-model summary row */}
+          <div className="grid grid-cols-2 gap-3 text-[11px]">
+            {(['linear', 'nonlinear'] as const).map((k) => {
+              const m = data[k]
+              return (
+                <div key={k} className="bg-muted/10 rounded-lg px-3 py-2">
+                  <p className="font-medium mb-1" style={{ color: k === 'linear' ? '#60a5fa' : '#a78bfa' }}>
+                    {k === 'linear' ? 'Linear OLS signal' : 'Nonlinear signal'}
+                  </p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                    <span>Sharpe</span><span className="text-right text-foreground">{fmtSharpe(m.sharpe)}</span>
+                    <span>Hit rate</span><span className="text-right text-foreground">{m.hit_rate_pct.toFixed(1)}%</span>
+                    <span>Cum P&L</span><span className="text-right text-foreground">{m.cum_pnl.toFixed(0)}</span>
+                    <span>Max DD</span><span className="text-right text-foreground">{m.max_dd_eur.toFixed(0)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Both fair-value models are refit walk-forward (daily, on all prior data) and their out-of-sample
+            residual (actual − fair value) is standardised with a {data.signal_window}-day rolling z-score. We fade
+            it: position = clip(−z, −1, +1), and daily P&L = position(t−1) × DA price change(t). The accounting is
+            identical for both, so the only difference between the two equity curves is the model that produced the
+            signal. The nonlinear model's advantage concentrates in the low-wind regime (&lt;{data.knot_pct}% wind),
+            where it recovers the scarcity premium the linear model under-prices — turning the RMSE improvement above
+            into capturable directional alpha. No transaction costs, bid-ask, or market impact.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NonlinearBacktestEquityChart({ equity }: { equity: NonlinearBacktestEquityPoint[] }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground font-medium">
+        Cumulative P&L — linear vs nonlinear residual signal (out-of-sample)
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={equity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            minTickGap={40}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+            label={{ value: 'cum P&L', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(val: unknown, name: unknown) => {
+              const v = typeof val === 'number' ? val.toFixed(1) : '--'
+              return [v, name === 'cum_linear' ? 'Linear' : 'Nonlinear']
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <ReferenceLine y={0} stroke="#334155" strokeWidth={1} />
+          <Line
+            type="monotone"
+            dataKey="cum_linear"
+            name="Linear"
+            stroke="#60a5fa"
+            dot={false}
+            strokeWidth={1.5}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="cum_nonlinear"
+            name="Nonlinear"
+            stroke="#a78bfa"
+            dot={false}
+            strokeWidth={1.5}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }

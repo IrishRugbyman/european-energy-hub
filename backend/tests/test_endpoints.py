@@ -1140,6 +1140,33 @@ def test_spreads_nonlinear_model(client):
     assert client.get("/api/spreads/nonlinear-model?zone=FAKE").status_code == 400
 
 
+def test_spreads_nonlinear_backtest(client):
+    r = client.get("/api/spreads/nonlinear-backtest?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_eval"] > 0
+    assert data["signal_window"] == 30
+    assert data["knot_pct"] == 8.0
+    for model_key in ("linear", "nonlinear"):
+        m = data[model_key]
+        assert m["n"] == data["n_eval"]
+        assert 0 <= m["hit_rate_pct"] <= 100
+        assert isinstance(m["cum_pnl"], float)
+        assert m["max_dd_eur"] <= 0
+        assert m["n_low_wind"] >= 0
+    imp = data["improvement"]
+    assert "sharpe_delta" in imp
+    assert "cum_pnl_delta" in imp
+    # Equity curve carries both cumulative series
+    eq = data["equity"]
+    assert len(eq) > 0
+    pt = eq[0]
+    assert {"date", "cum_linear", "cum_nonlinear", "wind_pct"} <= pt.keys()
+    # Invalid zone -> 400
+    assert client.get("/api/spreads/nonlinear-backtest?zone=FAKE").status_code == 400
+
+
 def test_spreads_fundamental_backtest(client):
     r = client.get("/api/spreads/fundamental-backtest?zone=DE-LU")
     assert r.status_code == 200

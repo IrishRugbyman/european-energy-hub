@@ -597,3 +597,190 @@ def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
         "improvement": improvement,
         "scatter": scatter,
     }
+
+
+# Z-score lookback for the walk-forward residual trading signal (days).
+WF_SIGNAL_WINDOW = 30
+
+
+def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
+    """Trade the linear vs nonlinear residual signals out-of-sample and compare P&L.
+
+    Phase 42 showed the nonlinear (hinge/polynomial) fair-value model recovers the
+    low-wind premium that linear OLS misses, in RMSE terms. This closes the loop with
+    the question a trading desk actually asks: does that extra accuracy translate into
+    *tradeable* alpha?
+
+    Mechanism. We reuse the strict walk-forward of compute_nonlinear_model: at each day
+    t (after WF_MIN_TRAIN history) both models are refit on rows [0..t-1] and predict
+    day t, so every prediction is genuinely OOS. The OOS residual (actual - fair value)
+    is the deviation from fair value; a high residual means the market is rich vs the
+    model, so we fade it. We standardise each model's OOS residual with a rolling
+    WF_SIGNAL_WINDOW z-score and take position = clip(-z, -1, +1). Daily P&L is
+    position(t-1) x price_change(t) - identical accounting to the fundamental backtest,
+    so the only difference between the two equity curves is the fair-value model that
+    produced the signal. We report Sharpe / hit-rate / cumulative P&L / max drawdown for
+    each, plus the same split by wind regime where the nonlinear edge should concentrate.
+
+    Returns dict with: zone, as_of, n_eval, signal_window, knot_pct, linear{}, nonlinear{},
+    improvement{}, equity[] (per-day cum P&L for both + wind%).
+    """
+    try:
+        rows = query_fn("""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
+                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.total_mw > 0
+              AND g.wind IS NOT NULL
+              AND g.solar IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"nonlinear backtest query failed for {zone}: {exc!r}")
+        return {}
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"nonlinear backtest: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df = df.reset_index(drop=True)
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    Xlin = _design_linear(ttf, eua, wind, solar)
+    Xnl = _design_nonlinear(ttf, eua, wind, solar)
+
+    # Walk-forward OOS residuals for both models over the same evaluation window.
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, res_lin, res_nl = [], [], []
+    for t in range(start, n):
+        clin, _, _, _ = np.linalg.lstsq(Xlin[:t], y[:t], rcond=None)
+        cnl, _, _, _ = np.linalg.lstsq(Xnl[:t], y[:t], rcond=None)
+        idx.append(t)
+        res_lin.append(y[t] - float(Xlin[t] @ clin))
+        res_nl.append(y[t] - float(Xnl[t] @ cnl))
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    prices = y[idx]
+    w_eval = wind[idx]
+    eval_dates = [dates.iloc[int(i)].strftime("%Y-%m-%d") for i in idx]
+
+    # Daily price changes over the (consecutive) evaluation window.
+    price_changes = np.diff(prices)  # length m-1
+
+    def signal_positions(residuals: list[float]) -> np.ndarray:
+        """Rolling z-score of the OOS residual -> clipped contrarian position."""
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        return np.clip(-z, -1.0, 1.0)
+
+    pos_lin = signal_positions(res_lin)
+    pos_nl = signal_positions(res_nl)
+
+    # Position held yesterday earns today's price change.
+    pnl_lin = pos_lin[:-1] * price_changes
+    pnl_nl = pos_nl[:-1] * price_changes
+    w_pnl = w_eval[1:]  # wind regime aligned to each P&L day
+
+    def sharpe(pnl: np.ndarray) -> float | None:
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    def hit_rate(pnl: np.ndarray) -> float:
+        if len(pnl) == 0:
+            return 0.0
+        return float(round(100 * np.mean(pnl > 0), 1))
+
+    def max_drawdown(cum: np.ndarray) -> float:
+        if len(cum) == 0:
+            return 0.0
+        peak = np.maximum.accumulate(cum)
+        return float(round((cum - peak).min(), 2))
+
+    low = w_pnl < LOW_WIND_KNOT_PCT
+
+    def stats(pnl: np.ndarray) -> dict:
+        cum = np.cumsum(pnl)
+        return {
+            "sharpe": sharpe(pnl),
+            "sharpe_low_wind": sharpe(pnl[low]),
+            "hit_rate_pct": hit_rate(pnl),
+            "cum_pnl": round(float(cum[-1]), 2) if len(cum) else 0.0,
+            "max_dd_eur": max_drawdown(cum),
+            "avg_daily_pnl": round(float(pnl.mean()), 3) if len(pnl) else 0.0,
+            "n": int(len(pnl)),
+            "n_low_wind": int(low.sum()),
+        }
+
+    lin_stats = stats(pnl_lin)
+    nl_stats = stats(pnl_nl)
+
+    def _delta(a, b):
+        return round(b - a, 3) if a is not None and b is not None else None
+
+    improvement = {
+        "sharpe_delta": _delta(lin_stats["sharpe"], nl_stats["sharpe"]),
+        "sharpe_low_wind_delta": _delta(lin_stats["sharpe_low_wind"], nl_stats["sharpe_low_wind"]),
+        "cum_pnl_delta": round(nl_stats["cum_pnl"] - lin_stats["cum_pnl"], 2),
+        "hit_rate_delta": round(nl_stats["hit_rate_pct"] - lin_stats["hit_rate_pct"], 1),
+    }
+
+    # Equity curves (cumulative P&L per day), downsampled to <= 365 points.
+    cum_lin = np.cumsum(pnl_lin)
+    cum_nl = np.cumsum(pnl_nl)
+    step = max(1, len(pnl_lin) // 365)
+    equity = [
+        {
+            "date": eval_dates[i + 1],
+            "cum_linear": round(float(cum_lin[i]), 2),
+            "cum_nonlinear": round(float(cum_nl[i]), 2),
+            "wind_pct": round(float(w_pnl[i]), 1),
+        }
+        for i in range(0, len(pnl_lin), step)
+    ]
+    # Always include the final point so the curve ends on the reported cum P&L.
+    if equity and equity[-1]["date"] != eval_dates[-1]:
+        last = len(pnl_lin) - 1
+        equity.append({
+            "date": eval_dates[last + 1],
+            "cum_linear": round(float(cum_lin[last]), 2),
+            "cum_nonlinear": round(float(cum_nl[last]), 2),
+            "wind_pct": round(float(w_pnl[last]), 1),
+        })
+
+    return {
+        "zone": zone,
+        "as_of": eval_dates[-1],
+        "n_eval": int(len(pnl_lin)),
+        "signal_window": WF_SIGNAL_WINDOW,
+        "knot_pct": LOW_WIND_KNOT_PCT,
+        "linear": lin_stats,
+        "nonlinear": nl_stats,
+        "improvement": improvement,
+        "equity": equity,
+    }

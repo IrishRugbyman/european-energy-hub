@@ -1212,6 +1212,43 @@ class NonlinearModelResponse(BaseModel):
     scatter: list[NonlinearScatterPoint]
 
 
+class BacktestModelStats(BaseModel):
+    sharpe: float | None
+    sharpe_low_wind: float | None
+    hit_rate_pct: float
+    cum_pnl: float
+    max_dd_eur: float
+    avg_daily_pnl: float
+    n: int
+    n_low_wind: int
+
+
+class NonlinearBacktestImprovement(BaseModel):
+    sharpe_delta: float | None
+    sharpe_low_wind_delta: float | None
+    cum_pnl_delta: float
+    hit_rate_delta: float
+
+
+class NonlinearBacktestEquityPoint(BaseModel):
+    date: str
+    cum_linear: float
+    cum_nonlinear: float
+    wind_pct: float
+
+
+class NonlinearBacktestResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_eval: int
+    signal_window: int
+    knot_pct: float
+    linear: BacktestModelStats
+    nonlinear: BacktestModelStats
+    improvement: NonlinearBacktestImprovement
+    equity: list[NonlinearBacktestEquityPoint]
+
+
 class LngLatestRow(BaseModel):
     country: str
     gas_day: str
