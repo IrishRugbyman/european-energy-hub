@@ -263,6 +263,7 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 39 - EU LNG terminal tracker on /gas [COMPLETE 2026-06-25]
 - Phase 40 - EU nuclear generation tracker on /generation [COMPLETE 2026-06-25]
 - Phase 41 - Nuclear thermal curtailment risk tracker (Open-Meteo air temp at 9 FR plants) [COMPLETE 2026-06-25]
+- Phase 42 - Nonlinear vs linear fair-value model on /spreads (walk-forward OOS, low-wind hinge) [COMPLETE 2026-06-26]
 
 ## Geographic expansion (future)
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
