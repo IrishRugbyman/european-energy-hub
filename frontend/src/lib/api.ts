@@ -1509,7 +1509,22 @@ export interface PortfolioStats {
 export interface PortfolioEquityPoint {
   date: string
   cum_portfolio: number
+  cum_portfolio_oos: number | null
   cum_de_lu: number | null
+}
+
+export interface DeflatedSharpe {
+  sr_hat: number | null
+  sr_benchmark: number | null
+  psr: number | null
+  dsr: number | null
+  n_obs: number
+}
+
+export interface PortfolioSignificance {
+  n_trials: number
+  portfolio_oos: DeflatedSharpe
+  de_lu: DeflatedSharpe | null
 }
 
 export interface PortfolioBacktestResponse {
@@ -1517,10 +1532,13 @@ export interface PortfolioBacktestResponse {
   n_days: number
   cost: number
   weighting: string
+  weighting_oos: string
   zones: PortfolioZoneRow[]
   portfolio: PortfolioStats
+  portfolio_oos: PortfolioStats
   de_lu: PortfolioStats | null
   diversification_ratio: number | null
+  significance: PortfolioSignificance
   equity: PortfolioEquityPoint[]
 }
 

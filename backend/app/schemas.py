@@ -1364,7 +1364,22 @@ class PortfolioStats(BaseModel):
 class PortfolioEquityPoint(BaseModel):
     date: str
     cum_portfolio: float
+    cum_portfolio_oos: float | None = None
     cum_de_lu: float | None
+
+
+class DeflatedSharpe(BaseModel):
+    sr_hat: float | None
+    sr_benchmark: float | None
+    psr: float | None
+    dsr: float | None
+    n_obs: int
+
+
+class PortfolioSignificance(BaseModel):
+    n_trials: int
+    portfolio_oos: DeflatedSharpe
+    de_lu: DeflatedSharpe | None
 
 
 class PortfolioBacktestResponse(BaseModel):
@@ -1372,10 +1387,13 @@ class PortfolioBacktestResponse(BaseModel):
     n_days: int
     cost: float
     weighting: str
+    weighting_oos: str
     zones: list[PortfolioZoneRow]
     portfolio: PortfolioStats
+    portfolio_oos: PortfolioStats
     de_lu: PortfolioStats | None
     diversification_ratio: float | None
+    significance: PortfolioSignificance
     equity: list[PortfolioEquityPoint]
 
 

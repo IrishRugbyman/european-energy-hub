@@ -1642,26 +1642,113 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
     }
 
 
+# Rolling inverse-vol weighting: form each day's weights from a trailing window of
+# realised per-zone P&L, lagged one day so the weight for day t uses only information
+# through t-1. This makes the portfolio construction genuinely out-of-sample, unlike the
+# full-sample inverse-vol overlay (which is an ex-post illustration kept as a reference).
+PORTFOLIO_ROLL_WIN = 252   # trailing window (days) for the rolling vol estimate
+PORTFOLIO_ROLL_MIN = 20    # minimum real observations before a zone earns a weight
+
+# Multiple-testing trial count for the deflated Sharpe. The per-zone signal feeding the
+# portfolio was selected from the arc's model ladder - five fundamental zones
+# (FUNDAMENTAL_ZONES) times five model classes weighed over P42-P50 (linear OLS, the P47
+# low-wind hinge, the P48 enriched design, the P49 LightGBM, and the P46 regime-aware book)
+# before the hinge fade was adopted. 5 x 5 = 25 configurations is the honest trial budget.
+PORTFOLIO_N_TRIALS = 25
+
+
+def _per_obs_sharpe(r: np.ndarray) -> float:
+    """Per-observation (unannualised) Sharpe of a return array; nan if zero vol."""
+    sd = r.std(ddof=1)
+    return float(r.mean() / sd) if sd > 0 else float("nan")
+
+
+def _psr(r: np.ndarray, sr_benchmark_ann: float = 0.0) -> float:
+    """P(true Sharpe > benchmark) - Bailey & Lopez de Prado (2012), skew/kurtosis-aware.
+
+    Mirrors quant_lib.validation.robustness.probabilistic_sharpe_ratio; reimplemented
+    inline so the energy venv stays free of the sklearn dependency the validation package
+    __init__ pulls in. scipy.stats is already available in this venv.
+    """
+    from scipy import stats as sp_stats
+
+    r = r[np.isfinite(r)]
+    T = len(r)
+    if T < 5:
+        return float("nan")
+    sr_hat = _per_obs_sharpe(r)
+    if not np.isfinite(sr_hat):
+        return float("nan")
+    sr_bm = sr_benchmark_ann / np.sqrt(252)  # annualised -> per-obs
+    s = pd.Series(r)
+    skew = float(s.skew())
+    kurt = float(s.kurt()) + 3.0  # excess -> regular kurtosis
+    denom = np.sqrt((1.0 - skew * sr_hat + ((kurt - 1.0) / 4.0) * sr_hat**2) / (T - 1))
+    if denom <= 0:
+        return float("nan")
+    return float(sp_stats.norm.cdf((sr_hat - sr_bm) / denom))
+
+
+def _deflated_sharpe(r: np.ndarray, n_trials: int) -> dict:
+    """Deflated Sharpe: PSR against the expected-max Sharpe from n_trials independent tries.
+
+    Mirrors quant_lib.validation.robustness.deflated_sharpe_ratio. Returns annualised
+    sr_hat, the selection-adjusted benchmark, PSR (vs 0), and DSR (vs the benchmark).
+    """
+    from scipy import stats as sp_stats
+
+    def _clean(v, nd):
+        return round(float(v), nd) if v is not None and np.isfinite(v) else None
+
+    r = r[np.isfinite(r)]
+    T = len(r)
+    empty = {"sr_hat": None, "sr_benchmark": None, "psr": None, "dsr": None, "n_obs": int(T)}
+    if T < 5:
+        return empty
+    sr_daily = _per_obs_sharpe(r)
+    if not np.isfinite(sr_daily):
+        return empty
+    se_sr = np.sqrt((1.0 + 0.5 * sr_daily**2) / (T - 1))
+    euler = 0.5772156649
+    z_exp = (1.0 - euler) * sp_stats.norm.ppf(1.0 - 1.0 / n_trials) + euler * sp_stats.norm.ppf(
+        1.0 - 1.0 / (n_trials * np.e)
+    )
+    sr_bm_ann = se_sr * z_exp * np.sqrt(252)
+    return {
+        "sr_hat": _clean(sr_daily * np.sqrt(252), 3),
+        "sr_benchmark": _clean(sr_bm_ann, 3),
+        "psr": _clean(_psr(r, 0.0), 4),
+        "dsr": _clean(_psr(r, sr_bm_ann), 4),
+        "n_obs": int(T),
+    }
+
+
 def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) -> dict:
     """Cross-zone portfolio of the per-zone nonlinear fades, with Euler risk attribution.
 
     The capstone of the /spreads signal arc: combine the canonical per-zone signal (the
     P47 nonlinear residual fade, net of the P44 cost) into one book a desk would actually
     run, and decompose its risk. Each zone's daily net P&L is aligned by date (a zone
-    contributes 0 on days it has no signal). Zones are combined with inverse-volatility
-    (equal-risk) weights so no single hub dominates; the realised Euler volatility
-    decomposition - risk contribution_i = w_i (Sigma w)_i / sigma_p - then shows each zone's
-    actual share of portfolio risk (which deviates from equal because of cross-zone
-    correlation). We report the portfolio Sharpe / drawdown vs the single-zone DE-LU book
-    and the diversification ratio (weighted-average standalone vol / portfolio vol).
+    contributes 0 on days it has no signal). Two weighting schemes are reported:
 
-    Note: weights are set from full-sample volatility, so the portfolio construction is an
-    ex-post illustration on top of the genuinely walk-forward per-zone signals - the signals
-    are OOS, the weighting overlay is descriptive.
+    1. **Rolling inverse-vol (OOS, headline)** - each day's weight is formed from a trailing
+       window of realised per-zone P&L, lagged one day, so the weight for day t uses only
+       information available through t-1. This makes the whole portfolio genuinely
+       out-of-sample (the per-zone signals already were; now the construction is too).
+    2. **Full-sample inverse-vol (ex-post reference)** - the original P50 overlay, weights
+       set from full-sample volatility. Kept for comparison and for the Euler risk
+       attribution (risk contribution_i = w_i (Sigma w)_i / sigma_p) and diversification
+       ratio (weighted-average standalone vol / portfolio vol), both of which need a single
+       static weight vector to be well defined.
 
-    Returns dict with: as_of, n_days, cost, weighting, zones[] (zone, weight, vol,
-    sharpe_standalone, risk_contribution_pct, cum_pnl), portfolio{}, de_lu{},
-    diversification_ratio, equity[].
+    The OOS book's Sharpe is also reported with a **deflated Sharpe ratio** (Bailey &
+    Lopez de Prado 2012): PSR against 0 and DSR against the expected-max Sharpe from
+    PORTFOLIO_N_TRIALS independent trials, so the headline number carries an explicit
+    multiple-testing haircut for the arc's model selection.
+
+    Returns dict with: as_of, n_days, cost, weighting, weighting_oos, zones[] (zone, weight,
+    vol, sharpe_standalone, risk_contribution_pct, cum_pnl), portfolio{} (ex-post),
+    portfolio_oos{}, de_lu{}, diversification_ratio, significance{}, equity[].
     """
     series = {}
     for zone in FUNDAMENTAL_ZONES:
@@ -1673,14 +1760,18 @@ def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) 
     if len(series) < 2:
         return {}
 
-    # Align by date; a zone holds no position (0 P&L) on days it has no signal.
-    pnl = pd.DataFrame(series).sort_index().fillna(0.0)
+    # Align by date. pnl_raw keeps NaN where a zone has no signal that day (used for the
+    # rolling vol estimate so pre-start days don't bias a zone's vol toward 0); pnl 0-fills
+    # them (a zone holds no position, hence 0 P&L, on days it has no signal).
+    pnl_raw = pd.DataFrame(series).sort_index()
+    pnl = pnl_raw.fillna(0.0)
     zones = list(pnl.columns)
 
     vols = pnl.std()
     if (vols <= 0).any():
         zones = [z for z in zones if vols[z] > 0]
         pnl = pnl[zones]
+        pnl_raw = pnl_raw[zones]
         vols = pnl.std()
     if len(zones) < 2:
         return {}
@@ -1737,6 +1828,29 @@ def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) 
         "vol": round(port_vol, 3),
         "n_zones": len(zones),
     }
+
+    # --- Rolling inverse-vol weights (genuinely OOS) ---------------------------------
+    # Trailing-window vol per zone, lagged one day so day t's weight uses only data through
+    # t-1, then renormalised across the zones that have enough history that day.
+    roll_vol = pnl_raw.rolling(PORTFOLIO_ROLL_WIN, min_periods=PORTFOLIO_ROLL_MIN).std()
+    inv_roll = (1.0 / roll_vol.replace(0.0, np.nan)).shift(1)
+    w_roll = inv_roll.div(inv_roll.sum(axis=1), axis=0).fillna(0.0)
+    valid = w_roll.sum(axis=1) > 0.5  # at least one zone weighted (need ROLL_MIN history)
+    port_oos = (pnl * w_roll).sum(axis=1)[valid]
+    portfolio_oos = {
+        "sharpe": sharpe(port_oos),
+        "cum_pnl": round(float(port_oos.sum()), 2),
+        "max_dd_eur": max_dd(port_oos),
+        "vol": round(float(port_oos.std()), 3),
+        "n_zones": len(zones),
+    }
+
+    # Deflated / probabilistic Sharpe on the OOS book and DE-LU (multiple-testing haircut).
+    sig_oos = _deflated_sharpe(port_oos.to_numpy(float), PORTFOLIO_N_TRIALS)
+    de_pnl = pnl["DE-LU"] if "DE-LU" in pnl.columns else None
+    sig_de = _deflated_sharpe(de_pnl.to_numpy(float), PORTFOLIO_N_TRIALS) if de_pnl is not None else None
+    significance = {"n_trials": PORTFOLIO_N_TRIALS, "portfolio_oos": sig_oos, "de_lu": sig_de}
+
     de_lu = None
     if de_lu_pnl is not None:
         de_lu = {
@@ -1746,33 +1860,37 @@ def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) 
             "vol": round(float(de_lu_pnl.std()), 3),
         }
 
-    # Equity curves (portfolio + DE-LU standalone), downsampled to <= 365 points.
+    # Equity curves (ex-post portfolio, OOS portfolio, DE-LU standalone), <= 365 points.
     cum_port = port.cumsum()
+    cum_oos = port_oos.cumsum().reindex(port.index)  # NaN before the OOS book starts
     cum_de = de_lu_pnl.cumsum() if de_lu_pnl is not None else None
     dates_idx = [d.strftime("%Y-%m-%d") for d in port.index]
     step = max(1, len(port) // 365)
-    equity = []
-    for i in range(0, len(port), step):
-        equity.append({
+
+    def _pt(i):
+        oos_v = cum_oos.iloc[i]
+        return {
             "date": dates_idx[i],
             "cum_portfolio": round(float(cum_port.iloc[i]), 2),
+            "cum_portfolio_oos": round(float(oos_v), 2) if pd.notna(oos_v) else None,
             "cum_de_lu": round(float(cum_de.iloc[i]), 2) if cum_de is not None else None,
-        })
+        }
+
+    equity = [_pt(i) for i in range(0, len(port), step)]
     if equity and equity[-1]["date"] != dates_idx[-1]:
-        equity.append({
-            "date": dates_idx[-1],
-            "cum_portfolio": round(float(cum_port.iloc[-1]), 2),
-            "cum_de_lu": round(float(cum_de.iloc[-1]), 2) if cum_de is not None else None,
-        })
+        equity.append(_pt(len(port) - 1))
 
     return {
         "as_of": dates_idx[-1],
         "n_days": int(len(port)),
         "cost": round(cost, 3),
         "weighting": "inverse_volatility",
+        "weighting_oos": "rolling_inverse_volatility",
         "zones": zone_rows,
         "portfolio": portfolio,
+        "portfolio_oos": portfolio_oos,
         "de_lu": de_lu,
         "diversification_ratio": diversification_ratio,
+        "significance": significance,
         "equity": equity,
     }

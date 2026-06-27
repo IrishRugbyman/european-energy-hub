@@ -197,6 +197,8 @@ from .schemas import (
     PortfolioZoneRow,
     PortfolioStats,
     PortfolioEquityPoint,
+    PortfolioSignificance,
+    DeflatedSharpe,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3831,9 +3833,12 @@ def spreads_portfolio_backtest():
     """Cross-zone portfolio of the per-zone nonlinear fades, with Euler risk attribution.
 
     The capstone of the /spreads signal arc: combine the canonical per-zone signal (the P47
-    nonlinear residual fade, net of the P44 cost) into one inverse-volatility-weighted book
-    and decompose its risk. Reports the portfolio Sharpe / drawdown vs the single-zone DE-LU
-    book, each zone's Euler risk contribution, and the diversification ratio.
+    nonlinear residual fade, net of the P44 cost) into one book and decompose its risk.
+    Reports two weightings - a rolling inverse-vol book whose weights are formed only from
+    past P&L (genuinely OOS, the headline) and the full-sample inverse-vol overlay (ex-post
+    reference, used for the Euler risk attribution and diversification ratio) - the portfolio
+    Sharpe / drawdown vs the single-zone DE-LU book, and a deflated Sharpe ratio that haircuts
+    the OOS Sharpe for the arc's multiple testing.
     """
     _rate_limited()
     from analytics.fundamental import compute_portfolio_backtest
@@ -3847,10 +3852,19 @@ def spreads_portfolio_backtest():
         n_days=result["n_days"],
         cost=result["cost"],
         weighting=result["weighting"],
+        weighting_oos=result["weighting_oos"],
         zones=[PortfolioZoneRow(**z) for z in result["zones"]],
         portfolio=PortfolioStats(**result["portfolio"]),
+        portfolio_oos=PortfolioStats(**result["portfolio_oos"]),
         de_lu=PortfolioStats(**result["de_lu"]) if result.get("de_lu") else None,
         diversification_ratio=result["diversification_ratio"],
+        significance=PortfolioSignificance(
+            n_trials=result["significance"]["n_trials"],
+            portfolio_oos=DeflatedSharpe(**result["significance"]["portfolio_oos"]),
+            de_lu=DeflatedSharpe(**result["significance"]["de_lu"])
+            if result["significance"].get("de_lu")
+            else None,
+        ),
         equity=[PortfolioEquityPoint(**p) for p in result["equity"]],
     )
 

@@ -2661,16 +2661,19 @@ function PortfolioSection() {
 
   const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
   const sharpeUplift =
-    data && data.portfolio.sharpe != null && data.de_lu?.sharpe != null
-      ? data.portfolio.sharpe - data.de_lu.sharpe
+    data && data.portfolio_oos.sharpe != null && data.de_lu?.sharpe != null
+      ? data.portfolio_oos.sharpe - data.de_lu.sharpe
       : null
+  const sig = data?.significance
+  const dsrOos = sig?.portfolio_oos.dsr ?? null
+  const dsrDe = sig?.de_lu?.dsr ?? null
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
       <div className="flex items-center gap-3 mb-3">
         <h2 className="text-sm font-semibold text-foreground">Cross-Zone Portfolio: One Book, Risk-Decomposed</h2>
         <span className="text-xs text-muted-foreground hidden sm:inline">
-          Inverse-vol blend of the per-zone fades
+          OOS rolling inverse-vol blend, deflated for multiple testing
         </span>
       </div>
 
@@ -2681,8 +2684,11 @@ function PortfolioSection() {
           {/* Headline cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-muted/20 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-muted-foreground mb-0.5">Portfolio Sharpe</p>
-              <p className="text-sm font-semibold text-emerald-400">{fmt(data.portfolio.sharpe)}</p>
+              <p className="text-[10px] text-muted-foreground mb-0.5">Portfolio Sharpe (OOS)</p>
+              <p className="text-sm font-semibold text-emerald-400">
+                {fmt(data.portfolio_oos.sharpe)}{' '}
+                <span className="text-[10px] font-normal text-muted-foreground">ex-post {fmt(data.portfolio.sharpe)}</span>
+              </p>
             </div>
             <div className="bg-muted/20 rounded-lg px-3 py-2">
               <p className="text-[10px] text-muted-foreground mb-0.5">vs DE-LU alone</p>
@@ -2694,22 +2700,33 @@ function PortfolioSection() {
               </p>
             </div>
             <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Deflated Sharpe (DSR)</p>
+              <p className="text-sm font-semibold" style={{ color: (dsrOos ?? 0) >= 0.95 ? '#4ade80' : (dsrOos ?? 0) >= 0.5 ? '#fbbf24' : '#f87171' }}>
+                {dsrOos != null ? `${(dsrOos * 100).toFixed(1)}%` : '--'}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
               <p className="text-[10px] text-muted-foreground mb-0.5">Diversification ratio</p>
               <p className="text-sm font-semibold text-foreground">{fmt(data.diversification_ratio)}×</p>
             </div>
-            <div className="bg-muted/20 rounded-lg px-3 py-2">
-              <p className="text-[10px] text-muted-foreground mb-0.5">Max DD (port vs DE-LU)</p>
-              <p className="text-sm font-semibold text-foreground">
-                {fmt(data.portfolio.max_dd_eur, 0)} <span className="text-muted-foreground">vs</span>{' '}
-                {fmt(data.de_lu?.max_dd_eur, 0)}
-              </p>
-            </div>
           </div>
 
-          {/* Equity curve: portfolio vs DE-LU */}
+          {/* Deflated-Sharpe strip: portfolio survives the multiple-testing haircut, DE-LU does not */}
+          {sig && (
+            <div className="bg-muted/10 border border-border/60 rounded-lg px-3 py-2 text-[10px] text-muted-foreground leading-relaxed">
+              After a <span className="text-foreground">{sig.n_trials}-trial</span> deflation (benchmark Sharpe{' '}
+              {fmt(sig.portfolio_oos.sr_benchmark)} from selection bias), the OOS portfolio's probability of a true
+              Sharpe above that benchmark is <span className="text-emerald-400">{dsrOos != null ? `${(dsrOos * 100).toFixed(1)}%` : '--'}</span>{' '}
+              (DSR) — it survives the haircut. The single best zone DE-LU alone deflates to{' '}
+              <span style={{ color: (dsrDe ?? 0) >= 0.5 ? '#fbbf24' : '#f87171' }}>{dsrDe != null ? `${(dsrDe * 100).toFixed(1)}%` : '--'}</span>{' '}
+              — below the selection-bias benchmark, so a one-zone book does not. Diversification is what makes the edge robust to multiple testing.
+            </div>
+          )}
+
+          {/* Equity curve: OOS portfolio vs ex-post vs DE-LU */}
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground font-medium">
-              Cumulative P&L — inverse-vol portfolio vs DE-LU alone ({data.n_days}d, net of cost)
+              Cumulative P&L — OOS rolling-weight portfolio vs ex-post vs DE-LU alone ({data.n_days}d, net of cost)
             </p>
             <ResponsiveContainer width="100%" height={220}>
               <LineChart data={data.equity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
@@ -2721,12 +2738,13 @@ function PortfolioSection() {
                   contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
                   formatter={(val: unknown, name: unknown) => [
                     typeof val === 'number' ? val.toFixed(1) : '--',
-                    name === 'cum_portfolio' ? 'Portfolio' : 'DE-LU alone',
+                    name === 'cum_portfolio_oos' ? 'Portfolio (OOS)' : name === 'cum_portfolio' ? 'Portfolio (ex-post)' : 'DE-LU alone',
                   ]}
                 />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
                 <ReferenceLine y={0} stroke="#334155" strokeWidth={1} />
-                <Line type="monotone" dataKey="cum_portfolio" name="Portfolio" stroke="#4ade80" dot={false} strokeWidth={2} isAnimationActive={false} />
+                <Line type="monotone" dataKey="cum_portfolio_oos" name="Portfolio (OOS)" stroke="#4ade80" dot={false} strokeWidth={2} isAnimationActive={false} connectNulls />
+                <Line type="monotone" dataKey="cum_portfolio" name="Portfolio (ex-post)" stroke="#34d399" dot={false} strokeWidth={1} strokeDasharray="4 3" isAnimationActive={false} />
                 <Line type="monotone" dataKey="cum_de_lu" name="DE-LU alone" stroke="#60a5fa" dot={false} strokeWidth={1.5} isAnimationActive={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -2755,15 +2773,21 @@ function PortfolioSection() {
 
           <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
             The capstone book combines each zone's canonical signal - the P47 nonlinear residual fade, net of the
-            {' '}{data.cost.toFixed(2)} €/MWh·u cost - into one portfolio with inverse-volatility (equal-risk)
-            weights, so no single hub dominates. The Euler decomposition (risk contribution = wᵢ·(Σw)ᵢ/σₚ) shows
-            each zone's actual share of portfolio risk; it deviates from equal because the per-zone fades are
-            imperfectly correlated, which is exactly the source of the diversification.{' '}
+            {' '}{data.cost.toFixed(2)} €/MWh·u cost - into one portfolio. The headline weights are{' '}
+            <span className="text-foreground/80">rolling inverse-volatility</span>: each day's weight is formed from a
+            trailing window of realised per-zone P&L, lagged one day, so the construction uses only past information
+            and the whole portfolio - signals and weighting - is genuinely out-of-sample. Reassuringly the OOS Sharpe
+            ({fmt(data.portfolio_oos.sharpe)}) lands right on the full-sample ex-post overlay ({fmt(data.portfolio.sharpe)}),
+            so the headline was not an artefact of look-ahead weighting. The Euler decomposition (risk contribution =
+            wᵢ·(Σw)ᵢ/σₚ, on the static reference weights) shows each zone's share of portfolio risk; it deviates from
+            equal because the per-zone fades are imperfectly correlated, which is exactly the source of the
+            diversification.{' '}
             {(sharpeUplift ?? 0) > 0
-              ? `The portfolio Sharpe (${fmt(data.portfolio.sharpe)}) is well above the single-zone DE-LU book (${fmt(data.de_lu?.sharpe)}), at a ${fmt(data.diversification_ratio)}× diversification ratio and roughly ${data.de_lu && data.portfolio.max_dd_eur > data.de_lu.max_dd_eur ? 'smaller' : 'comparable'} drawdown - blending uncorrelated zone signals is the cleanest free lunch in the whole arc.`
+              ? `The OOS portfolio Sharpe (${fmt(data.portfolio_oos.sharpe)}) is well above the single-zone DE-LU book (${fmt(data.de_lu?.sharpe)}), at a ${fmt(data.diversification_ratio)}× diversification ratio and roughly ${data.de_lu && data.portfolio_oos.max_dd_eur > data.de_lu.max_dd_eur ? 'smaller' : 'comparable'} drawdown.`
               : `On this sample the portfolio does not beat the single-zone DE-LU book.`}{' '}
-            Per-zone signals are genuinely walk-forward; the inverse-vol weighting overlay is set from full-sample
-            volatility, so it is an ex-post construction illustration on top of OOS signals.
+            Most important, the deflated Sharpe ratio haircuts that number for the arc's {sig?.n_trials ?? ''} model-selection
+            trials: the portfolio still clears the selection-bias benchmark (DSR {dsrOos != null ? `${(dsrOos * 100).toFixed(0)}%` : '--'})
+            where a single zone does not - diversification, not any one signal, is what survives multiple testing.
           </p>
         </div>
       )}

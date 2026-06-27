@@ -1290,9 +1290,21 @@ def test_spreads_portfolio_backtest(client):
     assert p["max_dd_eur"] <= 0
     # Diversification ratio >= 1 when the per-zone signals are imperfectly correlated
     assert data["diversification_ratio"] is None or data["diversification_ratio"] >= 0.99
+    # Rolling inverse-vol (OOS) book is reported alongside the ex-post one
+    assert data["weighting_oos"] == "rolling_inverse_volatility"
+    poos = data["portfolio_oos"]
+    assert {"sharpe", "cum_pnl", "max_dd_eur", "vol", "n_zones"} <= poos.keys()
+    assert poos["max_dd_eur"] <= 0
+    # Deflated Sharpe: trial-count haircut, DSR <= PSR, both probabilities in [0, 1]
+    sig = data["significance"]
+    assert sig["n_trials"] >= 2
+    ds = sig["portfolio_oos"]
+    assert {"sr_hat", "sr_benchmark", "psr", "dsr", "n_obs"} <= ds.keys()
+    if ds["psr"] is not None and ds["dsr"] is not None:
+        assert 0.0 <= ds["dsr"] <= ds["psr"] <= 1.0
     eq = data["equity"]
     assert len(eq) > 0
-    assert {"date", "cum_portfolio", "cum_de_lu"} <= eq[0].keys()
+    assert {"date", "cum_portfolio", "cum_portfolio_oos", "cum_de_lu"} <= eq[0].keys()
 
 
 def test_spreads_gbm_model(client):

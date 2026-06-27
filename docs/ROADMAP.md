@@ -294,6 +294,8 @@ fabricate a series to "complete" a factor.
 ### Phase 49 - Gradient-boosted fair value vs the hinge OLS [COMPLETE 2026-06-27]
 
 ### Phase 50 - Signal ensemble + cross-zone portfolio P&L [COMPLETE 2026-06-27]
+
+### Phase 51 - Harden the portfolio capstone: OOS rolling weights + deflated Sharpe [COMPLETE 2026-06-27]
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
 
 ## 10. Deliberately NOT building (v1)
