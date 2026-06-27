@@ -312,11 +312,7 @@ fabricate a series to "complete" a factor.
 - Data gap: nothing in market_data yet. First task is to identify the best free API per ISO
   (EIA open data covers some ISOs via EIA-930 hourly; others need direct ISO API access).
 
-### Phase 57 - Spreads arc: cross-factor interaction term nuclear * wind (future)
-- Test whether nuclear_lag1 * wind_pct interaction explains an additional slice of FR price
-  variance (when nuclear is low AND wind is high, price crashes more than additive models predict).
-- Pure analytics on existing data, no new fetch. Add to enriched-OLS as optional 6th factor,
-  report whether marginal R2 justifies the additional degree of freedom (AIC / BIC comparison).
+### Phase 57 - Spreads arc: cross-factor interaction term nuclear * wind [COMPLETE 2026-06-28]
 
 ## 10. Deliberately NOT building (v1)
 
