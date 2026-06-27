@@ -179,6 +179,8 @@ from .schemas import (
     CostRobustnessResponse,
     CostRobustnessGross,
     CostSweepPoint,
+    EdgeByZoneResponse,
+    EdgeByZoneRow,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3657,6 +3659,33 @@ def spreads_nonlinear_cost_robustness(zone: str = "DE-LU"):
         breakeven_cost_sharpe=result["breakeven_cost_sharpe"],
         breakeven_cost_cum=result["breakeven_cost_cum"],
         sweep=[CostSweepPoint(**p) for p in result["sweep"]],
+    )
+
+
+@app.get("/api/spreads/nonlinear-edge-by-zone", response_model=EdgeByZoneResponse)
+def spreads_nonlinear_edge_by_zone():
+    """Cross-zone dose-response: does the nonlinear edge scale with wind penetration?
+
+    The nonlinear arc (P42-P44) was demonstrated on DE-LU with FR as the null. This tests
+    the central claim cross-sectionally - running the same walk-forward backtest on every
+    fundamental zone and reporting each zone's Sharpe edge (nonlinear - linear), gross and
+    net of a fixed transaction cost, against its mean wind penetration. The thesis predicts
+    a positive slope; the fitted line and Pearson correlation say whether it holds.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_nonlinear_edge_by_zone
+
+    result = compute_nonlinear_edge_by_zone(db.query)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for edge-by-zone")
+
+    return EdgeByZoneResponse(
+        cost=result["cost"],
+        zones=[EdgeByZoneRow(**z) for z in result["zones"]],
+        slope=result["slope"],
+        intercept=result["intercept"],
+        corr=result["corr"],
+        dose_response_holds=result["dose_response_holds"],
     )
 
 

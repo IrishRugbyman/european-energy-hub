@@ -960,3 +960,170 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU") -
         "breakeven_cost_cum": be_cum,
         "sweep": sweep,
     }
+
+
+# Fixed round-trip cost (EUR/MWh per unit |position change|) used for the net-of-cost
+# leg of the cross-zone comparison - a realistic mid-grid day-ahead execution slippage.
+EDGE_NET_COST = 0.10
+
+
+def _nonlinear_signal_pnl(query_fn: Callable, zone: str) -> dict | None:
+    """Walk-forward both fair-value signals for one zone, return aligned P&L arrays.
+
+    Shared core of the nonlinear backtest: refits the linear and nonlinear OLS models
+    daily on all prior data, predicts day t OOS, fades each model's rolling-z-scored
+    residual, and returns the gross daily P&L, turnover, and wind regime for both models
+    aligned to the same evaluation days. Returns None if the zone lacks enough data.
+    """
+    try:
+        rows = query_fn("""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
+                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.total_mw > 0
+              AND g.wind IS NOT NULL
+              AND g.solar IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"edge-by-zone query failed for {zone}: {exc!r}")
+        return None
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        return None
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df = df.reset_index(drop=True)
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    n = len(y)
+
+    Xlin = _design_linear(ttf, eua, wind, solar)
+    Xnl = _design_nonlinear(ttf, eua, wind, solar)
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, res_lin, res_nl = [], [], []
+    for t in range(start, n):
+        clin, _, _, _ = np.linalg.lstsq(Xlin[:t], y[:t], rcond=None)
+        cnl, _, _, _ = np.linalg.lstsq(Xnl[:t], y[:t], rcond=None)
+        idx.append(t)
+        res_lin.append(y[t] - float(Xlin[t] @ clin))
+        res_nl.append(y[t] - float(Xnl[t] @ cnl))
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return None
+
+    idx = np.array(idx)
+    prices = y[idx]
+    w_eval = wind[idx]
+    price_changes = np.diff(prices)
+
+    def signal_positions(residuals: list[float]) -> np.ndarray:
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        return np.clip(-z, -1.0, 1.0)
+
+    pos_lin = signal_positions(res_lin)
+    pos_nl = signal_positions(res_nl)
+
+    def turnover(pos: np.ndarray) -> np.ndarray:
+        return np.abs(np.diff(pos, prepend=0.0))[:-1]
+
+    return {
+        "gross_lin": pos_lin[:-1] * price_changes,
+        "gross_nl": pos_nl[:-1] * price_changes,
+        "to_lin": turnover(pos_lin),
+        "to_nl": turnover(pos_nl),
+        "w_pnl": w_eval[1:],
+    }
+
+
+def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_COST) -> dict:
+    """Cross-zone dose-response: does the nonlinear edge scale with wind penetration?
+
+    The whole nonlinear arc rests on one claim - the nonlinear fair-value basis adds
+    capturable alpha *because* it recovers the low-wind scarcity premium, so the edge
+    should be largest where wind penetration is highest. Phases 42-44 showed this on a
+    single hub (DE-LU) with FR as the null. This tests the claim cross-sectionally: it
+    runs the same walk-forward backtest on every FUNDAMENTAL_ZONES zone and reports each
+    zone's Sharpe edge (nonlinear - linear), both gross and net of a fixed transaction
+    cost, against the zone's mean wind penetration. The thesis predicts a positive slope.
+
+    A simple OLS line is fit through (mean_wind_pct, sharpe_delta_gross) across zones; the
+    sign of the slope and the Pearson correlation say whether the dose-response holds.
+
+    Returns dict with: cost, zones[] (zone, mean_wind_pct, n_eval, sharpe_lin, sharpe_nl,
+    sharpe_delta_gross, sharpe_delta_net, cum_pnl_delta_gross), slope, intercept, corr,
+    dose_response_holds.
+    """
+
+    def sharpe(pnl: np.ndarray) -> float | None:
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    zones = []
+    for zone in FUNDAMENTAL_ZONES:
+        sig = _nonlinear_signal_pnl(query_fn, zone)
+        if sig is None:
+            logger.warning(f"edge-by-zone: insufficient data for {zone}")
+            continue
+        gl, gn = sig["gross_lin"], sig["gross_nl"]
+        tl, tn = sig["to_lin"], sig["to_nl"]
+        s_lin_g, s_nl_g = sharpe(gl), sharpe(gn)
+        s_lin_n, s_nl_n = sharpe(gl - cost * tl), sharpe(gn - cost * tn)
+        if s_lin_g is None or s_nl_g is None:
+            continue
+        zones.append({
+            "zone": zone,
+            "mean_wind_pct": round(float(sig["w_pnl"].mean()), 2),
+            "n_eval": int(len(gl)),
+            "sharpe_lin": s_lin_g,
+            "sharpe_nl": s_nl_g,
+            "sharpe_delta_gross": round(s_nl_g - s_lin_g, 3),
+            "sharpe_delta_net": round(s_nl_n - s_lin_n, 3) if s_lin_n is not None and s_nl_n is not None else None,
+            "cum_pnl_delta_gross": round(float(gn.sum() - gl.sum()), 2),
+        })
+
+    if len(zones) < 2:
+        return {}
+
+    # OLS line + Pearson correlation of the Sharpe edge against mean wind penetration.
+    x = np.array([z["mean_wind_pct"] for z in zones], float)
+    yv = np.array([z["sharpe_delta_gross"] for z in zones], float)
+    slope = intercept = corr = None
+    if x.std() > 0 and yv.std() > 0:
+        slope_v, intercept_v = np.polyfit(x, yv, 1)
+        slope = round(float(slope_v), 4)
+        intercept = round(float(intercept_v), 3)
+        corr = round(float(np.corrcoef(x, yv)[0, 1]), 3)
+
+    # Order zones by wind penetration so the frontend reads as a dose-response curve.
+    zones.sort(key=lambda z: z["mean_wind_pct"])
+
+    return {
+        "cost": round(cost, 3),
+        "zones": zones,
+        "slope": slope,
+        "intercept": intercept,
+        "corr": corr,
+        "dose_response_holds": bool(slope is not None and slope > 0 and corr is not None and corr > 0),
+    }

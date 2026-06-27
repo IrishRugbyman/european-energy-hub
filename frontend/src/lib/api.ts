@@ -1102,6 +1102,7 @@ export const api = {
   spreadsNonlinearModel: (zone?: string) => get<NonlinearModelResponse>(`/spreads/nonlinear-model${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearBacktest: (zone?: string) => get<NonlinearBacktestResponse>(`/spreads/nonlinear-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearCostRobustness: (zone?: string) => get<CostRobustnessResponse>(`/spreads/nonlinear-cost-robustness${zone ? `?zone=${zone}` : ''}`),
+  spreadsNonlinearEdgeByZone: () => get<EdgeByZoneResponse>('/spreads/nonlinear-edge-by-zone'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1420,6 +1421,26 @@ export interface CostRobustnessResponse {
   breakeven_cost_sharpe: number | null
   breakeven_cost_cum: number | null
   sweep: CostSweepPoint[]
+}
+
+export interface EdgeByZoneRow {
+  zone: string
+  mean_wind_pct: number
+  n_eval: number
+  sharpe_lin: number | null
+  sharpe_nl: number | null
+  sharpe_delta_gross: number
+  sharpe_delta_net: number | null
+  cum_pnl_delta_gross: number
+}
+
+export interface EdgeByZoneResponse {
+  cost: number
+  zones: EdgeByZoneRow[]
+  slope: number | null
+  intercept: number | null
+  corr: number | null
+  dose_response_holds: boolean
 }
 
 export interface BacktestEquityPoint {

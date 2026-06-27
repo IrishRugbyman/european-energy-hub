@@ -1278,6 +1278,26 @@ class CostRobustnessResponse(BaseModel):
     sweep: list[CostSweepPoint]
 
 
+class EdgeByZoneRow(BaseModel):
+    zone: str
+    mean_wind_pct: float
+    n_eval: int
+    sharpe_lin: float | None
+    sharpe_nl: float | None
+    sharpe_delta_gross: float
+    sharpe_delta_net: float | None
+    cum_pnl_delta_gross: float
+
+
+class EdgeByZoneResponse(BaseModel):
+    cost: float
+    zones: list[EdgeByZoneRow]
+    slope: float | None
+    intercept: float | None
+    corr: float | None
+    dose_response_holds: bool
+
+
 class LngLatestRow(BaseModel):
     country: str
     gas_day: str

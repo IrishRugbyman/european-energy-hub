@@ -1197,7 +1197,25 @@ def test_spreads_nonlinear_cost_robustness(client):
     assert client.get("/api/spreads/nonlinear-cost-robustness?zone=FAKE").status_code == 400
 
 
-def test_spreads_fundamental_backtest(client):
+def test_spreads_nonlinear_edge_by_zone(client):
+    r = client.get("/api/spreads/nonlinear-edge-by-zone")
+    assert r.status_code == 200
+    data = r.json()
+    assert "cost" in data and data["cost"] > 0
+    zones = data["zones"]
+    assert len(zones) >= 2
+    # Rows are ordered by ascending wind penetration (dose-response reads left to right)
+    winds = [z["mean_wind_pct"] for z in zones]
+    assert winds == sorted(winds)
+    for z in zones:
+        assert {"zone", "mean_wind_pct", "n_eval", "sharpe_delta_gross", "cum_pnl_delta_gross"} <= z.keys()
+        assert z["n_eval"] > 0
+        # Gross edge is the difference of the two reported Sharpes
+        if z["sharpe_lin"] is not None and z["sharpe_nl"] is not None:
+            assert abs(z["sharpe_delta_gross"] - (z["sharpe_nl"] - z["sharpe_lin"])) < 1e-6
+    # Fit fields present (may be None only if all zones share one wind value, not here)
+    assert "slope" in data and "corr" in data
+    assert isinstance(data["dose_response_holds"], bool)
     r = client.get("/api/spreads/fundamental-backtest?zone=DE-LU")
     assert r.status_code == 200
     data = r.json()
