@@ -289,15 +289,7 @@ fabricate a series to "complete" a factor.
 
 ### Phase 47 - No-look-ahead rebuild of the fundamental arc on DA forecasts [COMPLETE 2026-06-27]
 
-### Phase 48 - Expand the fundamental factor set
-*Goal: tighten the fair value with residual-demand and supply-availability factors, not just TTF/EUA/wind/solar. Build on the P47 forecast feature layer (no look-ahead).*
-*Depends on: P42 design matrices, P47 forecast feature loader. 1-2 sessions.*
-
-- [ ] Add forecast-basis factors that are in the gate-closure information set: nuclear% (DA forecast where available), residual demand (forecast load - forecast wind - forecast solar) - `power_load` forecast coverage is now confirmed for all five zones via P47. Hydro is realised-only in `generation_daily`; either find a DA hydro forecast or flag it zone-restricted (no synthetic fill). Investigate FR nuclear unavailability (ENTSO-E A80) as a fetcher candidate; if not ingested, log it in `ideas.md` and defer that one factor.
-- [ ] Extend `_design_linear` / `_design_nonlinear` with the available new factors plus lag terms (lagged residual, day-over-day TTF change); keep the design dependency-free (numpy lstsq).
-- [ ] Re-run the P42 OOS RMSE comparison and the P43 P&L backtest with the enriched design; guard against overfitting using the rolling-coefficient stability (P35) and deflated-Sharpe checks already on the page.
-- [ ] Surface the new coefficients in the existing fundamental-model coefficient table; note which factors are zone-restricted by data coverage.
-- *Done when:* enriched-design OOS RMSE and/or Sharpe improve over the P42/P43 forecast baseline without coefficient-stability degradation, factor coverage gaps are explicit, and tests pass.
+### Phase 48 - Expand the fundamental factor set [COMPLETE 2026-06-27]
 
 ### Phase 49 - Gradient-boosted fair value vs the hinge OLS
 *Goal: test honestly whether a nonparametric learner beats the one-coefficient hinge, or just adds variance.*

@@ -1307,6 +1307,43 @@ class EdgeByZoneResponse(BaseModel):
     dose_response_holds: bool
 
 
+class EnrichedFactorStability(BaseModel):
+    mean: float
+    std: float
+    cv: float | None
+
+
+class EnrichedModelCoef(BaseModel):
+    residual_demand_gw: EnrichedFactorStability
+    ttf_change: EnrichedFactorStability
+
+
+class EnrichedModelStats(BaseModel):
+    rmse_overall: float | None
+    rmse_low_wind: float | None
+    sharpe_net: float | None
+
+
+class EnrichedModelImprovement(BaseModel):
+    rmse_pct: float | None
+    low_wind_rmse_pct: float | None
+    sharpe_delta: float | None
+
+
+class EnrichedModelResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_oos: int
+    source: str
+    knot_pct: float
+    baseline: EnrichedModelStats
+    enriched: EnrichedModelStats
+    improvement: EnrichedModelImprovement
+    coef: EnrichedModelCoef
+    factors_added: list[str]
+    factors_deferred: list[str]
+
+
 class RegimeBookStats(BaseModel):
     sharpe: float | None
     sharpe_sub_knot: float | None

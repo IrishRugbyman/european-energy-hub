@@ -1104,6 +1104,7 @@ export const api = {
   spreadsNonlinearCostRobustness: (zone?: string) => get<CostRobustnessResponse>(`/spreads/nonlinear-cost-robustness${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearEdgeByZone: () => get<EdgeByZoneResponse>('/spreads/nonlinear-edge-by-zone'),
   spreadsRegimeAwareBacktest: (zone?: string) => get<RegimeAwareBacktestResponse>(`/spreads/regime-aware-backtest${zone ? `?zone=${zone}` : ''}`),
+  spreadsEnrichedModel: (zone?: string) => get<EnrichedModelResponse>(`/spreads/enriched-model${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1451,6 +1452,39 @@ export interface EdgeByZoneResponse {
   intercept: number | null
   corr: number | null
   dose_response_holds: boolean
+}
+
+export interface EnrichedFactorStability {
+  mean: number
+  std: number
+  cv: number | null
+}
+
+export interface EnrichedModelStats {
+  rmse_overall: number | null
+  rmse_low_wind: number | null
+  sharpe_net: number | null
+}
+
+export interface EnrichedModelResponse {
+  zone: string
+  as_of: string | null
+  n_oos: number
+  source: string
+  knot_pct: number
+  baseline: EnrichedModelStats
+  enriched: EnrichedModelStats
+  improvement: {
+    rmse_pct: number | null
+    low_wind_rmse_pct: number | null
+    sharpe_delta: number | null
+  }
+  coef: {
+    residual_demand_gw: EnrichedFactorStability
+    ttf_change: EnrichedFactorStability
+  }
+  factors_added: string[]
+  factors_deferred: string[]
 }
 
 export interface RegimeBookStats {

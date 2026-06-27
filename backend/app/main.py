@@ -185,6 +185,11 @@ from .schemas import (
     RegimeBookStats,
     RegimeAwareEquityPoint,
     LookaheadPremium,
+    EnrichedModelResponse,
+    EnrichedModelStats,
+    EnrichedModelImprovement,
+    EnrichedModelCoef,
+    EnrichedFactorStability,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3734,6 +3739,47 @@ def spreads_regime_aware_backtest(zone: str = "DE-LU"):
         regime_aware=RegimeBookStats(**result["regime_aware"]),
         recovers_drought=result["recovers_drought"],
         equity=[RegimeAwareEquityPoint(**p) for p in result["equity"]],
+    )
+
+
+@app.get("/api/spreads/enriched-model", response_model=EnrichedModelResponse)
+def spreads_enriched_model(zone: str = "DE-LU"):
+    """Does enriching the nonlinear fair value with residual demand + dTTF help?
+
+    Phase 47 fixed the look-ahead by driving the fair value off day-ahead forecasts. This
+    adds two more gate-closure factors - residual demand (forecast load minus forecast
+    wind/solar, GW) and the day-over-day TTF change - and compares the enriched nonlinear
+    design against the P47 baseline, walk-forward and OOS, on both fit (RMSE) and tradeable
+    Sharpe (faded residual, net of the P44 cost), plus the walk-forward stability of the new
+    coefficients. Nuclear% is excluded: the A69 day-ahead forecast carries only wind/solar,
+    so realised nuclear would reintroduce look-ahead.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_enriched_model, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_enriched_model(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for enriched model")
+
+    return EnrichedModelResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_oos=result["n_oos"],
+        source=result["source"],
+        knot_pct=result["knot_pct"],
+        baseline=EnrichedModelStats(**result["baseline"]),
+        enriched=EnrichedModelStats(**result["enriched"]),
+        improvement=EnrichedModelImprovement(**result["improvement"]),
+        coef=EnrichedModelCoef(
+            residual_demand_gw=EnrichedFactorStability(**result["coef"]["residual_demand_gw"]),
+            ttf_change=EnrichedFactorStability(**result["coef"]["ttf_change"]),
+        ),
+        factors_added=result["factors_added"],
+        factors_deferred=result["factors_deferred"],
     )
 
 

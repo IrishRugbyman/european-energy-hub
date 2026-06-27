@@ -1247,6 +1247,29 @@ def test_spreads_nonlinear_edge_by_zone(client):
     assert r2.status_code == 400
 
 
+def test_spreads_enriched_model(client):
+    r = client.get("/api/spreads/enriched-model?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_oos"] > 0
+    assert data["source"] == "forecast"
+    assert data["knot_pct"] == 8.0
+    for key in ("baseline", "enriched"):
+        m = data[key]
+        assert {"rmse_overall", "rmse_low_wind", "sharpe_net"} <= m.keys()
+    imp = data["improvement"]
+    assert {"rmse_pct", "low_wind_rmse_pct", "sharpe_delta"} <= imp.keys()
+    # New-factor coefficients carry walk-forward stability stats
+    for fac in ("residual_demand_gw", "ttf_change"):
+        c = data["coef"][fac]
+        assert {"mean", "std", "cv"} <= c.keys()
+    assert data["factors_added"] == ["residual_demand_gw", "ttf_change"]
+    # Nuclear is explicitly deferred (no DA forecast -> would be look-ahead)
+    assert any("nuclear" in f.lower() for f in data["factors_deferred"])
+    assert client.get("/api/spreads/enriched-model?zone=FAKE").status_code == 400
+
+
 def test_spreads_regime_aware_backtest(client):
     r = client.get("/api/spreads/regime-aware-backtest?zone=DE-LU")
     assert r.status_code == 200

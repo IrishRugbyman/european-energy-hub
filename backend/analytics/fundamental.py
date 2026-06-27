@@ -410,16 +410,17 @@ def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUN
     """Load the daily fair-value design inputs for one zone from energy_hub.duckdb.
 
     Returns a DataFrame with price_date, base_eur, ttf_eur_mwh, eua_eur_t, wind_pct,
-    solar_pct - the renewable-penetration columns chosen by `source` ("forecast" = DA
-    forecast over forecast load, the gate-closure set; "actual" = realised over realised
-    load on the same denominator). Returns None on query failure. Both variants come from
-    generation_forecast_daily, so the forecast and actual books differ only by
+    solar_pct, load_mw - the renewable-penetration columns chosen by `source` ("forecast" =
+    DA forecast over forecast load, the gate-closure set; "actual" = realised over realised
+    load on the same denominator). load_mw is the matching (forecast or actual) load level,
+    used to reconstruct residual demand. Returns None on query failure. Both variants come
+    from generation_forecast_daily, so the forecast and actual books differ only by
     forecast-vs-realised, never by denominator.
     """
     if source == "forecast":
-        wind_col, solar_col = "wind_pct", "solar_pct"
+        wind_col, solar_col, load_col = "wind_pct", "solar_pct", "load_fc_mw"
     elif source == "actual":
-        wind_col, solar_col = "wind_pct_actual", "solar_pct_actual"
+        wind_col, solar_col, load_col = "wind_pct_actual", "solar_pct_actual", "load_actual_mw"
     else:
         raise ValueError(f"unknown feature source {source!r}")
     try:
@@ -430,7 +431,8 @@ def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUN
                 pr.ttf_eur_mwh,
                 pr.eua_eur_t,
                 g.{wind_col}  AS wind_pct,
-                g.{solar_col} AS solar_pct
+                g.{solar_col} AS solar_pct,
+                g.{load_col}  AS load_mw
             FROM power_daily p
             JOIN prices_daily pr ON p.price_date = pr.price_date
             JOIN generation_forecast_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
@@ -1293,4 +1295,177 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU", sourc
         "regime_aware": ra_stats,
         "recovers_drought": recovers_drought,
         "equity": equity,
+    }
+
+
+# Factors added in the enriched design (Phase 48), all in the gate-closure information set.
+ENRICHED_FACTORS = ["residual_demand_gw", "ttf_change"]
+# Factors considered but deferred for lack of a no-look-ahead source.
+DEFERRED_FACTORS = [
+    "nuclear_pct (ENTSO-E A69 day-ahead forecast carries only wind/solar; realised nuclear "
+    "would reintroduce look-ahead. FR nuclear unavailability A80 is not yet ingested.)"
+]
+
+
+def _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf):
+    """Baseline nonlinear design plus residual demand (GW) and the day-over-day TTF change.
+
+    Residual demand = forecast load - forecast wind - forecast solar, in GW: the depth the
+    thermal stack must cover, a price driver the renewable *shares* (wind%, solar%) miss
+    because they ignore the demand level. TTF change is the day-over-day move in the gas
+    marginal cost. Both are in the gate-closure information set (forecast load + prior-day
+    TTF), so the enriched design stays no-look-ahead.
+    """
+    base = _design_nonlinear(ttf, eua, wind, solar)
+    return np.column_stack([base, resid_gw, dttf])
+
+
+def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+    """Walk-forward: does enriching the nonlinear fair value with residual demand + dTTF help?
+
+    Phase 47 fixed the look-ahead by driving the fair value off day-ahead forecasts. This
+    asks whether adding two more gate-closure factors - residual demand (forecast load minus
+    forecast wind/solar, in GW) and the day-over-day TTF change - tightens the fair value
+    over the P47 nonlinear baseline, in both OOS RMSE and tradeable Sharpe, without the new
+    coefficients being unstable (a sign of overfitting). Strict walk-forward: at each day t
+    both designs are refit on rows [0..t-1] and predict day t. The residual is faded
+    (position = clip(-z), net of the P44 cost) so the Sharpe is the same tradeable metric as
+    the rest of the arc. Nuclear% is deliberately excluded - it has no day-ahead forecast,
+    so including realised nuclear would reintroduce look-ahead (see DEFERRED_FACTORS).
+
+    Returns dict with: zone, as_of, n_oos, source, knot_pct, baseline{}, enriched{},
+    improvement{}, coef{} (mean + walk-forward std of the new coefficients), factors_added,
+    factors_deferred.
+    """
+    rows = _fetch_fundamental_features(query_fn, zone, source)
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"enriched model: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"])
+    df = df.reset_index(drop=True)
+    if len(df) < WF_MIN_TRAIN + 40:
+        logger.warning(f"enriched model: insufficient data for {zone} after dropna")
+        return {}
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    load_mw = df["load_mw"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    # Residual demand in GW = load * (1 - renewable share); day-over-day TTF change.
+    resid_gw = load_mw * (1.0 - (wind + solar) / 100.0) / 1000.0
+    dttf = np.diff(ttf, prepend=ttf[0])
+
+    Xbase = _design_nonlinear(ttf, eua, wind, solar)
+    Xenr = _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf)
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, pred_base, pred_enr, res_base, res_enr = [], [], [], [], []
+    enr_coefs = []
+    for t in range(start, n):
+        cbase, _, _, _ = np.linalg.lstsq(Xbase[:t], y[:t], rcond=None)
+        cenr, _, _, _ = np.linalg.lstsq(Xenr[:t], y[:t], rcond=None)
+        idx.append(t)
+        pb = float(Xbase[t] @ cbase)
+        pe = float(Xenr[t] @ cenr)
+        pred_base.append(pb)
+        pred_enr.append(pe)
+        res_base.append(y[t] - pb)
+        res_enr.append(y[t] - pe)
+        enr_coefs.append(cenr[-2:])  # [resid_gw, dttf] coefficients
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    y_oos = y[idx]
+    w_oos = wind[idx]
+    prices = y_oos
+    price_changes = np.diff(prices)
+    low = w_oos < LOW_WIND_KNOT_PCT
+
+    def rmse(actual, pred, mask=None):
+        a = actual if mask is None else actual[mask]
+        p = pred if mask is None else pred[mask]
+        if len(a) == 0:
+            return None
+        return float(round(np.sqrt(np.mean((a - p) ** 2)), 2))
+
+    pred_base = np.array(pred_base)
+    pred_enr = np.array(pred_enr)
+
+    def sharpe_net(residuals):
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        pos = np.clip(-z, -1.0, 1.0)
+        gross = pos[:-1] * price_changes
+        turnover = np.abs(np.diff(pos, prepend=0.0))[:-1]
+        pnl = gross - EDGE_NET_COST * turnover
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    baseline = {
+        "rmse_overall": rmse(y_oos, pred_base),
+        "rmse_low_wind": rmse(y_oos, pred_base, low),
+        "sharpe_net": sharpe_net(res_base),
+    }
+    enriched = {
+        "rmse_overall": rmse(y_oos, pred_enr),
+        "rmse_low_wind": rmse(y_oos, pred_enr, low),
+        "sharpe_net": sharpe_net(res_enr),
+    }
+
+    def pct_drop(a, b):
+        if a is None or b is None or a == 0:
+            return None
+        return float(round(100.0 * (a - b) / a, 1))
+
+    def delta(a, b):
+        return float(round(b - a, 3)) if a is not None and b is not None else None
+
+    improvement = {
+        "rmse_pct": pct_drop(baseline["rmse_overall"], enriched["rmse_overall"]),
+        "low_wind_rmse_pct": pct_drop(baseline["rmse_low_wind"], enriched["rmse_low_wind"]),
+        "sharpe_delta": delta(baseline["sharpe_net"], enriched["sharpe_net"]),
+    }
+
+    # Coefficient stability across the walk-forward: a stable sign/magnitude is evidence the
+    # factor is real, not overfit. We report the mean and std of each new coefficient, plus
+    # the coefficient of variation (|std/mean|) - a high CV flags an unstable, suspect factor.
+    enr_coefs = np.array(enr_coefs)  # (n_oos, 2)
+
+    def stability(col):
+        m = float(np.mean(col))
+        sd = float(np.std(col))
+        cv = float(abs(sd / m)) if m != 0 else None
+        return {"mean": round(m, 4), "std": round(sd, 4),
+                "cv": round(cv, 3) if cv is not None else None}
+
+    coef = {
+        "residual_demand_gw": stability(enr_coefs[:, 0]),
+        "ttf_change": stability(enr_coefs[:, 1]),
+    }
+
+    return {
+        "zone": zone,
+        "as_of": dates.iloc[-1].strftime("%Y-%m-%d"),
+        "n_oos": int(len(idx)),
+        "source": source,
+        "knot_pct": LOW_WIND_KNOT_PCT,
+        "baseline": baseline,
+        "enriched": enriched,
+        "improvement": improvement,
+        "coef": coef,
+        "factors_added": ENRICHED_FACTORS,
+        "factors_deferred": DEFERRED_FACTORS,
     }
