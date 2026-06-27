@@ -265,8 +265,64 @@ quantiles). Components per dashboard under `src/components/gas/` and
 - Phase 41 - Nuclear thermal curtailment risk tracker (Open-Meteo air temp at 9 FR plants) [COMPLETE 2026-06-25]
 - Phase 42 - Nonlinear vs linear fair-value model on /spreads (walk-forward OOS, low-wind hinge) [COMPLETE 2026-06-26]
 - Phase 43 - Nonlinear vs linear residual signal P&L backtest on /spreads (walk-forward OOS Sharpe, low-wind split) [COMPLETE 2026-06-26]
+- Phase 44 - Transaction-cost robustness of the nonlinear edge on /spreads [COMPLETE 2026-06-27]
+- Phase 45 - Cross-zone dose-response of the nonlinear edge on /spreads [COMPLETE 2026-06-27]
 
-## Geographic expansion (future)
+---
+
+## Next arc: deepen the /spreads signal research track
+
+Forward-looking only. The nonlinear fair-value arc (P42-45) proved the hinge basis
+adds *capturable, cost-robust, wind-scaling* alpha on the windy hubs. This arc pushes
+the signal research toward what a power algo desk actually runs: capture the regime
+both models still lose in, enrich the fundamental factor set, test whether a real
+learner beats the interpretable hinge, and combine the per-zone signals into one book.
+Aligns with the EU power signal-analytics focus (see memory: TGP interview).
+
+**Hard-rule reminder:** no synthetic data. Every new factor must come from `market_data`
+via the loaders. Where a factor is not yet ingested (e.g. load coverage beyond DE-LU,
+FR nuclear unavailability A80), the phase's first task is to verify coverage and either
+add a fetcher or restrict the factor to zones that have real data and flag the gap. Never
+fabricate a series to "complete" a factor.
+
+### Phase 46 - Regime-aware signal on /spreads
+*Goal: turn the drought regime from a drag into alpha - both linear and nonlinear signals are still negative-Sharpe below the wind knot (P43) because a pure mean-reversion fade is structurally wrong when scarcity persists and prices trend.*
+*Depends on: P43/P45 backtest machinery. Reuses existing data. 1-2 sessions.*
+
+- [ ] Analytics: `compute_regime_aware_backtest()` in `analytics/fundamental.py` - condition the position rule on the live wind regime: keep the contrarian fade in the normal/high-wind regime, but in the sub-knot drought regime dampen toward flat or flip toward momentum (sign of recent trend). Same strict walk-forward and identical accounting as P43 so the only change is the position map.
+- [ ] Compare three books OOS: flat fade (P43 baseline), nonlinear fade (P43), regime-aware - report Sharpe, drawdown, hit rate, and the sub-knot-regime Sharpe split, net of the P44 transaction cost.
+- [ ] Endpoint `GET /api/spreads/regime-aware-backtest?zone=`, schema models, one pytest.
+- [ ] Frontend `RegimeAwareSection` on /spreads below the edge-by-zone section: equity curves for the three books, a regime-split stat grid, and a footer stating whether conditioning on the regime recovers the drought loss.
+- *Done when:* the regime-aware book's sub-knot Sharpe is materially less negative (ideally positive) than both fade books on DE-LU, OOS and net of cost, with the result shown on /spreads and 1 new test green.
+
+### Phase 47 - Expand the fundamental factor set
+*Goal: tighten the fair value with residual-demand and supply-availability factors, not just TTF/EUA/wind/solar.*
+*Depends on: P42 design matrices. 1-2 sessions.*
+
+- [ ] Data check first: `nuclear` and `hydro` are confirmed in `generation_daily`; add nuclear% and hydro% of total as factors. Verify `power_load` coverage in `market_data` - if it exists only for DE-LU, compute residual demand (load - wind - solar) only where load is real and flag the gap for other zones (no synthetic fill). Investigate FR nuclear unavailability (ENTSO-E A80) as a fetcher candidate; if not ingested, log it in `ideas.md` and defer that one factor.
+- [ ] Extend `_design_linear` / `_design_nonlinear` with the available new factors plus lag terms (lagged residual, day-over-day TTF change); keep the design dependency-free (numpy lstsq).
+- [ ] Re-run the P42 OOS RMSE comparison and the P43 P&L backtest with the enriched design; guard against overfitting using the rolling-coefficient stability (P35) and deflated-Sharpe checks already on the page.
+- [ ] Surface the new coefficients in the existing fundamental-model coefficient table; note which factors are zone-restricted by data coverage.
+- *Done when:* enriched-design OOS RMSE and/or Sharpe improve over the P42/P43 baseline without coefficient-stability degradation, factor coverage gaps are explicit, and tests pass.
+
+### Phase 48 - Gradient-boosted fair value vs the hinge OLS
+*Goal: test honestly whether a nonparametric learner beats the one-coefficient hinge, or just adds variance.*
+*Depends on: P47 factor set. Adds an ML dependency. 2 sessions.*
+
+- [ ] Infra: add `scikit-learn` (or `lightgbm`) to the energy `backend/pyproject.toml`, `uv lock`, `uv sync` (the energy venv currently has no ML library - this is the first).
+- [ ] Analytics: walk-forward gradient-boosted fair-value regressor on the P47 factor set, same daily-refit OOS protocol; compare OOS RMSE, tradeable Sharpe, and P44 cost robustness against the hinge OLS and the linear baseline.
+- [ ] Interpretability: feature importance + a wind partial-dependence curve, so the GBM's low-wind behaviour can be compared directly to the hinge coefficient.
+- [ ] Endpoint + schema + test + a `GbmModelSection` on /spreads with the RMSE/Sharpe comparison and the partial-dependence chart.
+- *Done when:* the GBM-vs-hinge-vs-linear comparison is shown OOS and net of cost on /spreads, with an explicit verdict on whether the extra flexibility is capturable or just overfitting, and tests pass.
+
+### Phase 49 - Signal ensemble + cross-zone portfolio P&L
+*Goal: combine the per-zone signals into one book a desk would actually run, with risk decomposition.*
+*Depends on: P45 cross-zone harness, P46-48 signals, `quant_lib.portfolio`. 1-2 sessions.*
+
+- [ ] Analytics: build a cross-zone portfolio from the best signal per zone (equal-risk or sign-agreement weighting), produce a single portfolio equity curve, and decompose risk per zone with `quant_lib.portfolio` Euler decomposition.
+- [ ] Report portfolio Sharpe, per-zone risk contribution, drawdown, and the diversification benefit vs the single-zone DE-LU book; net of the P44 cost.
+- [ ] Endpoint `GET /api/spreads/portfolio-backtest`, schema, test, and a `PortfolioSection` capstone on /spreads (portfolio equity curve + per-zone contribution bars).
+- *Done when:* /spreads ends on a single portfolio P&L curve with risk attribution, the diversification benefit is quantified, and tests pass.
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
 
 ## 10. Deliberately NOT building (v1)
