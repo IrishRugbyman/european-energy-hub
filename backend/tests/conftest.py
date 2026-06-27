@@ -310,7 +310,8 @@ def _seed_db(path: str) -> None:
             zone VARCHAR, gen_date DATE,
             wind_pct REAL, solar_pct REAL,
             wind_pct_actual REAL, solar_pct_actual REAL,
-            load_fc_mw REAL, load_actual_mw REAL
+            load_fc_mw REAL, load_actual_mw REAL,
+            nuclear_lag1_gw REAL
         )
     """)
     fc_rows = []
@@ -322,17 +323,20 @@ def _seed_db(path: str) -> None:
         # actual ~ forecast + small deterministic noise (no RNG)
         de_wind_a = de_wind + 1.2 * (((i * 7) % 11 - 5) / 5)
         de_solar_a = de_solar + 0.8 * (((i * 5) % 9 - 4) / 4)
+        # DE-LU: nuclear phased out April 2023; seed 0 throughout to match post-phase-out reality
         fc_rows.append(["DE-LU", day, round(de_wind, 3), round(de_solar, 3),
-                        round(de_wind_a, 3), round(de_solar_a, 3), load_de, load_de + 800.0])
+                        round(de_wind_a, 3), round(de_solar_a, 3), load_de, load_de + 800.0, 0.0])
         load_fr = 52000.0
         fr_wind = 9.0 + 4.0 * ((i % 365 - 90) / 365)            # ~5-13% of load
         fr_solar = 11.0 + 7.0 * ((i % 365 - 180) / 365)
         fr_wind_a = fr_wind + 0.9 * (((i * 3) % 7 - 3) / 3)
         fr_solar_a = fr_solar + 0.7 * (((i * 4) % 9 - 4) / 4)
+        # FR: nuclear oscillates ~36-44 GW; use a deterministic seasonal pattern
+        fr_nuclear = round(40.0 + 4.0 * ((i % 365 - 180) / 365), 3)
         fc_rows.append(["FR", day, round(fr_wind, 3), round(fr_solar, 3),
-                        round(fr_wind_a, 3), round(fr_solar_a, 3), load_fr, load_fr + 600.0])
+                        round(fr_wind_a, 3), round(fr_solar_a, 3), load_fr, load_fr + 600.0, fr_nuclear])
     conn.executemany(
-        "INSERT INTO generation_forecast_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)", fc_rows
+        "INSERT INTO generation_forecast_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", fc_rows
     )
 
     # generation_hourly_recent (10 days of hourly data for DE-LU)

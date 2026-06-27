@@ -638,7 +638,8 @@ def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             zone VARCHAR, gen_date DATE,
             wind_pct REAL, solar_pct REAL,
             wind_pct_actual REAL, solar_pct_actual REAL,
-            load_fc_mw REAL, load_actual_mw REAL
+            load_fc_mw REAL, load_actual_mw REAL,
+            nuclear_lag1_gw REAL
         )
     """)
     if not fcast.empty:

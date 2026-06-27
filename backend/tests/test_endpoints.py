@@ -1261,12 +1261,11 @@ def test_spreads_enriched_model(client):
     imp = data["improvement"]
     assert {"rmse_pct", "low_wind_rmse_pct", "sharpe_delta"} <= imp.keys()
     # New-factor coefficients carry walk-forward stability stats
-    for fac in ("residual_demand_gw", "ttf_change"):
+    for fac in ("residual_demand_gw", "ttf_change", "nuclear_lag1_gw"):
         c = data["coef"][fac]
         assert {"mean", "std", "cv"} <= c.keys()
-    assert data["factors_added"] == ["residual_demand_gw", "ttf_change"]
-    # Nuclear is explicitly deferred (no DA forecast -> would be look-ahead)
-    assert any("nuclear" in f.lower() for f in data["factors_deferred"])
+    assert data["factors_added"] == ["residual_demand_gw", "ttf_change", "nuclear_lag1_gw"]
+    assert data["factors_deferred"] == []
     assert client.get("/api/spreads/enriched-model?zone=FAKE").status_code == 400
 
 
@@ -1340,11 +1339,11 @@ def test_spreads_gbm_model(client):
     for key in ("linear", "hinge", "gbm"):
         m = data[key]
         assert {"rmse_overall", "rmse_low_wind", "sharpe_net"} <= m.keys()
-    # Feature importance covers the six factors and sums to ~100%
+    # Feature importance covers the seven factors and sums to ~100%
     imp = data["importance"]
-    assert len(imp) == 6
+    assert len(imp) == 7
     assert abs(sum(row["importance_pct"] for row in imp) - 100.0) < 1.0
-    assert {row["feature"] for row in imp} == {"ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf"}
+    assert {row["feature"] for row in imp} == {"ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf", "nuclear_gw"}
     # Wind partial-dependence curve present, ascending in wind
     pw = data["partial_wind"]
     assert len(pw) > 1

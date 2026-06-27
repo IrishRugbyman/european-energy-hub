@@ -1316,6 +1316,7 @@ class EnrichedFactorStability(BaseModel):
 class EnrichedModelCoef(BaseModel):
     residual_demand_gw: EnrichedFactorStability
     ttf_change: EnrichedFactorStability
+    nuclear_lag1_gw: EnrichedFactorStability
 
 
 class EnrichedModelStats(BaseModel):

@@ -67,11 +67,42 @@ FORECAST_DAILY_COLS = (
     "wind_pct", "solar_pct",                 # DA forecast wind/solar as % of forecast load
     "wind_pct_actual", "solar_pct_actual",   # realised wind/solar as % of realised load
     "load_fc_mw", "load_actual_mw",
+    "nuclear_lag1_gw",                       # previous day's realised nuclear output in GW (gate-closure proxy)
 )
 
 
 def _empty_forecast_daily() -> pd.DataFrame:
     return pd.DataFrame(columns=list(FORECAST_DAILY_COLS))
+
+
+def _build_nuclear_lag(conn) -> "pd.DataFrame | None":
+    """Daily nuclear generation (GW), lagged 1 day within each zone.
+
+    Uses power_generation_actual tech=nuclear. The shift makes day D's value equal to
+    D-1's realised output -- genuinely available at gate closure for the day-ahead market.
+    Zones without nuclear (IT-NORD) produce 0.0.
+    """
+    try:
+        nuc = _query(conn, """
+            SELECT zone,
+                   DATE_TRUNC('day', ts)::DATE AS gen_date,
+                   AVG(mw) / 1000.0 AS nuclear_gw
+            FROM power_generation_actual
+            WHERE tech = 'nuclear'
+            GROUP BY zone, gen_date
+        """)
+    except Exception:
+        logger.exception("nuclear lag query failed")
+        return None
+
+    if nuc is None or nuc.empty:
+        return None
+
+    nuc = nuc.copy()
+    nuc["gen_date"] = pd.to_datetime(nuc["gen_date"])
+    nuc = nuc.sort_values(["zone", "gen_date"]).reset_index(drop=True)
+    nuc["nuclear_lag1_gw"] = nuc.groupby("zone")["nuclear_gw"].shift(1)
+    return nuc[["zone", "gen_date", "nuclear_lag1_gw"]]
 
 
 def _build_generation_forecast_daily() -> pd.DataFrame:
@@ -106,6 +137,7 @@ def _build_generation_forecast_daily() -> pd.DataFrame:
             WHERE kind IN ('forecast', 'actual')
             GROUP BY zone, gen_date, kind
         """)
+        nuclear_lag = _build_nuclear_lag(conn)
         conn.close()
     except Exception:
         logger.exception("_build_generation_forecast_daily failed")
@@ -148,7 +180,16 @@ def _build_generation_forecast_daily() -> pd.DataFrame:
     df = df[df["wind_pct"].notna()].copy()
     for c in ("wind_pct", "solar_pct", "wind_pct_actual", "solar_pct_actual", "load_fc_mw", "load_actual_mw"):
         df[c] = df[c].round(3)
-    df["gen_date"] = df["gen_date"].astype(str)
+
+    # Nuclear D-1 lag: merge by zone + gen_date (both as datetime for the merge, then stringify)
+    df["gen_date"] = pd.to_datetime(df["gen_date"])
+    if nuclear_lag is not None and not nuclear_lag.empty:
+        df = df.merge(nuclear_lag, on=["zone", "gen_date"], how="left")
+        df["nuclear_lag1_gw"] = df["nuclear_lag1_gw"].fillna(0.0).round(4)
+    else:
+        df["nuclear_lag1_gw"] = 0.0
+
+    df["gen_date"] = df["gen_date"].dt.strftime("%Y-%m-%d")
     df = df.sort_values(["zone", "gen_date"]).reset_index(drop=True)
     logger.info(f"generation_forecast_daily: {len(df)} rows, {df['zone'].nunique()} zones")
     return df[list(FORECAST_DAILY_COLS)].copy()

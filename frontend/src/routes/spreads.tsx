@@ -1436,8 +1436,15 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
     staleTime: 60 * 60 * 1000,
   })
 
+  const { data: nuclearData } = useQuery({
+    queryKey: ['nuclear-tracker'],
+    queryFn: api.genNuclearTracker,
+    staleTime: 60 * 60 * 1000,
+  })
+
   const cur = data?.current
   const coef = data?.coefficients
+  const frNuclear = nuclearData?.country_latest?.find((c: { zone: string }) => c.zone === 'FR')
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
@@ -1503,6 +1510,33 @@ function FundamentalModelSection({ window: w }: { window: DateWindow }) {
               </p>
             </div>
           </div>
+
+          {/* FR nuclear live context */}
+          {frNuclear && (
+            <div className="flex items-center gap-2 flex-wrap text-[11px]">
+              <span className="text-muted-foreground">FR nuclear (D-1):</span>
+              <span className="font-semibold text-foreground">
+                {(frNuclear.nuclear_mw / 1000).toFixed(1)} GW
+              </span>
+              {frNuclear.util_pct != null && (
+                <span
+                  className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+                  style={{
+                    background: frNuclear.util_pct > 75 ? '#16a34a22' : frNuclear.util_pct > 50 ? '#ca8a0422' : '#dc262622',
+                    color: frNuclear.util_pct > 75 ? '#4ade80' : frNuclear.util_pct > 50 ? '#fbbf24' : '#f87171',
+                  }}
+                >
+                  {frNuclear.util_pct.toFixed(0)}% utilization
+                </span>
+              )}
+              {frNuclear.vs_avg5_pct != null && (
+                <span className="text-muted-foreground">
+                  ({frNuclear.vs_avg5_pct >= 0 ? '+' : ''}{frNuclear.vs_avg5_pct.toFixed(1)}% vs 5yr avg at this DOY)
+                </span>
+              )}
+              <span className="text-muted-foreground/60 text-[10px]">source: generation_daily, as of {frNuclear.gen_date}</span>
+            </div>
+          )}
 
           {/* Coefficients */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1880,10 +1914,11 @@ function EnrichedModelSection() {
           </div>
 
           {/* New-factor coefficient stability */}
-          <div className="grid grid-cols-2 gap-3 text-[11px]">
+          <div className="grid grid-cols-3 gap-3 text-[11px]">
             {([
               { key: 'residual_demand_gw' as const, label: 'Residual demand (€/MWh per GW)' },
               { key: 'ttf_change' as const, label: 'ΔTTF (€/MWh per €/MWh·day)' },
+              { key: 'nuclear_lag1_gw' as const, label: 'Nuclear D-1 (€/MWh per GW)' },
             ]).map((f) => {
               const c = data.coef[f.key]
               const unstable = c.cv != null && c.cv > 0.5
@@ -1904,18 +1939,18 @@ function EnrichedModelSection() {
           </div>
 
           <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
-            The enriched nonlinear design adds two gate-closure factors to the {data.source} fair value: residual
+            The enriched nonlinear design adds three gate-closure factors to the {data.source} fair value: residual
             demand (forecast load − forecast wind − forecast solar, in GW — the thermal-stack depth the renewable
-            <em> shares</em> miss because they ignore demand level) and the day-over-day TTF change. Both designs are
-            refit walk-forward and the residual is faded net of cost, so RMSE and Sharpe are the same OOS metrics as
+            <em> shares</em> miss because they ignore demand level), the day-over-day TTF change, and D-1 nuclear
+            output in GW (previous day&apos;s realised nuclear, published by ENTSO-E before market open — the
+            gate-closure proxy for nuclear availability, with no look-ahead). All three designs are refit
+            walk-forward and the residual is faded net of cost, so RMSE and Sharpe are the same OOS metrics as
             the rest of the arc.{' '}
             {(data.improvement.rmse_pct ?? 0) > 0 && (data.improvement.sharpe_delta ?? 0) < 0
               ? `On ${data.zone} the honest verdict splits: the factors tighten the fair value (RMSE ${fmtPct(data.improvement.rmse_pct)}) but the tradeable Sharpe falls (${fmtDelta(data.improvement.sharpe_delta)}). A tighter fair value absorbs part of the mean-reverting deviation the fade trades — better fit is not better signal. The new coefficients are ${(data.coef.residual_demand_gw.cv ?? 1) < 0.5 ? 'stable' : 'unstable'}, so this is a real effect, not overfitting noise.`
               : (data.improvement.sharpe_delta ?? 0) >= 0
                 ? `On ${data.zone} the enrichment helps both fit and tradeable Sharpe (${fmtDelta(data.improvement.sharpe_delta)}) — the added factors carry information the fade can use.`
-                : `On ${data.zone} the enrichment does not clearly improve fit or signal; the added factors do not earn their place here.`}{' '}
-            Nuclear% is deliberately excluded: the ENTSO-E A69 day-ahead forecast carries only wind/solar, so a
-            realised-nuclear factor would reintroduce look-ahead (deferred until a forecast/A80 source is ingested).
+                : `On ${data.zone} the enrichment does not clearly improve fit or signal; the added factors do not earn their place here.`}
           </p>
         </div>
       )}

@@ -432,7 +432,8 @@ def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUN
                 pr.eua_eur_t,
                 g.{wind_col}  AS wind_pct,
                 g.{solar_col} AS solar_pct,
-                g.{load_col}  AS load_mw
+                g.{load_col}  AS load_mw,
+                COALESCE(g.nuclear_lag1_gw, 0.0) AS nuclear_lag1_gw
             FROM power_daily p
             JOIN prices_daily pr ON p.price_date = pr.price_date
             JOIN generation_forecast_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
@@ -1305,26 +1306,26 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU", sourc
     }
 
 
-# Factors added in the enriched design (Phase 48), all in the gate-closure information set.
-ENRICHED_FACTORS = ["residual_demand_gw", "ttf_change"]
-# Factors considered but deferred for lack of a no-look-ahead source.
-DEFERRED_FACTORS = [
-    "nuclear_pct (ENTSO-E A69 day-ahead forecast carries only wind/solar; realised nuclear "
-    "would reintroduce look-ahead. FR nuclear unavailability A80 is not yet ingested.)"
-]
+# Factors added in the enriched design (Phase 48 + 54), all in the gate-closure information set.
+# nuclear_lag1_gw added in Phase 54: previous day's realised nuclear output in GW. This is genuinely
+# available at gate closure (ENTSO-E publishes D-1 actual by morning), unlike same-day realised
+# nuclear which would require look-ahead.
+ENRICHED_FACTORS = ["residual_demand_gw", "ttf_change", "nuclear_lag1_gw"]
+DEFERRED_FACTORS: list[str] = []
 
 
-def _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf):
-    """Baseline nonlinear design plus residual demand (GW) and the day-over-day TTF change.
+def _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw):
+    """Baseline nonlinear design plus residual demand, day-over-day TTF change, and D-1 nuclear.
 
     Residual demand = forecast load - forecast wind - forecast solar, in GW: the depth the
     thermal stack must cover, a price driver the renewable *shares* (wind%, solar%) miss
     because they ignore the demand level. TTF change is the day-over-day move in the gas
-    marginal cost. Both are in the gate-closure information set (forecast load + prior-day
-    TTF), so the enriched design stays no-look-ahead.
+    marginal cost. nuclear_gw is the previous day's realised nuclear output in GW -- available
+    at gate closure and a primary fundamental driver in France, Belgium, and Switzerland.
+    All three new factors are strictly in the gate-closure information set.
     """
     base = _design_nonlinear(ttf, eua, wind, solar)
-    return np.column_stack([base, resid_gw, dttf])
+    return np.column_stack([base, resid_gw, dttf, nuclear_gw])
 
 
 def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
@@ -1362,6 +1363,7 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
     wind = df["wind_pct"].to_numpy(float)
     solar = df["solar_pct"].to_numpy(float)
     load_mw = df["load_mw"].to_numpy(float)
+    nuclear_gw = df["nuclear_lag1_gw"].to_numpy(float) if "nuclear_lag1_gw" in df.columns else np.zeros(len(df))
     y = df["base_eur"].to_numpy(float)
     dates = df["price_date"]
     n = len(y)
@@ -1371,7 +1373,7 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
     dttf = np.diff(ttf, prepend=ttf[0])
 
     Xbase = _design_nonlinear(ttf, eua, wind, solar)
-    Xenr = _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf)
+    Xenr = _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw)
 
     start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
     idx, pred_base, pred_enr, res_base, res_enr = [], [], [], [], []
@@ -1386,7 +1388,7 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
         pred_enr.append(pe)
         res_base.append(y[t] - pb)
         res_enr.append(y[t] - pe)
-        enr_coefs.append(cenr[-2:])  # [resid_gw, dttf] coefficients
+        enr_coefs.append(cenr[-3:])  # [resid_gw, dttf, nuclear_gw] coefficients
 
     if len(idx) < WF_SIGNAL_WINDOW + 5:
         return {}
@@ -1449,7 +1451,7 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
     # Coefficient stability across the walk-forward: a stable sign/magnitude is evidence the
     # factor is real, not overfit. We report the mean and std of each new coefficient, plus
     # the coefficient of variation (|std/mean|) - a high CV flags an unstable, suspect factor.
-    enr_coefs = np.array(enr_coefs)  # (n_oos, 2)
+    enr_coefs = np.array(enr_coefs)  # (n_oos, 3): [resid_gw, dttf, nuclear_gw]
 
     def stability(col):
         m = float(np.mean(col))
@@ -1461,6 +1463,7 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
     coef = {
         "residual_demand_gw": stability(enr_coefs[:, 0]),
         "ttf_change": stability(enr_coefs[:, 1]),
+        "nuclear_lag1_gw": stability(enr_coefs[:, 2]),
     }
 
     return {
@@ -1485,7 +1488,8 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
 GBM_REFIT_EVERY = 21
 
 # Raw factor set the GBM learns over (no manual hinge - the booster finds the nonlinearity).
-GBM_FEATURES = ["ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf"]
+# nuclear_gw (D-1 realized nuclear in GW) added in Phase 54; primarily drives FR/BE pricing.
+GBM_FEATURES = ["ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf", "nuclear_gw"]
 
 
 def _fit_gbm(X, y):
@@ -1537,6 +1541,7 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
     wind = df["wind_pct"].to_numpy(float)
     solar = df["solar_pct"].to_numpy(float)
     load_mw = df["load_mw"].to_numpy(float)
+    nuclear_gw = df["nuclear_lag1_gw"].to_numpy(float) if "nuclear_lag1_gw" in df.columns else np.zeros(len(df))
     y = df["base_eur"].to_numpy(float)
     dates = df["price_date"]
     n = len(y)
@@ -1546,7 +1551,7 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
 
     Xlin = _design_linear(ttf, eua, wind, solar)
     Xhinge = _design_nonlinear(ttf, eua, wind, solar)
-    Xgbm = np.column_stack([ttf, eua, wind, solar, resid_gw, dttf])
+    Xgbm = np.column_stack([ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw])
 
     start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
     idx = list(range(start, n))

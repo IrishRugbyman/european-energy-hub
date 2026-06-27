@@ -3789,6 +3789,7 @@ def spreads_enriched_model(zone: str = "DE-LU"):
         coef=EnrichedModelCoef(
             residual_demand_gw=EnrichedFactorStability(**result["coef"]["residual_demand_gw"]),
             ttf_change=EnrichedFactorStability(**result["coef"]["ttf_change"]),
+            nuclear_lag1_gw=EnrichedFactorStability(**result["coef"]["nuclear_lag1_gw"]),
         ),
         factors_added=result["factors_added"],
         factors_deferred=result["factors_deferred"],

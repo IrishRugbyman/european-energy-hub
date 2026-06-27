@@ -1485,6 +1485,7 @@ export interface EnrichedModelResponse {
   coef: {
     residual_demand_gw: EnrichedFactorStability
     ttf_change: EnrichedFactorStability
+    nuclear_lag1_gw: EnrichedFactorStability
   }
   factors_added: string[]
   factors_deferred: string[]
