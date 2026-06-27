@@ -1521,10 +1521,19 @@ export interface DeflatedSharpe {
   n_obs: number
 }
 
+export interface BootstrapSharpeCI {
+  point: number
+  ci_low: number
+  ci_high: number
+  p_positive: number
+}
+
 export interface PortfolioSignificance {
   n_trials: number
   portfolio_oos: DeflatedSharpe
   de_lu: DeflatedSharpe | null
+  bootstrap_portfolio_oos: BootstrapSharpeCI | null
+  bootstrap_de_lu: BootstrapSharpeCI | null
 }
 
 export interface PortfolioBacktestResponse {

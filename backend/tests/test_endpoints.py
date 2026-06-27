@@ -1302,6 +1302,11 @@ def test_spreads_portfolio_backtest(client):
     assert {"sr_hat", "sr_benchmark", "psr", "dsr", "n_obs"} <= ds.keys()
     if ds["psr"] is not None and ds["dsr"] is not None:
         assert 0.0 <= ds["dsr"] <= ds["psr"] <= 1.0
+    # Block-bootstrap Sharpe CI: low <= point <= high, p_positive a probability
+    boot = sig.get("bootstrap_portfolio_oos")
+    if boot is not None:
+        assert boot["ci_low"] <= boot["point"] <= boot["ci_high"]
+        assert 0.0 <= boot["p_positive"] <= 1.0
     eq = data["equity"]
     assert len(eq) > 0
     assert {"date", "cum_portfolio", "cum_portfolio_oos", "cum_de_lu"} <= eq[0].keys()

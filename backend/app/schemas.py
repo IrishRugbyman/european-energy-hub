@@ -1376,10 +1376,19 @@ class DeflatedSharpe(BaseModel):
     n_obs: int
 
 
+class BootstrapSharpeCI(BaseModel):
+    point: float
+    ci_low: float
+    ci_high: float
+    p_positive: float
+
+
 class PortfolioSignificance(BaseModel):
     n_trials: int
     portfolio_oos: DeflatedSharpe
     de_lu: DeflatedSharpe | None
+    bootstrap_portfolio_oos: BootstrapSharpeCI | None = None
+    bootstrap_de_lu: BootstrapSharpeCI | None = None
 
 
 class PortfolioBacktestResponse(BaseModel):

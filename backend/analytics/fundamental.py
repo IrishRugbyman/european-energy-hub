@@ -1656,6 +1656,50 @@ PORTFOLIO_ROLL_MIN = 20    # minimum real observations before a zone earns a wei
 # before the hinge fade was adopted. 5 x 5 = 25 configurations is the honest trial budget.
 PORTFOLIO_N_TRIALS = 25
 
+# Circular block bootstrap for the Sharpe CI. Daily P&L is autocorrelated (the fade holds a
+# position for days/weeks), so an i.i.d. bootstrap understates the sampling error; sampling
+# contiguous blocks preserves that serial structure. Block ~ two trading weeks.
+PORTFOLIO_BOOT_BLOCK = 10
+PORTFOLIO_BOOT_N = 2000
+PORTFOLIO_BOOT_SEED = 0   # fixed so the reported CI is reproducible
+
+
+def _block_bootstrap_sharpe_ci(r: np.ndarray, alpha: float = 0.10) -> dict | None:
+    """90% CI for the annualised Sharpe via circular block bootstrap; preserves autocorr.
+
+    Returns dict(point, ci_low, ci_high, p_positive) or None if too few observations.
+    """
+    r = r[np.isfinite(r)]
+    T = len(r)
+    if T < PORTFOLIO_BOOT_BLOCK * 3:
+        return None
+    point = _per_obs_sharpe(r)
+    if not np.isfinite(point):
+        return None
+    point_ann = point * np.sqrt(252)
+
+    rng = np.random.default_rng(PORTFOLIO_BOOT_SEED)
+    n_blocks = int(np.ceil(T / PORTFOLIO_BOOT_BLOCK))
+    offs = np.arange(PORTFOLIO_BOOT_BLOCK)
+    sharpes = []
+    for _ in range(PORTFOLIO_BOOT_N):
+        starts = rng.integers(0, T, n_blocks)
+        idx = (starts[:, None] + offs).ravel()[:T] % T
+        sample = r[idx]
+        sd = sample.std(ddof=1)
+        if sd > 0:
+            sharpes.append(sample.mean() / sd * np.sqrt(252))
+    if len(sharpes) < PORTFOLIO_BOOT_N // 2:
+        return None
+    s = np.asarray(sharpes)
+    lo, hi = np.percentile(s, [100 * alpha / 2, 100 * (1 - alpha / 2)])
+    return {
+        "point": round(float(point_ann), 3),
+        "ci_low": round(float(lo), 3),
+        "ci_high": round(float(hi), 3),
+        "p_positive": round(float((s > 0).mean()), 4),
+    }
+
 
 def _per_obs_sharpe(r: np.ndarray) -> float:
     """Per-observation (unannualised) Sharpe of a return array; nan if zero vol."""
@@ -1845,11 +1889,20 @@ def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) 
         "n_zones": len(zones),
     }
 
-    # Deflated / probabilistic Sharpe on the OOS book and DE-LU (multiple-testing haircut).
-    sig_oos = _deflated_sharpe(port_oos.to_numpy(float), PORTFOLIO_N_TRIALS)
+    # Deflated / probabilistic Sharpe on the OOS book and DE-LU (multiple-testing haircut),
+    # plus a block-bootstrap Sharpe CI (sampling error under the P&L's own autocorrelation).
+    oos_arr = port_oos.to_numpy(float)
+    sig_oos = _deflated_sharpe(oos_arr, PORTFOLIO_N_TRIALS)
     de_pnl = pnl["DE-LU"] if "DE-LU" in pnl.columns else None
-    sig_de = _deflated_sharpe(de_pnl.to_numpy(float), PORTFOLIO_N_TRIALS) if de_pnl is not None else None
-    significance = {"n_trials": PORTFOLIO_N_TRIALS, "portfolio_oos": sig_oos, "de_lu": sig_de}
+    de_arr = de_pnl.to_numpy(float) if de_pnl is not None else None
+    sig_de = _deflated_sharpe(de_arr, PORTFOLIO_N_TRIALS) if de_arr is not None else None
+    significance = {
+        "n_trials": PORTFOLIO_N_TRIALS,
+        "portfolio_oos": sig_oos,
+        "de_lu": sig_de,
+        "bootstrap_portfolio_oos": _block_bootstrap_sharpe_ci(oos_arr),
+        "bootstrap_de_lu": _block_bootstrap_sharpe_ci(de_arr) if de_arr is not None else None,
+    }
 
     de_lu = None
     if de_lu_pnl is not None:

@@ -199,6 +199,7 @@ from .schemas import (
     PortfolioEquityPoint,
     PortfolioSignificance,
     DeflatedSharpe,
+    BootstrapSharpeCI,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3863,6 +3864,12 @@ def spreads_portfolio_backtest():
             portfolio_oos=DeflatedSharpe(**result["significance"]["portfolio_oos"]),
             de_lu=DeflatedSharpe(**result["significance"]["de_lu"])
             if result["significance"].get("de_lu")
+            else None,
+            bootstrap_portfolio_oos=BootstrapSharpeCI(**result["significance"]["bootstrap_portfolio_oos"])
+            if result["significance"].get("bootstrap_portfolio_oos")
+            else None,
+            bootstrap_de_lu=BootstrapSharpeCI(**result["significance"]["bootstrap_de_lu"])
+            if result["significance"].get("bootstrap_de_lu")
             else None,
         ),
         equity=[PortfolioEquityPoint(**p) for p in result["equity"]],

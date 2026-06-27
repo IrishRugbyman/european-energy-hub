@@ -2667,6 +2667,8 @@ function PortfolioSection() {
   const sig = data?.significance
   const dsrOos = sig?.portfolio_oos.dsr ?? null
   const dsrDe = sig?.de_lu?.dsr ?? null
+  const bootOos = sig?.bootstrap_portfolio_oos ?? null
+  const bootDe = sig?.bootstrap_de_lu ?? null
 
   return (
     <div className="bg-card border border-border rounded-lg p-4 mb-4">
@@ -2720,6 +2722,17 @@ function PortfolioSection() {
               (DSR) — it survives the haircut. The single best zone DE-LU alone deflates to{' '}
               <span style={{ color: (dsrDe ?? 0) >= 0.5 ? '#fbbf24' : '#f87171' }}>{dsrDe != null ? `${(dsrDe * 100).toFixed(1)}%` : '--'}</span>{' '}
               — below the selection-bias benchmark, so a one-zone book does not. Diversification is what makes the edge robust to multiple testing.
+              {bootOos && (
+                <>
+                  {' '}A 90% block-bootstrap CI (preserving the P&L's autocorrelation) puts the portfolio Sharpe at{' '}
+                  <span className="text-emerald-400">[{bootOos.ci_low.toFixed(2)}, {bootOos.ci_high.toFixed(2)}]</span>
+                  {bootDe && (
+                    <> — entirely above zero, where DE-LU alone is{' '}
+                    <span style={{ color: bootDe.ci_low > 0.3 ? '#fbbf24' : '#f87171' }}>[{bootDe.ci_low.toFixed(2)}, {bootDe.ci_high.toFixed(2)}]</span>,
+                    barely clearing it (P(Sharpe&gt;0) {(bootDe.p_positive * 100).toFixed(0)}%)</>
+                  )}.
+                </>
+              )}
             </div>
           )}
 
