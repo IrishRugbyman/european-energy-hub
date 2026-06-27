@@ -225,6 +225,8 @@ from .schemas import (
     RebapCoefStability,
     RebapEquityPoint,
     RebapSignalToday,
+    NuclearWindInteractionResponse,
+    NuclearWindCoef,
 )
 
 
@@ -3848,6 +3850,42 @@ def spreads_enriched_model(zone: str = "DE-LU"):
         ),
         factors_added=result["factors_added"],
         factors_deferred=result["factors_deferred"],
+    )
+
+
+@app.get("/api/spreads/nuclear-wind-interaction", response_model=NuclearWindInteractionResponse)
+def spreads_nuclear_wind_interaction(zone: str = "FR"):
+    """Does a nuclear_lag1 * wind_pct interaction term add marginal R2 over the enriched model?
+
+    Phase 57 hypothesis: when D-1 nuclear output is low AND day-ahead wind is high, the DA
+    price crashes more than the P48+P54 additive enriched-OLS predicts. Tests whether the
+    interaction term nuclear_lag1_gw * wind_pct / 100 has a stable positive coefficient and
+    is justified by information criteria (mean ΔAIC < -2 across the walk-forward window).
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_nuclear_wind_interaction, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_nuclear_wind_interaction(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for nuclear-wind interaction")
+
+    return NuclearWindInteractionResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_oos=result["n_oos"],
+        source=result["source"],
+        knot_pct=result["knot_pct"],
+        enriched=EnrichedModelStats(**result["enriched"]),
+        interaction=EnrichedModelStats(**result["interaction"]),
+        improvement=EnrichedModelImprovement(**result["improvement"]),
+        coef=NuclearWindCoef(**result["coef"]),
+        aic_delta_mean=result["aic_delta_mean"],
+        bic_delta_mean=result["bic_delta_mean"],
+        justified=result["justified"],
     )
 
 

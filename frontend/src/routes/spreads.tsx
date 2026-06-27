@@ -1046,6 +1046,8 @@ function SpreadsDashboard() {
 
           <EnrichedModelSection />
 
+          <NuclearWindInteractionSection />
+
           <GbmModelSection />
 
           <ResidualMeanReversionSection />
@@ -1957,6 +1959,166 @@ function EnrichedModelSection() {
     </div>
   )
 }
+
+function NuclearWindInteractionSection() {
+  const [zone, setZone] = useState<FundZone>('FR')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['nuclear-wind-interaction', zone],
+    queryFn: () => api.spreadsNuclearWindInteraction(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
+  const fmtPct = (v: number | null | undefined) => (v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : '--')
+  const fmtDelta = (v: number | null | undefined) => (v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}` : '--')
+
+  const aicColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v < -2 ? '#4ade80' : v < 0 ? '#facc15' : '#f87171'
+  const sharpeColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v > 0 ? '#4ade80' : '#f87171'
+  const coefUnstable = data && data.coef.cv != null && data.coef.cv > 0.5
+
+  // Verdict logic: a zone with zero nuclear gets a pass (DE-LU, IT-NORD post-exit)
+  const noNuclear = data && Math.abs(data.coef.mean) < 0.001
+  const verdictText = () => {
+    if (!data) return null
+    if (noNuclear) {
+      return `${data.zone} has negligible nuclear output in the OOS window — the interaction term is zero by construction. This is the expected result: the nuclear * wind channel is physically absent here.`
+    }
+    if (data.justified && (data.improvement.sharpe_delta ?? 0) > 0) {
+      return `On ${data.zone} the interaction is AIC-justified (ΔAIC ${data.aic_delta_mean.toFixed(1)}) and improves tradeable Sharpe by ${fmtDelta(data.improvement.sharpe_delta)}. When both nuclear output and wind penetration are high, prices fall more than the additive enriched model predicts — the interaction captures that super-additive supply crash.`
+    }
+    if (data.justified && (data.improvement.sharpe_delta ?? 0) <= 0) {
+      return `On ${data.zone} the interaction is AIC-justified (ΔAIC ${data.aic_delta_mean.toFixed(1)}) but the tradeable Sharpe falls (${fmtDelta(data.improvement.sharpe_delta)}). A tighter fair value absorbs the mean-reverting residual the fade trades — the interaction earns its place in the regression but not in the signal.`
+    }
+    return `On ${data.zone} the interaction does not clear the AIC threshold (ΔAIC ${data.aic_delta_mean.toFixed(1)} — needs < −2). The enriched model without the interaction is the right canonical choice here.`
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Nuclear × Wind Interaction: Does the Combo Crash Prices Extra?
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 57
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running walk-forward comparison...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Four headline stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">OOS RMSE (enr → enr+int)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.enriched.rmse_overall)} → {fmt(data.interaction.rmse_overall)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Tradeable Sharpe (enr → enr+int)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.enriched.sharpe_net)} → {fmt(data.interaction.sharpe_net)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe change</p>
+              <p className="text-sm font-semibold" style={{ color: sharpeColor(data.improvement.sharpe_delta) }}>
+                {fmtDelta(data.improvement.sharpe_delta)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Mean ΔAIC (&lt; -2 = justified)</p>
+              <p className="text-sm font-semibold" style={{ color: aicColor(data.aic_delta_mean) }}>
+                {data.aic_delta_mean.toFixed(1)}
+                <span className="text-[10px] ml-1">{data.justified ? 'justified' : 'not justified'}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Interaction coefficient + BIC */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px]">
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Interaction coef (nuclear_gw × wind%)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>Mean</span>
+                <span className="text-right text-foreground">{fmt(data.coef.mean, 3)}</span>
+                <span>WF std</span>
+                <span className="text-right text-foreground">{fmt(data.coef.std, 3)}</span>
+                <span>Stability (CV)</span>
+                <span className="text-right" style={{ color: coefUnstable ? '#f87171' : data.coef.cv == null ? '#94a3b8' : '#4ade80' }}>
+                  {data.coef.cv != null ? data.coef.cv.toFixed(2) : 'n/a'}
+                  {coefUnstable ? ' ⚠' : ''}
+                </span>
+              </div>
+            </div>
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Information criteria (mean over WF)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>ΔAIC</span>
+                <span className="text-right" style={{ color: aicColor(data.aic_delta_mean) }}>
+                  {data.aic_delta_mean.toFixed(2)}
+                </span>
+                <span>ΔBIC</span>
+                <span className="text-right" style={{ color: aicColor(data.bic_delta_mean) }}>
+                  {data.bic_delta_mean.toFixed(2)}
+                </span>
+                <span>Verdict</span>
+                <span className="text-right" style={{ color: data.justified ? '#4ade80' : '#f87171' }}>
+                  {data.justified ? 'add it' : 'skip it'}
+                </span>
+              </div>
+            </div>
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Low-wind RMSE (enr → enr+int)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>Enriched</span>
+                <span className="text-right text-foreground">{fmt(data.enriched.rmse_low_wind)}</span>
+                <span>+ Interaction</span>
+                <span className="text-right text-foreground">{fmt(data.interaction.rmse_low_wind)}</span>
+                <span>Change</span>
+                <span className="text-right" style={{ color: sharpeColor(-(data.improvement.low_wind_rmse_pct ?? 0)) }}>
+                  {fmtPct(data.improvement.low_wind_rmse_pct)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Hypothesis: when D-1 nuclear output is low AND day-ahead wind is high, the DA price crashes
+            <em> more</em> than the additive enriched model (P48 + P54) predicts — a super-additive
+            supply shock from two large zero-variable-cost sources arriving simultaneously. The test adds one
+            term to the enriched-OLS design: nuclear_lag1_gw × wind_pct / 100. The walk-forward coefficient
+            is compared against its gate-closure counterpart and evaluated on AIC (conventional threshold: ΔAIC
+            &lt; −2 justifies the extra degree of freedom). The mean ΔAIC is averaged across the full WF window
+            rather than computed at a single split, so it reflects how often the interaction earns its place across
+            different market regimes.{' '}
+            {verdictText()}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 function NonlinearBacktestSection() {
   const [zone, setZone] = useState<FundZone>('DE-LU')

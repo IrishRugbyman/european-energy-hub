@@ -1394,6 +1394,27 @@ class EnrichedModelResponse(BaseModel):
     factors_deferred: list[str]
 
 
+class NuclearWindCoef(BaseModel):
+    mean: float
+    std: float
+    cv: float | None
+
+
+class NuclearWindInteractionResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_oos: int
+    source: str
+    knot_pct: float
+    enriched: EnrichedModelStats
+    interaction: EnrichedModelStats
+    improvement: EnrichedModelImprovement
+    coef: NuclearWindCoef
+    aic_delta_mean: float
+    bic_delta_mean: float
+    justified: bool
+
+
 class PortfolioZoneRow(BaseModel):
     zone: str
     weight: float

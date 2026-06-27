@@ -1152,6 +1152,7 @@ export const api = {
   spreadsNonlinearEdgeByZone: () => get<EdgeByZoneResponse>('/spreads/nonlinear-edge-by-zone'),
   spreadsRegimeAwareBacktest: (zone?: string) => get<RegimeAwareBacktestResponse>(`/spreads/regime-aware-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsEnrichedModel: (zone?: string) => get<EnrichedModelResponse>(`/spreads/enriched-model${zone ? `?zone=${zone}` : ''}`),
+  spreadsNuclearWindInteraction: (zone?: string) => get<NuclearWindInteractionResponse>(`/spreads/nuclear-wind-interaction${zone ? `?zone=${zone}` : ''}`),
   spreadsGbmModel: (zone?: string) => get<GbmModelResponse>(`/spreads/gbm-model${zone ? `?zone=${zone}` : ''}`),
   spreadsPortfolioBacktest: () => get<PortfolioBacktestResponse>('/spreads/portfolio-backtest'),
   spreadsResidualMeanReversion: () => get<ResidualMeanReversionResponse>('/spreads/residual-mean-reversion'),
@@ -1537,6 +1538,29 @@ export interface EnrichedModelResponse {
   }
   factors_added: string[]
   factors_deferred: string[]
+}
+
+export interface NuclearWindInteractionResponse {
+  zone: string
+  as_of: string | null
+  n_oos: number
+  source: string
+  knot_pct: number
+  enriched: EnrichedModelStats
+  interaction: EnrichedModelStats
+  improvement: {
+    rmse_pct: number | null
+    low_wind_rmse_pct: number | null
+    sharpe_delta: number | null
+  }
+  coef: {
+    mean: number
+    std: number
+    cv: number | null
+  }
+  aic_delta_mean: number
+  bic_delta_mean: number
+  justified: boolean
 }
 
 export interface PortfolioZoneRow {

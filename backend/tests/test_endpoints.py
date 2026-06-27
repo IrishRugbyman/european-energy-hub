@@ -1413,6 +1413,31 @@ def test_spreads_regime_aware_backtest(client):
     assert client.get("/api/spreads/regime-aware-backtest?zone=FAKE").status_code == 400
 
 
+def test_spreads_nuclear_wind_interaction(client):
+    # FR is the most nuclear-heavy zone; default zone for this endpoint.
+    r = client.get("/api/spreads/nuclear-wind-interaction?zone=FR")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "FR"
+    assert data["n_oos"] > 0
+    assert data["source"] == "forecast"
+    assert data["knot_pct"] == 8.0
+    for key in ("enriched", "interaction"):
+        m = data[key]
+        assert {"rmse_overall", "rmse_low_wind", "sharpe_net"} <= m.keys()
+    imp = data["improvement"]
+    assert {"rmse_pct", "low_wind_rmse_pct", "sharpe_delta"} <= imp.keys()
+    # Interaction coefficient carries walk-forward stability stats
+    c = data["coef"]
+    assert {"mean", "std", "cv"} <= c.keys()
+    # AIC/BIC deltas are finite floats; justified is a boolean
+    assert isinstance(data["aic_delta_mean"], float)
+    assert isinstance(data["bic_delta_mean"], float)
+    assert isinstance(data["justified"], bool)
+    # Invalid zone -> 400
+    assert client.get("/api/spreads/nuclear-wind-interaction?zone=FAKE").status_code == 400
+
+
 def test_gas_lng_map(client):
     r = client.get("/api/gas/lng/map")
     assert r.status_code == 200

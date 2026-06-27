@@ -1481,6 +1481,182 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
     }
 
 
+def compute_nuclear_wind_interaction(
+    query_fn: Callable, zone: str = "FR", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
+    """Does a nuclear_lag1 * wind_pct interaction term add marginal R2 over the enriched model?
+
+    Phase 57 hypothesis: when D-1 nuclear output is low AND day-ahead wind is high, the DA
+    price crashes MORE than the enriched-OLS additive model (P48+P54) predicts. If so, the
+    interaction term nuclear_lag1_gw * wind_pct / 100 carries a positive, stable coefficient
+    and its addition is justified on information criteria (ΔAIC < -2).
+
+    Walk-forward design: both the enriched design (P48+P54, 12 columns) and the
+    extended design (+ interaction, 13 columns) are refit at each OOS day t on rows
+    [0..t-1] and predict day t. OOS RMSE and tradeable Sharpe (faded residual, P44 cost)
+    are compared. Additionally at each step the AIC and BIC of the TRAINING fit are
+    recorded; the mean ΔAIC and ΔBIC (interaction minus enriched) summarise the
+    information-criterion verdict across the WF window.
+
+    Returns dict with: zone, as_of, n_oos, source, enriched{rmse,sharpe},
+    interaction{rmse,sharpe}, improvement{rmse_pct,low_wind_rmse_pct,sharpe_delta},
+    coef{mean,std,cv}, aic_delta_mean, bic_delta_mean, justified (ΔAIC < -2).
+    """
+    rows = _fetch_fundamental_features(query_fn, zone, source)
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"nuclear-wind interaction: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(
+        subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"]
+    )
+    df = df.reset_index(drop=True)
+    if len(df) < WF_MIN_TRAIN + 40:
+        logger.warning(f"nuclear-wind interaction: insufficient data for {zone} after dropna")
+        return {}
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    load_mw = df["load_mw"].to_numpy(float)
+    nuclear_gw = (
+        df["nuclear_lag1_gw"].to_numpy(float)
+        if "nuclear_lag1_gw" in df.columns
+        else np.zeros(len(df))
+    )
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    resid_gw = load_mw * (1.0 - (wind + solar) / 100.0) / 1000.0
+    dttf = np.diff(ttf, prepend=ttf[0])
+    # Interaction term: nuclear output * wind penetration, scaled to avoid unit mismatch.
+    # Both inputs are in the gate-closure set (D-1 actuals for nuclear, D forecast for wind).
+    interaction = nuclear_gw * wind / 100.0
+
+    Xenr = _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw)
+    Xint = np.column_stack([Xenr, interaction])
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, pred_enr, pred_int, res_enr, res_int = [], [], [], [], []
+    int_coefs, aic_deltas, bic_deltas = [], [], []
+
+    for t in range(start, n):
+        cenr, _, _, _ = np.linalg.lstsq(Xenr[:t], y[:t], rcond=None)
+        cint, _, _, _ = np.linalg.lstsq(Xint[:t], y[:t], rcond=None)
+
+        idx.append(t)
+        pe = float(Xenr[t] @ cenr)
+        pi = float(Xint[t] @ cint)
+        pred_enr.append(pe)
+        pred_int.append(pi)
+        res_enr.append(y[t] - pe)
+        res_int.append(y[t] - pi)
+        int_coefs.append(float(cint[-1]))
+
+        # Information criteria on the TRAINING window.
+        # AIC = n*log(RSS/n) + 2k; BIC = n*log(RSS/n) + k*log(n)
+        k_enr = Xenr.shape[1]
+        k_int = Xint.shape[1]
+        rss_enr = float(np.sum((y[:t] - Xenr[:t] @ cenr) ** 2))
+        rss_int = float(np.sum((y[:t] - Xint[:t] @ cint) ** 2))
+        nt = t
+        aic_enr = nt * np.log(rss_enr / nt) + 2 * k_enr
+        aic_int = nt * np.log(rss_int / nt) + 2 * k_int
+        bic_enr = nt * np.log(rss_enr / nt) + k_enr * np.log(nt)
+        bic_int = nt * np.log(rss_int / nt) + k_int * np.log(nt)
+        aic_deltas.append(aic_int - aic_enr)
+        bic_deltas.append(bic_int - bic_enr)
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    y_oos = y[idx]
+    w_oos = wind[idx]
+    prices = y_oos
+    price_changes = np.diff(prices)
+    low = w_oos < LOW_WIND_KNOT_PCT
+
+    def rmse(actual, pred, mask=None):
+        a = actual if mask is None else actual[mask]
+        p = pred if mask is None else pred[mask]
+        if len(a) == 0:
+            return None
+        return float(round(np.sqrt(np.mean((a - p) ** 2)), 2))
+
+    pred_enr = np.array(pred_enr)
+    pred_int = np.array(pred_int)
+
+    def sharpe_net(residuals):
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        pos = np.clip(-z, -1.0, 1.0)
+        gross = pos[:-1] * price_changes
+        turnover = np.abs(np.diff(pos, prepend=0.0))[:-1]
+        pnl = gross - EDGE_NET_COST * turnover
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    enriched_stats = {
+        "rmse_overall": rmse(y_oos, pred_enr),
+        "rmse_low_wind": rmse(y_oos, pred_enr, low),
+        "sharpe_net": sharpe_net(res_enr),
+    }
+    interaction_stats = {
+        "rmse_overall": rmse(y_oos, pred_int),
+        "rmse_low_wind": rmse(y_oos, pred_int, low),
+        "sharpe_net": sharpe_net(res_int),
+    }
+
+    def pct_drop(a, b):
+        if a is None or b is None or a == 0:
+            return None
+        return float(round(100.0 * (a - b) / a, 1))
+
+    def delta(a, b):
+        return float(round(b - a, 3)) if a is not None and b is not None else None
+
+    improvement = {
+        "rmse_pct": pct_drop(enriched_stats["rmse_overall"], interaction_stats["rmse_overall"]),
+        "low_wind_rmse_pct": pct_drop(
+            enriched_stats["rmse_low_wind"], interaction_stats["rmse_low_wind"]
+        ),
+        "sharpe_delta": delta(enriched_stats["sharpe_net"], interaction_stats["sharpe_net"]),
+    }
+
+    int_coefs_arr = np.array(int_coefs)
+    m = float(np.mean(int_coefs_arr))
+    sd = float(np.std(int_coefs_arr))
+    cv = float(abs(sd / m)) if m != 0 else None
+
+    aic_delta_mean = float(round(np.mean(aic_deltas), 2))
+    bic_delta_mean = float(round(np.mean(bic_deltas), 2))
+    # Conventional threshold: ΔAIC < -2 means the added parameter is clearly worthwhile.
+    justified = bool(aic_delta_mean < -2.0)
+
+    return {
+        "zone": zone,
+        "as_of": dates.iloc[-1].strftime("%Y-%m-%d"),
+        "n_oos": int(len(idx)),
+        "source": source,
+        "knot_pct": LOW_WIND_KNOT_PCT,
+        "enriched": enriched_stats,
+        "interaction": interaction_stats,
+        "improvement": improvement,
+        "coef": {"mean": round(m, 4), "std": round(sd, 4), "cv": round(cv, 3) if cv is not None else None},
+        "aic_delta_mean": aic_delta_mean,
+        "bic_delta_mean": bic_delta_mean,
+        "justified": justified,
+    }
+
+
 # GBM walk-forward refit cadence (days). A daily refit of a gradient booster over the OOS
 # window would be ~300 fits/zone/request; refitting every block and predicting the block
 # OOS keeps the endpoint sub-second while staying a genuine walk-forward. All three models
