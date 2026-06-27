@@ -1167,6 +1167,36 @@ def test_spreads_nonlinear_backtest(client):
     assert client.get("/api/spreads/nonlinear-backtest?zone=FAKE").status_code == 400
 
 
+def test_spreads_nonlinear_cost_robustness(client):
+    r = client.get("/api/spreads/nonlinear-cost-robustness?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_eval"] > 0
+    assert data["avg_turnover_linear"] >= 0
+    assert data["avg_turnover_nonlinear"] >= 0
+    gross = data["gross"]
+    assert {"linear_sharpe", "nonlinear_sharpe", "linear_cum_pnl", "nonlinear_cum_pnl"} <= gross.keys()
+    sweep = data["sweep"]
+    assert len(sweep) > 1
+    # Grid starts at zero cost and rises monotonically
+    assert sweep[0]["cost"] == 0.0
+    costs = [p["cost"] for p in sweep]
+    assert costs == sorted(costs)
+    for p in sweep:
+        assert {"cost", "linear_cum_pnl", "nonlinear_cum_pnl", "cum_pnl_delta"} <= p.keys()
+    # Zero-cost net P&L matches the reported gross figures
+    assert sweep[0]["linear_cum_pnl"] == gross["linear_cum_pnl"]
+    assert sweep[0]["nonlinear_cum_pnl"] == gross["nonlinear_cum_pnl"]
+    # Higher cost never increases either model's cumulative P&L (costs only subtract)
+    assert sweep[-1]["nonlinear_cum_pnl"] <= sweep[0]["nonlinear_cum_pnl"] + 1e-6
+    # Break-even fields present (may be None if the edge never erodes within the grid)
+    assert "breakeven_cost_sharpe" in data
+    assert "breakeven_cost_cum" in data
+    # Invalid zone -> 400
+    assert client.get("/api/spreads/nonlinear-cost-robustness?zone=FAKE").status_code == 400
+
+
 def test_spreads_fundamental_backtest(client):
     r = client.get("/api/spreads/fundamental-backtest?zone=DE-LU")
     assert r.status_code == 200

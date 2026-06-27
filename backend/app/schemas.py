@@ -1249,6 +1249,35 @@ class NonlinearBacktestResponse(BaseModel):
     equity: list[NonlinearBacktestEquityPoint]
 
 
+class CostSweepPoint(BaseModel):
+    cost: float
+    linear_sharpe: float | None
+    nonlinear_sharpe: float | None
+    linear_cum_pnl: float
+    nonlinear_cum_pnl: float
+    sharpe_delta: float | None
+    cum_pnl_delta: float
+
+
+class CostRobustnessGross(BaseModel):
+    linear_sharpe: float | None
+    nonlinear_sharpe: float | None
+    linear_cum_pnl: float
+    nonlinear_cum_pnl: float
+
+
+class CostRobustnessResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_eval: int
+    avg_turnover_linear: float
+    avg_turnover_nonlinear: float
+    gross: CostRobustnessGross
+    breakeven_cost_sharpe: float | None
+    breakeven_cost_cum: float | None
+    sweep: list[CostSweepPoint]
+
+
 class LngLatestRow(BaseModel):
     country: str
     gas_day: str

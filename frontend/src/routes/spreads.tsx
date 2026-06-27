@@ -17,7 +17,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1045,6 +1045,8 @@ function SpreadsDashboard() {
 
           <NonlinearBacktestSection />
 
+          <NonlinearCostRobustnessSection />
+
           <BacktestSection zone="DE-LU" />
 
           <div className="bg-card border border-border rounded-lg p-4">
@@ -1822,6 +1824,200 @@ function NonlinearBacktestEquityChart({ equity }: { equity: NonlinearBacktestEqu
           <Line
             type="monotone"
             dataKey="cum_nonlinear"
+            name="Nonlinear"
+            stroke="#a78bfa"
+            dot={false}
+            strokeWidth={1.5}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function NonlinearCostRobustnessSection() {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['nonlinear-cost-robustness', zone],
+    queryFn: () => api.spreadsNonlinearCostRobustness(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmtSharpe = (v: number | null | undefined) => (v != null ? v.toFixed(2) : '--')
+  const fmtCost = (v: number | null | undefined) =>
+    v != null ? `${v.toFixed(2)} €/MWh` : 'never'
+
+  // Sharpe edge at the most punitive cost in the grid, to headline survival.
+  const lastEdge = data?.sweep.length ? data.sweep[data.sweep.length - 1].sharpe_delta : null
+  const maxCost = data?.sweep.length ? data.sweep[data.sweep.length - 1].cost : null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Does the Edge Survive Costs?</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Net Sharpe vs round-trip transaction cost
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Sweeping transaction costs...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Break-even cost (Sharpe)</p>
+              <p className="text-sm font-semibold text-emerald-400">
+                {fmtCost(data.breakeven_cost_sharpe)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Break-even cost (cum P&L)</p>
+              <p className="text-sm font-semibold text-emerald-400">
+                {fmtCost(data.breakeven_cost_cum)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">
+                Sharpe gain @ {maxCost != null ? maxCost.toFixed(2) : '--'} €/MWh
+              </p>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: (lastEdge ?? 0) > 0 ? '#4ade80' : '#94a3b8' }}
+              >
+                {lastEdge != null ? `${lastEdge >= 0 ? '+' : ''}${lastEdge.toFixed(2)}` : '--'}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Daily turnover (lin / nl)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {data.avg_turnover_linear.toFixed(2)} /{' '}
+                <span style={{ color: data.avg_turnover_nonlinear <= data.avg_turnover_linear ? '#4ade80' : '#f59e0b' }}>
+                  {data.avg_turnover_nonlinear.toFixed(2)}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Cost-sweep chart */}
+          <NonlinearCostSweepChart sweep={data.sweep} />
+
+          {/* Per-cost summary grid */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-muted-foreground border-b border-border/50">
+                  <th className="text-left font-medium py-1 pr-3">Cost €/MWh</th>
+                  <th className="text-right font-medium py-1 px-2" style={{ color: '#60a5fa' }}>Sharpe lin</th>
+                  <th className="text-right font-medium py-1 px-2" style={{ color: '#a78bfa' }}>Sharpe nl</th>
+                  <th className="text-right font-medium py-1 px-2">ΔSharpe</th>
+                  <th className="text-right font-medium py-1 pl-2">Δcum P&L</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.sweep.filter((_, i) => i % 2 === 0 || i === data.sweep.length - 1).map((p) => (
+                  <tr key={p.cost} className="border-b border-border/20">
+                    <td className="py-0.5 pr-3 text-foreground">{p.cost.toFixed(3)}</td>
+                    <td className="py-0.5 px-2 text-right text-muted-foreground">{fmtSharpe(p.linear_sharpe)}</td>
+                    <td className="py-0.5 px-2 text-right text-muted-foreground">{fmtSharpe(p.nonlinear_sharpe)}</td>
+                    <td
+                      className="py-0.5 px-2 text-right"
+                      style={{ color: (p.sharpe_delta ?? 0) > 0 ? '#4ade80' : '#94a3b8' }}
+                    >
+                      {p.sharpe_delta != null ? `${p.sharpe_delta >= 0 ? '+' : ''}${p.sharpe_delta.toFixed(3)}` : '--'}
+                    </td>
+                    <td
+                      className="py-0.5 pl-2 text-right"
+                      style={{ color: p.cum_pnl_delta > 0 ? '#4ade80' : '#94a3b8' }}
+                    >
+                      {p.cum_pnl_delta >= 0 ? '+' : ''}{p.cum_pnl_delta.toFixed(0)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The contrarian fade rebalances daily, so it turns over. We charge a round-trip cost of c €/MWh per unit of
+            |position change| on the day each position is established (a full −1→+1 flip costs 2c), subtract it from
+            gross P&L, and recompute Sharpe and cumulative P&L for both signals across the cost grid. The break-even is
+            the cost at which the nonlinear edge over linear falls to zero — &quot;never&quot; means it survives the full
+            grid up to {maxCost != null ? maxCost.toFixed(2) : '--'} €/MWh.
+            {data.avg_turnover_nonlinear <= data.avg_turnover_linear
+              ? ` On ${data.zone} the nonlinear signal trades no more than the linear one (${data.avg_turnover_nonlinear.toFixed(2)} vs ${data.avg_turnover_linear.toFixed(2)} daily turnover), so its gross edge is preserved net of costs — the alpha is genuinely capturable, not an artefact of frictionless accounting.`
+              : ` On ${data.zone} the nonlinear signal trades more (${data.avg_turnover_nonlinear.toFixed(2)} vs ${data.avg_turnover_linear.toFixed(2)} daily turnover), so costs erode its edge faster — the break-even cost is where it stops paying.`}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NonlinearCostSweepChart({ sweep }: { sweep: CostSweepPoint[] }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground font-medium">
+        Net Sharpe vs round-trip transaction cost (€/MWh per unit turnover)
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={sweep} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="cost"
+            type="number"
+            domain={['dataMin', 'dataMax']}
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            tickFormatter={(v: number) => v.toFixed(2)}
+            label={{ value: 'cost €/MWh', position: 'insideBottom', offset: -2, fill: '#64748b', fontSize: 9 }}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={32}
+            label={{ value: 'Sharpe', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            labelFormatter={(v: unknown) => `cost ${typeof v === 'number' ? v.toFixed(3) : v} €/MWh`}
+            formatter={(val: unknown, name: unknown) => {
+              const v = typeof val === 'number' ? val.toFixed(2) : '--'
+              return [v, name === 'linear_sharpe' ? 'Linear' : 'Nonlinear']
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <Line
+            type="monotone"
+            dataKey="linear_sharpe"
+            name="Linear"
+            stroke="#60a5fa"
+            dot={false}
+            strokeWidth={1.5}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="nonlinear_sharpe"
             name="Nonlinear"
             stroke="#a78bfa"
             dot={false}

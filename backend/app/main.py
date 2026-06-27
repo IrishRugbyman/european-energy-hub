@@ -176,6 +176,9 @@ from .schemas import (
     NonlinearBacktestImprovement,
     NonlinearBacktestEquityPoint,
     BacktestModelStats,
+    CostRobustnessResponse,
+    CostRobustnessGross,
+    CostSweepPoint,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3620,6 +3623,40 @@ def spreads_nonlinear_backtest(zone: str = "DE-LU"):
         nonlinear=BacktestModelStats(**result["nonlinear"]),
         improvement=NonlinearBacktestImprovement(**result["improvement"]),
         equity=[NonlinearBacktestEquityPoint(**p) for p in result["equity"]],
+    )
+
+
+@app.get("/api/spreads/nonlinear-cost-robustness", response_model=CostRobustnessResponse)
+def spreads_nonlinear_cost_robustness(zone: str = "DE-LU"):
+    """Charge transaction costs against the linear vs nonlinear residual signals.
+
+    Phase 43 reported a *gross* Sharpe edge for the nonlinear signal on DE-LU. The signal
+    is a continuous daily-rebalanced fade, so it turns over a lot - this sweeps a round-trip
+    cost (EUR/MWh per unit of |position change|) and reports each model's net Sharpe and net
+    cumulative P&L across the grid, plus the break-even cost at which the nonlinear edge over
+    linear disappears. It hardens the capturable-alpha claim from gross to net of execution.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_nonlinear_cost_robustness, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_nonlinear_cost_robustness(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for cost robustness")
+
+    return CostRobustnessResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_eval=result["n_eval"],
+        avg_turnover_linear=result["avg_turnover_linear"],
+        avg_turnover_nonlinear=result["avg_turnover_nonlinear"],
+        gross=CostRobustnessGross(**result["gross"]),
+        breakeven_cost_sharpe=result["breakeven_cost_sharpe"],
+        breakeven_cost_cum=result["breakeven_cost_cum"],
+        sweep=[CostSweepPoint(**p) for p in result["sweep"]],
     )
 
 

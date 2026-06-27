@@ -784,3 +784,179 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
         "improvement": improvement,
         "equity": equity,
     }
+
+
+# Round-trip transaction-cost grid (EUR/MWh per unit of |position change|). A full
+# position flip (-1 -> +1) has turnover 2, so costs the grid value x 2. The grid spans
+# from frictionless to a punitive 1.0 EUR/MWh, comfortably bracketing a realistic
+# day-ahead-vs-realised execution slippage of a few tenths of a EUR/MWh.
+COST_GRID = [0.0, 0.02, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.75, 1.0]
+
+
+def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU") -> dict:
+    """Charge transaction costs against the linear vs nonlinear residual signals.
+
+    Phase 43 showed the nonlinear signal earns a higher *gross* Sharpe than the linear
+    one on the wind-heavy DE-LU hub. The signal is a continuous, daily-rebalanced
+    contrarian fade, so it turns over a lot - the honest follow-up a desk asks is whether
+    the edge survives execution costs. This sweeps a round-trip cost (EUR/MWh per unit of
+    |position change|) and reports each model's net Sharpe and net cumulative P&L across
+    the grid, plus the break-even cost at which the nonlinear edge over linear vanishes.
+
+    Mechanism. We reuse the exact walk-forward of compute_nonlinear_backtest to produce
+    the two OOS position paths, then for each cost c charge c x |pos(t) - pos(t-1)| on the
+    day each position is established (the initial entry costs c x |pos(0)|). Net daily P&L
+    is gross P&L minus that turnover charge; the two equity curves differ only by the
+    fair-value model and the (identical) cost schedule, so any surviving Sharpe gap is the
+    capturable, net-of-cost value of the nonlinear basis.
+
+    Returns dict with: zone, as_of, n_eval, avg_turnover_{linear,nonlinear} (mean daily
+    |dpos|), gross{} (c=0 Sharpe + cum P&L for both), breakeven_cost_sharpe / _cum (cost
+    where the nonlinear edge crosses to <= the linear one, or None if it never does within
+    the grid), and sweep[] (per-cost net Sharpe / cum P&L / deltas for the chart).
+    """
+    try:
+        rows = query_fn("""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
+                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.total_mw > 0
+              AND g.wind IS NOT NULL
+              AND g.solar IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"cost robustness query failed for {zone}: {exc!r}")
+        return {}
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"cost robustness: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df = df.reset_index(drop=True)
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    Xlin = _design_linear(ttf, eua, wind, solar)
+    Xnl = _design_nonlinear(ttf, eua, wind, solar)
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, res_lin, res_nl = [], [], []
+    for t in range(start, n):
+        clin, _, _, _ = np.linalg.lstsq(Xlin[:t], y[:t], rcond=None)
+        cnl, _, _, _ = np.linalg.lstsq(Xnl[:t], y[:t], rcond=None)
+        idx.append(t)
+        res_lin.append(y[t] - float(Xlin[t] @ clin))
+        res_nl.append(y[t] - float(Xnl[t] @ cnl))
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    prices = y[idx]
+    eval_dates = [dates.iloc[int(i)].strftime("%Y-%m-%d") for i in idx]
+    price_changes = np.diff(prices)  # length m-1
+
+    def signal_positions(residuals: list[float]) -> np.ndarray:
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        return np.clip(-z, -1.0, 1.0)
+
+    pos_lin = signal_positions(res_lin)
+    pos_nl = signal_positions(res_nl)
+
+    # Turnover to establish each held position: |pos(t) - pos(t-1)|, with pos(-1)=0 so the
+    # initial entry is charged. Aligned to the P&L days (positions pos[:-1] earn the next
+    # price change), so we take the turnover of pos over the same [0 .. m-2] slice.
+    def turnover(pos: np.ndarray) -> np.ndarray:
+        d = np.abs(np.diff(pos, prepend=0.0))  # length m
+        return d[:-1]                          # align to pnl days (pos[:-1])
+
+    to_lin = turnover(pos_lin)
+    to_nl = turnover(pos_nl)
+    gross_lin = pos_lin[:-1] * price_changes
+    gross_nl = pos_nl[:-1] * price_changes
+
+    def sharpe(pnl: np.ndarray) -> float | None:
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    sweep = []
+    for c in COST_GRID:
+        net_lin = gross_lin - c * to_lin
+        net_nl = gross_nl - c * to_nl
+        s_lin = sharpe(net_lin)
+        s_nl = sharpe(net_nl)
+        cum_lin = round(float(net_lin.sum()), 2)
+        cum_nl = round(float(net_nl.sum()), 2)
+        sweep.append({
+            "cost": round(c, 3),
+            "linear_sharpe": s_lin,
+            "nonlinear_sharpe": s_nl,
+            "linear_cum_pnl": cum_lin,
+            "nonlinear_cum_pnl": cum_nl,
+            "sharpe_delta": round(s_nl - s_lin, 3) if s_lin is not None and s_nl is not None else None,
+            "cum_pnl_delta": round(cum_nl - cum_lin, 2),
+        })
+
+    # Cumulative-P&L break-even is closed-form: net edge(c) = (G_nl - G_lin) - c(T_nl - T_lin).
+    # It crosses zero at c* = (G_nl - G_lin) / (T_nl - T_lin) when the nonlinear signal both
+    # starts ahead and trades more; otherwise the edge never erodes (None).
+    g_edge = float(gross_nl.sum() - gross_lin.sum())
+    t_edge = float(to_nl.sum() - to_lin.sum())
+    if g_edge > 0 and t_edge > 0:
+        be_cum = round(g_edge / t_edge, 3)
+    else:
+        be_cum = None
+
+    # Sharpe break-even: finest cost on the grid at which the nonlinear net Sharpe first
+    # drops to or below the linear net Sharpe (scan a dense grid for the crossing).
+    be_sharpe = None
+    fine = [round(0.0 + 0.01 * k, 3) for k in range(0, 101)]  # 0.00 .. 1.00 step 0.01
+    for c in fine:
+        s_lin = sharpe(gross_lin - c * to_lin)
+        s_nl = sharpe(gross_nl - c * to_nl)
+        if s_lin is None or s_nl is None:
+            continue
+        if s_nl <= s_lin:
+            be_sharpe = c
+            break
+
+    return {
+        "zone": zone,
+        "as_of": eval_dates[-1],
+        "n_eval": int(len(gross_lin)),
+        "avg_turnover_linear": round(float(to_lin.mean()), 3),
+        "avg_turnover_nonlinear": round(float(to_nl.mean()), 3),
+        "gross": {
+            "linear_sharpe": sweep[0]["linear_sharpe"],
+            "nonlinear_sharpe": sweep[0]["nonlinear_sharpe"],
+            "linear_cum_pnl": sweep[0]["linear_cum_pnl"],
+            "nonlinear_cum_pnl": sweep[0]["nonlinear_cum_pnl"],
+        },
+        "breakeven_cost_sharpe": be_sharpe,
+        "breakeven_cost_cum": be_cum,
+        "sweep": sweep,
+    }

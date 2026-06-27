@@ -1101,6 +1101,7 @@ export const api = {
   spreadsFundamentalBacktest: (zone?: string) => get<FundamentalBacktestResponse>(`/spreads/fundamental-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearModel: (zone?: string) => get<NonlinearModelResponse>(`/spreads/nonlinear-model${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearBacktest: (zone?: string) => get<NonlinearBacktestResponse>(`/spreads/nonlinear-backtest${zone ? `?zone=${zone}` : ''}`),
+  spreadsNonlinearCostRobustness: (zone?: string) => get<CostRobustnessResponse>(`/spreads/nonlinear-cost-robustness${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1390,6 +1391,35 @@ export interface NonlinearBacktestResponse {
   nonlinear: BacktestModelStats
   improvement: NonlinearBacktestImprovement
   equity: NonlinearBacktestEquityPoint[]
+}
+
+export interface CostSweepPoint {
+  cost: number
+  linear_sharpe: number | null
+  nonlinear_sharpe: number | null
+  linear_cum_pnl: number
+  nonlinear_cum_pnl: number
+  sharpe_delta: number | null
+  cum_pnl_delta: number
+}
+
+export interface CostRobustnessGross {
+  linear_sharpe: number | null
+  nonlinear_sharpe: number | null
+  linear_cum_pnl: number
+  nonlinear_cum_pnl: number
+}
+
+export interface CostRobustnessResponse {
+  zone: string
+  as_of: string | null
+  n_eval: number
+  avg_turnover_linear: number
+  avg_turnover_nonlinear: number
+  gross: CostRobustnessGross
+  breakeven_cost_sharpe: number | null
+  breakeven_cost_cum: number | null
+  sweep: CostSweepPoint[]
 }
 
 export interface BacktestEquityPoint {
