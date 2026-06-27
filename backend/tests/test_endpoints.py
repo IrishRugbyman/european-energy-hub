@@ -663,6 +663,35 @@ def test_imbalance_monthly(client):
         assert row["avg_eur"] > 0
 
 
+def test_imbalance_signal(client):
+    r = client.get("/api/imbalance/signal")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["n_oos"] > 0
+    assert 0 < data["accuracy_pct"] <= 100
+    assert 0 < data["naive_accuracy_pct"] <= 100
+    assert 0 < data["naive_pos_rate_pct"] <= 100
+    assert data["cost_per_mwh"] == 2.0
+    # Model vs naive blocks
+    for block in ("model", "naive"):
+        b = data[block]
+        assert "sharpe" in b and "cum_pnl" in b and "max_dd_eur" in b
+        assert b["max_dd_eur"] <= 0
+    # Coefficient stability for all 4 features
+    for feat in ("wind_err_lag1", "solar_err_lag1", "wind_fc_d", "rebap_dev_lag1"):
+        c = data["coef"][feat]
+        assert {"mean", "std", "cv"} <= c.keys()
+    # Equity curve has both model and naive columns
+    assert len(data["equity_curve"]) > 0
+    pt = data["equity_curve"][0]
+    assert {"date", "cum_net_pnl", "cum_naive_pnl"} <= pt.keys()
+    # Today's signal
+    st = data["signal_today"]
+    if st is not None:
+        assert st["direction"] in ("above-trend", "below-trend")
+        assert "pred_excess" in st and "rebap_roll5" in st
+
+
 def test_gas_pace_has_seasonal_norm(client):
     r = client.get("/api/gas/pace")
     assert r.status_code == 200

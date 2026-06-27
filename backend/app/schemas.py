@@ -651,6 +651,55 @@ class ImbalanceMonthlyResponse(BaseModel):
     rows: list[ImbalanceMonthlyRow]
 
 
+class RebapSignalPerfBlock(BaseModel):
+    sharpe: float | None
+    cum_pnl: float
+    max_dd_eur: float
+
+
+class RebapCoefStability(BaseModel):
+    mean: float
+    std: float
+    cv: float | None
+
+
+class RebapSignalCoef(BaseModel):
+    wind_err_lag1: RebapCoefStability
+    solar_err_lag1: RebapCoefStability
+    wind_fc_d: RebapCoefStability
+    rebap_dev_lag1: RebapCoefStability
+
+
+class RebapEquityPoint(BaseModel):
+    date: str
+    cum_net_pnl: float
+    cum_naive_pnl: float
+
+
+class RebapSignalToday(BaseModel):
+    gen_date: str
+    pred_excess: float
+    direction: str
+    rebap_roll5: float
+    wind_err_lag1: float
+    solar_err_lag1: float
+    wind_fc_d: float
+    rebap_dev_lag1: float
+
+
+class RebapSignalResponse(BaseModel):
+    n_oos: int
+    accuracy_pct: float
+    naive_accuracy_pct: float
+    naive_pos_rate_pct: float
+    cost_per_mwh: float
+    model: RebapSignalPerfBlock
+    naive: RebapSignalPerfBlock
+    coef: RebapSignalCoef
+    equity_curve: list[RebapEquityPoint]
+    signal_today: RebapSignalToday | None
+
+
 class GenMonthlyRow(BaseModel):
     year: int
     month: int

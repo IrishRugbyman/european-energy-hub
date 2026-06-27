@@ -1000,6 +1000,53 @@ export interface ImbalanceMonthlyResponse {
   rows: ImbalanceMonthlyRow[]
 }
 
+export interface RebapCoefStability {
+  mean: number
+  std: number
+  cv: number | null
+}
+
+export interface RebapSignalPerfBlock {
+  sharpe: number | null
+  cum_pnl: number
+  max_dd_eur: number
+}
+
+export interface RebapEquityPoint {
+  date: string
+  cum_net_pnl: number
+  cum_naive_pnl: number
+}
+
+export interface RebapSignalToday {
+  gen_date: string
+  pred_excess: number
+  direction: string
+  rebap_roll5: number
+  wind_err_lag1: number
+  solar_err_lag1: number
+  wind_fc_d: number
+  rebap_dev_lag1: number
+}
+
+export interface RebapSignalResponse {
+  n_oos: number
+  accuracy_pct: number
+  naive_accuracy_pct: number
+  naive_pos_rate_pct: number
+  cost_per_mwh: number
+  model: RebapSignalPerfBlock
+  naive: RebapSignalPerfBlock
+  coef: {
+    wind_err_lag1: RebapCoefStability
+    solar_err_lag1: RebapCoefStability
+    wind_fc_d: RebapCoefStability
+    rebap_dev_lag1: RebapCoefStability
+  }
+  equity_curve: RebapEquityPoint[]
+  signal_today: RebapSignalToday | null
+}
+
 export interface ZoneNetFlowRow {
   zone: string
   net_import_mw: number | null
@@ -1140,6 +1187,7 @@ export const api = {
   powerCorrelations: () => get<PowerCorrelationResponse>('/power/correlations'),
   pricesCurveSnapshots: () => get<TtfCurveSnapshotsResponse>('/prices/curve/snapshots'),
   imbalanceMonthly: () => get<ImbalanceMonthlyResponse>('/imbalance/monthly'),
+  imbalanceSignal: () => get<RebapSignalResponse>('/imbalance/signal'),
   genCapacityAnnual: () => get<CapacityAnnualResponse>('/generation/capacity-annual'),
   powerNegHoursMonthly: () => get<NegHoursMonthlyResponse>('/power/neg-hours-monthly'),
   powerNegHoursZones: () => get<NegHoursZoneResponse>('/power/neg-hours-zones'),

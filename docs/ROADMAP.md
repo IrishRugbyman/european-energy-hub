@@ -303,7 +303,20 @@ fabricate a series to "complete" a factor.
 
 ### Phase 54 - D-1 nuclear lag factor in enriched + GBM fair-value models on /spreads [COMPLETE 2026-06-27]
 
-- US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
+### Phase 55 - reBAP renewable forecast-error signal on /imbalance [COMPLETE 2026-06-28]
+
+### Phase 56 - US ISO day-ahead LMP choropleth on /us-power (future)
+- ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE publish free DA LMP data via their public APIs.
+- Needs: new fetcher(s) per ISO, US bidding-zone GeoJSON, /us-power page choropleth mode.
+- Mirrors the EU /map Price/Range/Rank pattern for the US market.
+- Data gap: nothing in market_data yet. First task is to identify the best free API per ISO
+  (EIA open data covers some ISOs via EIA-930 hourly; others need direct ISO API access).
+
+### Phase 57 - Spreads arc: cross-factor interaction term nuclear * wind (future)
+- Test whether nuclear_lag1 * wind_pct interaction explains an additional slice of FR price
+  variance (when nuclear is low AND wind is high, price crashes more than additive models predict).
+- Pure analytics on existing data, no new fetch. Add to enriched-OLS as optional 6th factor,
+  report whether marginal R2 justifies the additional degree of freedom (AIC / BIC comparison).
 
 ## 10. Deliberately NOT building (v1)
 

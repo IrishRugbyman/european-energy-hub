@@ -18,7 +18,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint, type ImbalanceMonthlyRow } from '@/lib/api'
+import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint, type ImbalanceMonthlyRow, type RebapSignalResponse, type RebapEquityPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/imbalance')({
@@ -62,6 +62,12 @@ function ImbalanceDashboard() {
     queryKey: ['imbalance-monthly'],
     queryFn: api.imbalanceMonthly,
     staleTime: 6 * 60 * 60 * 1000,
+  })
+
+  const { data: signalData } = useQuery({
+    queryKey: ['imbalance-signal'],
+    queryFn: api.imbalanceSignal,
+    staleTime: 60 * 60 * 1000,
   })
 
   const latest = data?.latest
@@ -269,6 +275,9 @@ function ImbalanceDashboard() {
         {/* Extreme reBAP events */}
         {daily.length > 0 && <ExtremeEvents daily={daily} />}
 
+        {/* Renewable forecast-error signal */}
+        {signalData && <ImbalanceSignalSection data={signalData} />}
+
         {/* Battery oracle dispatch */}
         {dispatchData && <BatteryDispatchPanel hourly={dispatchData.hourly} summary={dispatchData.summary} />}
 
@@ -286,16 +295,210 @@ function ImbalanceDashboard() {
             Negative prices reflect excess generation that had to be curtailed or exported at a loss.
           </p>
           <p>
-            This data feeds the{' '}
-            <a href="https://quant.lbzgiu.xyz" className="text-primary hover:underline">
-              P2 Imbalance Signal
-            </a>{' '}
-            research project, which predicts reBAP sign from renewable forecast errors.
+            The renewable forecast-error signal below uses ENTSO-E DA generation forecasts vs
+            actuals to predict whether the next day's reBAP will be above or below its 5-day
+            trailing mean (the "excess-above-trend" signal, walk-forward OLS, D-1 gate-closure
+            information only).
           </p>
         </div>
       </div>
 
       <StaleBanner datasetKey="imbalance" variant="inline" />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Renewable forecast-error signal section
+// ---------------------------------------------------------------------------
+
+function SignalStatCard({ label, value, sub, highlight = false }: {
+  label: string; value: string; sub?: string; highlight?: boolean
+}) {
+  return (
+    <div className={`rounded-lg border p-3 ${highlight ? 'bg-cyan-400/5 border-cyan-400/20' : 'bg-card border-border'}`}>
+      <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{label}</div>
+      <div className={`text-lg font-semibold mt-0.5 ${highlight ? 'text-cyan-400' : 'text-foreground'}`}>{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  )
+}
+
+const COEF_LABELS: Record<string, string> = {
+  wind_err_lag1: 'Wind err D-1',
+  solar_err_lag1: 'Solar err D-1',
+  wind_fc_d: 'Wind DA fc',
+  rebap_dev_lag1: 'reBAP dev D-1',
+}
+
+const COEF_DESCS: Record<string, string> = {
+  wind_err_lag1: 'D-1 wind underperformance → system short → above trend',
+  solar_err_lag1: 'D-1 solar underperformance → above trend',
+  wind_fc_d: 'High DA wind forecast → excess supply expected → below trend',
+  rebap_dev_lag1: 'Yesterday above trend → mild persistence',
+}
+
+function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
+  const st = data.signal_today
+  const coefEntries = Object.entries(data.coef) as [keyof typeof data.coef, typeof data.coef[keyof typeof data.coef]][]
+
+  const chartData = data.equity_curve.map((p: RebapEquityPoint) => ({
+    date: p.date,
+    model: p.cum_net_pnl,
+    naive: p.cum_naive_pnl,
+  }))
+
+  const fmtEur = (v: number) => `${v >= 0 ? '+' : ''}${v.toFixed(0)} €`
+  const fmtSharpe = (v: number | null) => v != null ? v.toFixed(2) : '--'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold text-foreground">Renewable Forecast-Error Signal</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Walk-forward OLS predicting reBAP excess above 5-day trend from D-1 renewable errors
+            ({data.n_oos} OOS days, {data.cost_per_mwh} €/MWh round-trip cost)
+          </p>
+        </div>
+        {st && (
+          <div className={`text-xs font-medium px-2 py-1 rounded border shrink-0 ${
+            st.direction === 'above-trend'
+              ? 'bg-emerald-400/10 text-emerald-400 border-emerald-400/20'
+              : 'bg-rose-400/10 text-rose-400 border-rose-400/20'
+          }`}>
+            {st.direction === 'above-trend' ? '▲ above trend' : '▼ below trend'}
+          </div>
+        )}
+      </div>
+
+      {/* Today's signal */}
+      {st && (
+        <div className="bg-muted/30 rounded-lg p-3 space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">Today's signal ({st.gen_date})</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div>
+              <div className="text-muted-foreground">Predicted excess</div>
+              <div className={`font-semibold ${st.pred_excess >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {st.pred_excess >= 0 ? '+' : ''}{st.pred_excess.toFixed(1)} €/MWh
+              </div>
+              <div className="text-muted-foreground">vs roll5={st.rebap_roll5.toFixed(0)} €</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Wind err D-1</div>
+              <div className={`font-semibold ${st.wind_err_lag1 < 0 ? 'text-amber-400' : 'text-sky-400'}`}>
+                {st.wind_err_lag1 >= 0 ? '+' : ''}{st.wind_err_lag1.toFixed(2)} pp
+              </div>
+              <div className="text-muted-foreground">{st.wind_err_lag1 < 0 ? 'underperf' : 'overperf'}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Solar err D-1</div>
+              <div className={`font-semibold ${st.solar_err_lag1 < 0 ? 'text-amber-400' : 'text-sky-400'}`}>
+                {st.solar_err_lag1 >= 0 ? '+' : ''}{st.solar_err_lag1.toFixed(2)} pp
+              </div>
+              <div className="text-muted-foreground">{st.solar_err_lag1 < 0 ? 'underperf' : 'overperf'}</div>
+            </div>
+            <div>
+              <div className="text-muted-foreground">Wind DA fc (D)</div>
+              <div className="font-semibold text-foreground">{st.wind_fc_d.toFixed(1)} %</div>
+              <div className="text-muted-foreground">of load</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stats grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <SignalStatCard
+          label="Model Sharpe (net)"
+          value={fmtSharpe(data.model.sharpe)}
+          sub={`${fmtEur(data.model.cum_pnl)} cumulative`}
+          highlight
+        />
+        <SignalStatCard
+          label="Excess accuracy"
+          value={`${data.accuracy_pct}%`}
+          sub={`vs ${data.naive_accuracy_pct}% naive baseline`}
+        />
+        <SignalStatCard
+          label="Naive Sharpe (always long)"
+          value={fmtSharpe(data.naive.sharpe)}
+          sub={`${data.naive_pos_rate_pct}% days positive`}
+        />
+        <SignalStatCard
+          label="Max drawdown (net)"
+          value={`${data.model.max_dd_eur.toFixed(0)} €`}
+          sub="excess-signal strategy"
+        />
+      </div>
+
+      {/* Equity curve */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-2">
+          Cumulative P&L (net, €/MWh notional) - model vs always-long naive
+        </div>
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={chartData} margin={{ top: 2, right: 4, bottom: 0, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 10, fill: '#64748b' }}
+              tickFormatter={(v: string) => v.slice(0, 7)}
+              interval="preserveStartEnd"
+            />
+            <YAxis tick={{ fontSize: 10, fill: '#64748b' }} width={50} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
+            <Tooltip
+              contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
+              formatter={(v: unknown, name: unknown) => [`${Number(v).toFixed(0)} €`, name === 'model' ? 'Model (excess signal)' : 'Naive (always long)']}
+              labelFormatter={(l: unknown) => String(l)}
+            />
+            <Line type="monotone" dataKey="model" stroke="#34d399" strokeWidth={1.5} dot={false} name="model" />
+            <Line type="monotone" dataKey="naive" stroke="#94a3b8" strokeWidth={1} dot={false} strokeDasharray="4 2" name="naive" />
+          </LineChart>
+        </ResponsiveContainer>
+        <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1">
+            <span className="w-4 border-t-2 border-emerald-400 inline-block" /> model (excess signal)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-4 border-t border-slate-400 border-dashed inline-block" /> naive (always long)
+          </span>
+        </div>
+      </div>
+
+      {/* Coefficient table */}
+      <div>
+        <div className="text-xs text-muted-foreground mb-2">Walk-forward OLS coefficient stability</div>
+        <div className="space-y-1">
+          {coefEntries.map(([key, c]) => {
+            const maxAbsMean = Math.max(...coefEntries.map(([, v]) => Math.abs(v.mean)))
+            const barWidth = maxAbsMean > 0 ? Math.abs(c.mean) / maxAbsMean * 100 : 0
+            const isNeg = c.mean < 0
+            return (
+              <div key={key} className="grid grid-cols-[120px_1fr_80px] gap-2 items-center text-xs">
+                <div className="text-muted-foreground truncate">{COEF_LABELS[key] ?? key}</div>
+                <div className="relative h-3 bg-muted/30 rounded overflow-hidden">
+                  <div
+                    className={`absolute top-0 h-full rounded ${isNeg ? 'bg-rose-400/50 right-1/2' : 'bg-sky-400/50 left-1/2'}`}
+                    style={{ width: `${barWidth / 2}%` }}
+                  />
+                </div>
+                <div className={`text-right font-mono ${isNeg ? 'text-rose-400' : 'text-sky-400'}`}>
+                  {c.mean >= 0 ? '+' : ''}{c.mean.toFixed(2)}
+                  {c.cv != null && <span className="text-muted-foreground ml-1">cv={c.cv.toFixed(2)}</span>}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <div className="mt-2 space-y-0.5">
+          {coefEntries.map(([key]) => (
+            <div key={key} className="text-[10px] text-muted-foreground">
+              <span className="text-foreground/50">{COEF_LABELS[key]}:</span> {COEF_DESCS[key]}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

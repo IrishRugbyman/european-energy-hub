@@ -219,6 +219,12 @@ from .schemas import (
     NuclearHeatRiskPlant,
     NuclearHeatRiskTrendPoint,
     NuclearHeatRiskResponse,
+    RebapSignalResponse,
+    RebapSignalPerfBlock,
+    RebapSignalCoef,
+    RebapCoefStability,
+    RebapEquityPoint,
+    RebapSignalToday,
 )
 
 
@@ -2572,6 +2578,55 @@ def imbalance_dispatch():
         as_of=_meta_val("refreshed_at_imbalance"),
         summary=summary,
         hourly=hourly,
+    )
+
+
+@app.get("/api/imbalance/signal", response_model=RebapSignalResponse)
+def imbalance_signal():
+    """Walk-forward OLS reBAP direction signal.
+
+    Features (all in the D-1 gate-closure information set):
+      wind_err_lag1  D-1 wind forecast error (actual - DA, %-of-load pp)
+      solar_err_lag1 D-1 solar forecast error
+      wind_fc_d      D DA wind forecast (published D-1)
+      rebap_lag1     D-1 daily mean reBAP EUR/MWh
+      rebap_roll5    5-day trailing mean reBAP
+
+    Walk-forward OLS (252-day window, 1-day OOS), P&L net of 2 EUR/MWh round-trip cost.
+    """
+    from analytics.imbalance import compute_rebap_signal
+
+    result = compute_rebap_signal(db.query)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for reBAP signal")
+
+    def perf(d):
+        return RebapSignalPerfBlock(
+            sharpe=d.get("sharpe"),
+            cum_pnl=d["cum_pnl"],
+            max_dd_eur=d["max_dd_eur"],
+        )
+
+    def coef_stab(d):
+        return RebapCoefStability(mean=d["mean"], std=d["std"], cv=d.get("cv"))
+
+    c = result["coef"]
+    return RebapSignalResponse(
+        n_oos=result["n_oos"],
+        accuracy_pct=result["accuracy_pct"],
+        naive_accuracy_pct=result["naive_accuracy_pct"],
+        naive_pos_rate_pct=result["naive_pos_rate_pct"],
+        cost_per_mwh=result["cost_per_mwh"],
+        model=perf(result["model"]),
+        naive=perf(result["naive"]),
+        coef=RebapSignalCoef(
+            wind_err_lag1=coef_stab(c["wind_err_lag1"]),
+            solar_err_lag1=coef_stab(c["solar_err_lag1"]),
+            wind_fc_d=coef_stab(c["wind_fc_d"]),
+            rebap_dev_lag1=coef_stab(c["rebap_dev_lag1"]),
+        ),
+        equity_curve=[RebapEquityPoint(**p) for p in result["equity_curve"]],
+        signal_today=RebapSignalToday(**result["signal_today"]) if result.get("signal_today") else None,
     )
 
 
