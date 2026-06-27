@@ -1103,6 +1103,7 @@ export const api = {
   spreadsNonlinearBacktest: (zone?: string) => get<NonlinearBacktestResponse>(`/spreads/nonlinear-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearCostRobustness: (zone?: string) => get<CostRobustnessResponse>(`/spreads/nonlinear-cost-robustness${zone ? `?zone=${zone}` : ''}`),
   spreadsNonlinearEdgeByZone: () => get<EdgeByZoneResponse>('/spreads/nonlinear-edge-by-zone'),
+  spreadsRegimeAwareBacktest: (zone?: string) => get<RegimeAwareBacktestResponse>(`/spreads/regime-aware-backtest${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1441,6 +1442,41 @@ export interface EdgeByZoneResponse {
   intercept: number | null
   corr: number | null
   dose_response_holds: boolean
+}
+
+export interface RegimeBookStats {
+  sharpe: number | null
+  sharpe_sub_knot: number | null
+  sharpe_normal: number | null
+  hit_rate_pct: number
+  cum_pnl: number
+  max_dd_eur: number
+  avg_daily_pnl: number
+  n: number
+  n_sub_knot: number
+}
+
+export interface RegimeAwareEquityPoint {
+  date: string
+  cum_linear: number
+  cum_nonlinear: number
+  cum_regime_aware: number
+  wind_pct: number
+}
+
+export interface RegimeAwareBacktestResponse {
+  zone: string
+  as_of: string | null
+  n_eval: number
+  signal_window: number
+  mom_window: number
+  knot_pct: number
+  cost: number
+  linear: RegimeBookStats
+  nonlinear: RegimeBookStats
+  regime_aware: RegimeBookStats
+  recovers_drought: boolean
+  equity: RegimeAwareEquityPoint[]
 }
 
 export interface BacktestEquityPoint {

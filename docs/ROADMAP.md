@@ -285,15 +285,7 @@ FR nuclear unavailability A80), the phase's first task is to verify coverage and
 add a fetcher or restrict the factor to zones that have real data and flag the gap. Never
 fabricate a series to "complete" a factor.
 
-### Phase 46 - Regime-aware signal on /spreads
-*Goal: turn the drought regime from a drag into alpha - both linear and nonlinear signals are still negative-Sharpe below the wind knot (P43) because a pure mean-reversion fade is structurally wrong when scarcity persists and prices trend.*
-*Depends on: P43/P45 backtest machinery. Reuses existing data. 1-2 sessions.*
-
-- [ ] Analytics: `compute_regime_aware_backtest()` in `analytics/fundamental.py` - condition the position rule on the live wind regime: keep the contrarian fade in the normal/high-wind regime, but in the sub-knot drought regime dampen toward flat or flip toward momentum (sign of recent trend). Same strict walk-forward and identical accounting as P43 so the only change is the position map.
-- [ ] Compare three books OOS: flat fade (P43 baseline), nonlinear fade (P43), regime-aware - report Sharpe, drawdown, hit rate, and the sub-knot-regime Sharpe split, net of the P44 transaction cost.
-- [ ] Endpoint `GET /api/spreads/regime-aware-backtest?zone=`, schema models, one pytest.
-- [ ] Frontend `RegimeAwareSection` on /spreads below the edge-by-zone section: equity curves for the three books, a regime-split stat grid, and a footer stating whether conditioning on the regime recovers the drought loss.
-- *Done when:* the regime-aware book's sub-knot Sharpe is materially less negative (ideally positive) than both fade books on DE-LU, OOS and net of cost, with the result shown on /spreads and 1 new test green.
+### Phase 46 - Regime-aware signal on /spreads [COMPLETE 2026-06-27]
 
 ### Phase 47 - Expand the fundamental factor set
 *Goal: tighten the fair value with residual-demand and supply-availability factors, not just TTF/EUA/wind/solar.*

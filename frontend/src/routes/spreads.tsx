@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1049,6 +1049,8 @@ function SpreadsDashboard() {
           <NonlinearCostRobustnessSection />
 
           <NonlinearEdgeByZoneSection />
+
+          <RegimeAwareSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -2226,6 +2228,154 @@ function NonlinearEdgeScatter({ data }: { data: (EdgeByZoneRow & { fit: number |
           </span>
         ))}
       </div>
+    </div>
+  )
+}
+
+function RegimeAwareSection() {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['regime-aware-backtest', zone],
+    queryFn: () => api.spreadsRegimeAwareBacktest(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmtSharpe = (v: number | null | undefined) => (v != null ? v.toFixed(2) : '--')
+  const subKnotColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v >= 0 ? '#4ade80' : v > -2 ? '#fbbf24' : '#f87171'
+
+  const books: { key: 'linear' | 'nonlinear' | 'regime_aware'; label: string; color: string }[] = [
+    { key: 'linear', label: 'Linear fade', color: '#60a5fa' },
+    { key: 'nonlinear', label: 'Nonlinear fade', color: '#a78bfa' },
+    { key: 'regime_aware', label: 'Regime-aware', color: '#4ade80' },
+  ]
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Can the Regime Recover the Drought Loss?</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Fade in normal wind, ride trend in the sub-knot drought
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running walk-forward backtest...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Sub-knot drought Sharpe: the headline split */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {books.map((b) => (
+              <div key={b.key} className="bg-muted/20 rounded-lg px-3 py-2">
+                <p className="text-[10px] text-muted-foreground mb-0.5">{b.label} · drought Sharpe</p>
+                <p className="text-sm font-semibold" style={{ color: subKnotColor(data[b.key].sharpe_sub_knot) }}>
+                  {fmtSharpe(data[b.key].sharpe_sub_knot)}
+                </p>
+              </div>
+            ))}
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Drought loss recovered?</p>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: data.recovers_drought ? '#4ade80' : '#f87171' }}
+              >
+                {data.recovers_drought ? 'Yes' : 'No'}
+                <span className="text-xs text-muted-foreground ml-1">
+                  n={data.regime_aware.n_sub_knot}
+                </span>
+              </p>
+            </div>
+          </div>
+
+          {/* Equity curves */}
+          {data.equity.length > 0 && <RegimeAwareEquityChart equity={data.equity} />}
+
+          {/* Per-book summary */}
+          <div className="grid grid-cols-3 gap-3 text-[11px]">
+            {books.map((b) => {
+              const m: RegimeBookStats = data[b.key]
+              return (
+                <div key={b.key} className="bg-muted/10 rounded-lg px-3 py-2">
+                  <p className="font-medium mb-1" style={{ color: b.color }}>{b.label}</p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                    <span>Sharpe</span><span className="text-right text-foreground">{fmtSharpe(m.sharpe)}</span>
+                    <span>Normal</span><span className="text-right text-foreground">{fmtSharpe(m.sharpe_normal)}</span>
+                    <span>Drought</span><span className="text-right" style={{ color: subKnotColor(m.sharpe_sub_knot) }}>{fmtSharpe(m.sharpe_sub_knot)}</span>
+                    <span>Hit rate</span><span className="text-right text-foreground">{m.hit_rate_pct.toFixed(1)}%</span>
+                    <span>Cum P&L</span><span className="text-right text-foreground">{m.cum_pnl.toFixed(0)}</span>
+                    <span>Max DD</span><span className="text-right text-foreground">{m.max_dd_eur.toFixed(0)}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Below the low-wind knot ({data.knot_pct}% wind) a mean-reversion fade is structurally wrong: when
+            renewable scarcity persists, prices trend rather than revert, so both fade books bleed in the drought
+            regime. The regime-aware book keeps the nonlinear contrarian fade when wind is normal but, in the
+            sub-knot drought, flips to momentum — position = clip of a {data.mom_window}-day rolling z-score of recent
+            price changes (trend-following). Walk-forward refit, accounting, and the {data.cost.toFixed(2)} €/MWh·u
+            round-trip cost are identical to the P43/P44 books, so the only change is the position map inside the
+            drought. {data.recovers_drought
+              ? `On ${data.zone} the regime-aware book's drought Sharpe (${fmtSharpe(data.regime_aware.sharpe_sub_knot)}) is materially less negative than both fade books, while the normal-wind edge (${fmtSharpe(data.regime_aware.sharpe_normal)}) is preserved — conditioning on the regime recovers the drought loss.`
+              : `On ${data.zone} the flip does not help: here low wind% reflects baseload mix rather than genuine scarcity, so the fade still works in the "drought" regime and the momentum override only adds variance — the edge is specific to wind-heavy hubs.`}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RegimeAwareEquityChart({ equity }: { equity: RegimeAwareEquityPoint[] }) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground font-medium">
+        Cumulative P&L — linear fade vs nonlinear fade vs regime-aware (out-of-sample, net of cost)
+      </p>
+      <ResponsiveContainer width="100%" height={220}>
+        <LineChart data={equity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} minTickGap={40} />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={40}
+            label={{ value: 'cum P&L', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(val: unknown, name: unknown) => {
+              const v = typeof val === 'number' ? val.toFixed(1) : '--'
+              const label =
+                name === 'cum_linear' ? 'Linear fade' : name === 'cum_nonlinear' ? 'Nonlinear fade' : 'Regime-aware'
+              return [v, label]
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 10 }} />
+          <ReferenceLine y={0} stroke="#334155" strokeWidth={1} />
+          <Line type="monotone" dataKey="cum_linear" name="Linear fade" stroke="#60a5fa" dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="cum_nonlinear" name="Nonlinear fade" stroke="#a78bfa" dot={false} strokeWidth={1.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="cum_regime_aware" name="Regime-aware" stroke="#4ade80" dot={false} strokeWidth={2} isAnimationActive={false} />
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   )
 }

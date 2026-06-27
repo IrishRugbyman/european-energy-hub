@@ -1127,3 +1127,220 @@ def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_CO
         "corr": corr,
         "dose_response_holds": bool(slope is not None and slope > 0 and corr is not None and corr > 0),
     }
+
+
+# Momentum lookback (days) for the regime-aware book's drought-regime trend signal.
+# Short enough to ride a persistent-scarcity price run, long enough to be denoised.
+WF_MOM_WINDOW = 10
+
+
+def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
+    """Condition the fade on the live wind regime: fade in normal wind, ride trend in drought.
+
+    The nonlinear arc (P42-P45) established that the contrarian residual fade earns alpha
+    where wind is plentiful, but both the linear and nonlinear fades stay negative-Sharpe
+    *below* the low-wind knot: a pure mean-reversion fade is structurally wrong when
+    renewable scarcity persists and prices trend rather than revert. This builds a third
+    book that keeps the nonlinear contrarian fade in the normal/high-wind regime but, in
+    the sub-knot drought regime, flips to momentum - position = sign/strength of the recent
+    price trend (a rolling z-score of daily price changes, clipped to +-1). Everything else
+    (walk-forward refit, accounting, transaction cost) is identical to the P43/P44 books, so
+    the only change versus the nonlinear fade is the position map inside the drought regime.
+
+    Three books are compared OOS, net of the P44 fixed cost (EDGE_NET_COST EUR/MWh per unit
+    |dpos|): the linear fade (P43 baseline), the nonlinear fade (P43), and this regime-aware
+    book. We report Sharpe / drawdown / hit rate / cumulative P&L for each, with the Sharpe
+    split into the sub-knot drought regime and the rest, since the whole point is to recover
+    the drought loss without sacrificing the wind-regime edge.
+
+    Returns dict with: zone, as_of, n_eval, signal_window, mom_window, knot_pct, cost,
+    linear{}, nonlinear{}, regime_aware{} (each a RegimeBook stat block), recovers_drought
+    (bool), equity[] (per-day cum P&L for all three + wind%).
+    """
+    try:
+        rows = query_fn("""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
+                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.total_mw > 0
+              AND g.wind IS NOT NULL
+              AND g.solar IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"regime-aware backtest query failed for {zone}: {exc!r}")
+        return {}
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"regime-aware backtest: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df = df.reset_index(drop=True)
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    Xlin = _design_linear(ttf, eua, wind, solar)
+    Xnl = _design_nonlinear(ttf, eua, wind, solar)
+
+    # Walk-forward OOS residuals for both fair-value models over the same window.
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, res_lin, res_nl = [], [], []
+    for t in range(start, n):
+        clin, _, _, _ = np.linalg.lstsq(Xlin[:t], y[:t], rcond=None)
+        cnl, _, _, _ = np.linalg.lstsq(Xnl[:t], y[:t], rcond=None)
+        idx.append(t)
+        res_lin.append(y[t] - float(Xlin[t] @ clin))
+        res_nl.append(y[t] - float(Xnl[t] @ cnl))
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    prices = y[idx]
+    w_eval = wind[idx]
+    eval_dates = [dates.iloc[int(i)].strftime("%Y-%m-%d") for i in idx]
+    price_changes = np.diff(prices)
+
+    def fade_positions(residuals: list[float]) -> np.ndarray:
+        """Rolling z-score of the OOS residual -> clipped contrarian (fade) position."""
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        return np.clip(-z, -1.0, 1.0)
+
+    def momentum_positions() -> np.ndarray:
+        """Rolling z-score of recent price changes -> clipped trend-following position.
+
+        Uses only price changes realised up to and including day t (the change earned is
+        prices[t+1]-prices[t]), so the signal is causal. Positive recent drift -> long.
+        """
+        s = pd.Series(prices).diff()
+        rm = s.rolling(WF_MOM_WINDOW, min_periods=5).mean()
+        rs = s.rolling(WF_MOM_WINDOW, min_periods=5).std()
+        z = (rm / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        return np.clip(z, -1.0, 1.0)
+
+    pos_lin = fade_positions(res_lin)
+    pos_nl = fade_positions(res_nl)
+    pos_mom = momentum_positions()
+
+    # Regime-aware book: nonlinear fade in normal wind, momentum in the sub-knot drought.
+    drought = w_eval < LOW_WIND_KNOT_PCT
+    pos_ra = pos_nl.copy()
+    pos_ra[drought] = pos_mom[drought]
+
+    cost = EDGE_NET_COST
+
+    def book_pnl(pos: np.ndarray) -> np.ndarray:
+        """Net daily P&L: position held yesterday earns today's change, minus turnover cost."""
+        gross = pos[:-1] * price_changes
+        turnover = np.abs(np.diff(pos, prepend=0.0))[:-1]
+        return gross - cost * turnover
+
+    pnl_lin = book_pnl(pos_lin)
+    pnl_nl = book_pnl(pos_nl)
+    pnl_ra = book_pnl(pos_ra)
+    w_pnl = w_eval[1:]  # wind regime aligned to each P&L day
+    sub = w_pnl < LOW_WIND_KNOT_PCT
+
+    def sharpe(pnl: np.ndarray) -> float | None:
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    def hit_rate(pnl: np.ndarray) -> float:
+        if len(pnl) == 0:
+            return 0.0
+        return float(round(100 * np.mean(pnl > 0), 1))
+
+    def max_drawdown(cum: np.ndarray) -> float:
+        if len(cum) == 0:
+            return 0.0
+        peak = np.maximum.accumulate(cum)
+        return float(round((cum - peak).min(), 2))
+
+    def stats(pnl: np.ndarray) -> dict:
+        cum = np.cumsum(pnl)
+        return {
+            "sharpe": sharpe(pnl),
+            "sharpe_sub_knot": sharpe(pnl[sub]),
+            "sharpe_normal": sharpe(pnl[~sub]),
+            "hit_rate_pct": hit_rate(pnl),
+            "cum_pnl": round(float(cum[-1]), 2) if len(cum) else 0.0,
+            "max_dd_eur": max_drawdown(cum),
+            "avg_daily_pnl": round(float(pnl.mean()), 3) if len(pnl) else 0.0,
+            "n": int(len(pnl)),
+            "n_sub_knot": int(sub.sum()),
+        }
+
+    lin_stats = stats(pnl_lin)
+    nl_stats = stats(pnl_nl)
+    ra_stats = stats(pnl_ra)
+
+    # The phase's headline question: does conditioning on the regime recover the drought
+    # loss? Yes if the regime-aware sub-knot Sharpe is materially less negative (or positive)
+    # than both fade books, while not wrecking the normal-wind edge.
+    ra_sub = ra_stats["sharpe_sub_knot"]
+    fade_subs = [s for s in (lin_stats["sharpe_sub_knot"], nl_stats["sharpe_sub_knot"]) if s is not None]
+    recovers_drought = bool(
+        ra_sub is not None and fade_subs and ra_sub > max(fade_subs) + 0.1
+    )
+
+    cum_lin = np.cumsum(pnl_lin)
+    cum_nl = np.cumsum(pnl_nl)
+    cum_ra = np.cumsum(pnl_ra)
+    step = max(1, len(pnl_lin) // 365)
+    equity = [
+        {
+            "date": eval_dates[i + 1],
+            "cum_linear": round(float(cum_lin[i]), 2),
+            "cum_nonlinear": round(float(cum_nl[i]), 2),
+            "cum_regime_aware": round(float(cum_ra[i]), 2),
+            "wind_pct": round(float(w_pnl[i]), 1),
+        }
+        for i in range(0, len(pnl_lin), step)
+    ]
+    if equity and equity[-1]["date"] != eval_dates[-1]:
+        last = len(pnl_lin) - 1
+        equity.append({
+            "date": eval_dates[last + 1],
+            "cum_linear": round(float(cum_lin[last]), 2),
+            "cum_nonlinear": round(float(cum_nl[last]), 2),
+            "cum_regime_aware": round(float(cum_ra[last]), 2),
+            "wind_pct": round(float(w_pnl[last]), 1),
+        })
+
+    return {
+        "zone": zone,
+        "as_of": eval_dates[-1],
+        "n_eval": int(len(pnl_lin)),
+        "signal_window": WF_SIGNAL_WINDOW,
+        "mom_window": WF_MOM_WINDOW,
+        "knot_pct": LOW_WIND_KNOT_PCT,
+        "cost": round(cost, 3),
+        "linear": lin_stats,
+        "nonlinear": nl_stats,
+        "regime_aware": ra_stats,
+        "recovers_drought": recovers_drought,
+        "equity": equity,
+    }

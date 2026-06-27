@@ -1241,6 +1241,35 @@ def test_spreads_nonlinear_edge_by_zone(client):
     assert r2.status_code == 400
 
 
+def test_spreads_regime_aware_backtest(client):
+    r = client.get("/api/spreads/regime-aware-backtest?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_eval"] > 0
+    assert data["signal_window"] == 30
+    assert data["mom_window"] == 10
+    assert data["knot_pct"] == 8.0
+    assert data["cost"] > 0
+    # Three books, identical accounting -> same eval count and same sub-knot count
+    for book_key in ("linear", "nonlinear", "regime_aware"):
+        m = data[book_key]
+        assert m["n"] == data["n_eval"]
+        assert 0 <= m["hit_rate_pct"] <= 100
+        assert isinstance(m["cum_pnl"], float)
+        assert m["max_dd_eur"] <= 0
+        assert m["n_sub_knot"] == data["regime_aware"]["n_sub_knot"]
+        for split in ("sharpe", "sharpe_sub_knot", "sharpe_normal"):
+            assert split in m
+    assert isinstance(data["recovers_drought"], bool)
+    # Equity curve carries all three cumulative series
+    eq = data["equity"]
+    assert len(eq) > 0
+    assert {"date", "cum_linear", "cum_nonlinear", "cum_regime_aware", "wind_pct"} <= eq[0].keys()
+    # Invalid zone -> 400
+    assert client.get("/api/spreads/regime-aware-backtest?zone=FAKE").status_code == 400
+
+
 def test_gas_lng_map(client):
     r = client.get("/api/gas/lng/map")
     assert r.status_code == 200

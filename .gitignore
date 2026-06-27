@@ -12,3 +12,6 @@ frontend/.vite/
 *.duckdb
 *.duckdb.wal
 .env
+
+.playwright-mcp/
+backend/.venv

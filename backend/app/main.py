@@ -181,6 +181,9 @@ from .schemas import (
     CostSweepPoint,
     EdgeByZoneResponse,
     EdgeByZoneRow,
+    RegimeAwareBacktestResponse,
+    RegimeBookStats,
+    RegimeAwareEquityPoint,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3686,6 +3689,46 @@ def spreads_nonlinear_edge_by_zone():
         intercept=result["intercept"],
         corr=result["corr"],
         dose_response_holds=result["dose_response_holds"],
+    )
+
+
+@app.get("/api/spreads/regime-aware-backtest", response_model=RegimeAwareBacktestResponse)
+def spreads_regime_aware_backtest(zone: str = "DE-LU"):
+    """Condition the residual fade on the live wind regime to recover the drought loss.
+
+    Both the linear and nonlinear fades (P43) stay negative-Sharpe below the low-wind knot:
+    a mean-reversion fade is structurally wrong when renewable scarcity persists and prices
+    trend. This third book keeps the nonlinear contrarian fade in the normal/high-wind
+    regime but flips to momentum (rolling-z trend of recent price changes) in the sub-knot
+    drought regime - everything else (walk-forward refit, accounting, P44 cost) identical, so
+    the only change is the position map inside the drought. Reports Sharpe / drawdown / hit
+    rate / cum P&L for all three books, with the Sharpe split into the sub-knot vs normal
+    regime, and whether conditioning on the regime recovers the drought loss.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_regime_aware_backtest, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_regime_aware_backtest(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for regime-aware backtest")
+
+    return RegimeAwareBacktestResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_eval=result["n_eval"],
+        signal_window=result["signal_window"],
+        mom_window=result["mom_window"],
+        knot_pct=result["knot_pct"],
+        cost=result["cost"],
+        linear=RegimeBookStats(**result["linear"]),
+        nonlinear=RegimeBookStats(**result["nonlinear"]),
+        regime_aware=RegimeBookStats(**result["regime_aware"]),
+        recovers_drought=result["recovers_drought"],
+        equity=[RegimeAwareEquityPoint(**p) for p in result["equity"]],
     )
 
 

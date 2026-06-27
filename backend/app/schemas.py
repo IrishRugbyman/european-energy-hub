@@ -1298,6 +1298,41 @@ class EdgeByZoneResponse(BaseModel):
     dose_response_holds: bool
 
 
+class RegimeBookStats(BaseModel):
+    sharpe: float | None
+    sharpe_sub_knot: float | None
+    sharpe_normal: float | None
+    hit_rate_pct: float
+    cum_pnl: float
+    max_dd_eur: float
+    avg_daily_pnl: float
+    n: int
+    n_sub_knot: int
+
+
+class RegimeAwareEquityPoint(BaseModel):
+    date: str
+    cum_linear: float
+    cum_nonlinear: float
+    cum_regime_aware: float
+    wind_pct: float
+
+
+class RegimeAwareBacktestResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_eval: int
+    signal_window: int
+    mom_window: int
+    knot_pct: float
+    cost: float
+    linear: RegimeBookStats
+    nonlinear: RegimeBookStats
+    regime_aware: RegimeBookStats
+    recovers_drought: bool
+    equity: list[RegimeAwareEquityPoint]
+
+
 class LngLatestRow(BaseModel):
     country: str
     gas_day: str
