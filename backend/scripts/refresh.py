@@ -631,8 +631,23 @@ def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_gen_hourly", hourly)
         conn.execute("INSERT INTO generation_hourly_recent SELECT * FROM _gen_hourly")
 
+    # generation_forecast_daily (no-look-ahead DA-forecast wind/solar penetration)
+    fcast = tables.get("generation_forecast_daily", gen.__class__())
+    conn.execute("""
+        CREATE OR REPLACE TABLE generation_forecast_daily (
+            zone VARCHAR, gen_date DATE,
+            wind_pct REAL, solar_pct REAL,
+            wind_pct_actual REAL, solar_pct_actual REAL,
+            load_fc_mw REAL, load_actual_mw REAL
+        )
+    """)
+    if not fcast.empty:
+        conn.register("_gen_fcast", fcast)
+        conn.execute("INSERT INTO generation_forecast_daily SELECT * FROM _gen_fcast")
+
     logger.info(
-        f"generation: {len(gen)} latest rows, {len(daily)} daily rows, {len(hourly)} hourly rows"
+        f"generation: {len(gen)} latest rows, {len(daily)} daily rows, {len(hourly)} hourly rows, "
+        f"{len(fcast)} forecast-daily rows"
     )
 
 

@@ -1655,7 +1655,8 @@ function NonlinearModelSection() {
           )}
 
           <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
-            Both models regress the DA base price on TTF, EUA, wind% and solar% by ordinary least squares.
+            Both models regress the DA base price on TTF, EUA, wind% and solar% (the day-ahead forecast share of
+            forecast load — the gate-closure information set, no look-ahead) by ordinary least squares.
             The nonlinear model adds a low-wind hinge (max(0, {data.knot_pct}% − wind%)), squared wind/solar terms,
             and a TTF×wind interaction. Evaluation is strictly walk-forward: both models are refit daily on all prior
             data and predict the next day, so the comparison is out-of-sample. The gain concentrates in the low-wind
@@ -1748,6 +1749,20 @@ function NonlinearBacktestSection() {
             </div>
           </div>
 
+          {/* Look-ahead premium banner */}
+          {data.lookahead && data.lookahead.premium_sharpe != null && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-[11px] leading-relaxed">
+              <span className="font-semibold text-amber-300">Look-ahead premium: </span>
+              <span className="text-foreground">
+                using realised generation (peeking at the delivery day) the nonlinear gross Sharpe is{' '}
+                {fmtSharpe(data.lookahead.actual_nonlinear_sharpe)}; on the day-ahead forecast a desk can actually
+                trade it is {fmtSharpe(data.lookahead.forecast_nonlinear_sharpe)}. The gap of{' '}
+                <span className="text-amber-300 font-semibold">{fmtDelta(data.lookahead.premium_sharpe)}</span> Sharpe
+                was hindsight. The headline figures here are the honest, forecast-based numbers.
+              </span>
+            </div>
+          )}
+
           {/* Equity curves */}
           {data.equity.length > 0 && <NonlinearBacktestEquityChart equity={data.equity} />}
 
@@ -1772,13 +1787,16 @@ function NonlinearBacktestSection() {
           </div>
 
           <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
-            Both fair-value models are refit walk-forward (daily, on all prior data) and their out-of-sample
-            residual (actual − fair value) is standardised with a {data.signal_window}-day rolling z-score. We fade
-            it: position = clip(−z, −1, +1), and daily P&L = position(t−1) × DA price change(t). The accounting is
-            identical for both, so the only difference between the two equity curves is the model that produced the
-            signal. The nonlinear model's advantage concentrates in the low-wind regime (&lt;{data.knot_pct}% wind),
-            where it recovers the scarcity premium the linear model under-prices — turning the RMSE improvement above
-            into capturable directional alpha. No transaction costs, bid-ask, or market impact.
+            Both fair-value models are refit walk-forward (daily, on all prior data) off the{' '}
+            {data.source === 'forecast'
+              ? 'ENTSO-E day-ahead wind/solar forecast as a share of forecast load — the information set available at gate closure, so there is no look-ahead'
+              : 'realised generation'}. Their out-of-sample residual (actual − fair value) is standardised with a{' '}
+            {data.signal_window}-day rolling z-score and faded: position = clip(−z, −1, +1), daily P&L = position(t−1)
+            × DA price change(t). Accounting is identical for both, so the only difference between the curves is the
+            fair-value model. The nonlinear edge concentrates in the low-wind regime (&lt;{data.knot_pct}% of load),
+            where it prices the scarcity premium the linear model under-prices. The DA-price-change return is a
+            signal-quality proxy (you cannot hold the index across delivery days), shown gross of bid-ask and market
+            impact; the cost-robustness panel below charges turnover.
           </p>
         </div>
       )}
@@ -2156,8 +2174,8 @@ function NonlinearEdgeByZoneSection() {
             The whole nonlinear case rests on one mechanism: the hinge basis adds alpha <em>because</em> it prices the
             low-wind scarcity premium, so the edge should grow with wind penetration. Each point is one bidding zone;
             the y-axis is its out-of-sample Sharpe edge (nonlinear − linear, same walk-forward and accounting as the
-            backtests above), the x-axis its mean wind share over the evaluation window. The line is an OLS fit across
-            zones.{' '}
+            backtests above), the x-axis its mean day-ahead-forecast wind share over the evaluation window. The line
+            is an OLS fit across zones.{' '}
             {data.dose_response_holds
               ? `It slopes up (corr ${data.corr?.toFixed(2)}): the edge is largest on the windiest hubs (DE-LU, BE) and turns negative on near-zero-wind IT-NORD, where the hinge has no drought to price and is just noise. That is the dose-response the mechanism predicts - the single-zone result generalises.`
               : `The fit does not slope up, so the cross-zone evidence does not support the wind-penetration mechanism as cleanly as the single-zone result - an honest caveat on the claim.`}{' '}
@@ -2327,15 +2345,18 @@ function RegimeAwareSection() {
           </div>
 
           <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
-            Below the low-wind knot ({data.knot_pct}% wind) a mean-reversion fade is structurally wrong: when
-            renewable scarcity persists, prices trend rather than revert, so both fade books bleed in the drought
-            regime. The regime-aware book keeps the nonlinear contrarian fade when wind is normal but, in the
-            sub-knot drought, flips to momentum — position = clip of a {data.mom_window}-day rolling z-score of recent
-            price changes (trend-following). Walk-forward refit, accounting, and the {data.cost.toFixed(2)} €/MWh·u
-            round-trip cost are identical to the P43/P44 books, so the only change is the position map inside the
-            drought. {data.recovers_drought
-              ? `On ${data.zone} the regime-aware book's drought Sharpe (${fmtSharpe(data.regime_aware.sharpe_sub_knot)}) is materially less negative than both fade books, while the normal-wind edge (${fmtSharpe(data.regime_aware.sharpe_normal)}) is preserved — conditioning on the regime recovers the drought loss.`
-              : `On ${data.zone} the flip does not help: here low wind% reflects baseload mix rather than genuine scarcity, so the fade still works in the "drought" regime and the momentum override only adds variance — the edge is specific to wind-heavy hubs.`}
+            Drought is defined zone-relatively: a day is in the drought regime when the {data.source === 'forecast'
+              ? 'day-ahead forecast'
+              : 'realised'} wind penetration falls below the {data.drought_pctile}th percentile of this zone's own
+            training-window distribution ({data.drought_thr_pct}% of load for {data.zone}) — so &quot;drought&quot;
+            means low wind for this zone, not a fixed pp knot. The regime-aware book keeps the nonlinear contrarian
+            fade when wind is normal but, in the drought, flips to momentum — position = clip of a {data.mom_window}-day
+            rolling z-score of recent price changes. Features are the {data.source === 'forecast'
+              ? 'ENTSO-E day-ahead forecast (the gate-closure information set — no look-ahead)'
+              : 'realised generation'}; walk-forward refit, accounting and the {data.cost.toFixed(2)} €/MWh·u
+            round-trip cost match the P43/P44 books. {data.recovers_drought
+              ? `On ${data.zone} the regime-aware book's drought Sharpe (${fmtSharpe(data.regime_aware.sharpe_sub_knot)}) beats both fade books while the normal-wind edge (${fmtSharpe(data.regime_aware.sharpe_normal)}) is preserved — conditioning on the regime recovers the drought loss.`
+              : `Honest verdict: on ${data.zone} the flip does NOT add alpha. Once look-ahead is removed (forecast features) and drought is defined zone-relatively, the nonlinear fade's drought Sharpe is already ${fmtSharpe(data.nonlinear.sharpe_sub_knot)} — not the deep loss the realised-generation version showed — so the momentum override (${fmtSharpe(data.regime_aware.sharpe_sub_knot)}) only adds variance. The original drought "loss" was largely a look-ahead and denominator artefact.`}
           </p>
         </div>
       )}

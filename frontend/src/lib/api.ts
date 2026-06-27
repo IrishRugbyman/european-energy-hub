@@ -1383,15 +1383,24 @@ export interface NonlinearBacktestEquityPoint {
   wind_pct: number
 }
 
+export interface LookaheadPremium {
+  actual_nonlinear_sharpe: number | null
+  actual_linear_sharpe: number | null
+  forecast_nonlinear_sharpe: number | null
+  premium_sharpe: number | null
+}
+
 export interface NonlinearBacktestResponse {
   zone: string
   as_of: string | null
   n_eval: number
   signal_window: number
   knot_pct: number
+  source: string
   linear: BacktestModelStats
   nonlinear: BacktestModelStats
   improvement: NonlinearBacktestImprovement
+  lookahead: LookaheadPremium | null
   equity: NonlinearBacktestEquityPoint[]
 }
 
@@ -1470,7 +1479,9 @@ export interface RegimeAwareBacktestResponse {
   n_eval: number
   signal_window: number
   mom_window: number
-  knot_pct: number
+  source: string
+  drought_pctile: number
+  drought_thr_pct: number
   cost: number
   linear: RegimeBookStats
   nonlinear: RegimeBookStats

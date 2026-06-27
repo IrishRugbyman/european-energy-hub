@@ -21,6 +21,14 @@ logger = logging.getLogger(__name__)
 # Zones to expose the fundamental model for. DE-LU is the central hub.
 FUNDAMENTAL_ZONES = ["DE-LU", "FR", "NL", "IT-NORD", "BE"]
 
+# Feature source for the fundamental signal arc. "forecast" drives the fair-value model
+# off the ENTSO-E day-ahead wind/solar forecast as a share of forecast load - the
+# information set a trader actually has at gate closure (no look-ahead). "actual" uses
+# realised generation over realised load on the same denominator, retained only to
+# quantify the look-ahead premium (how much of the edge was hindsight). The whole arc
+# (P42-P46) reads through this, so the canonical signal is genuinely tradeable.
+FUNDAMENTAL_SOURCE = "forecast"
+
 # Rolling window for OLS fit (days)
 OLS_WINDOW = 365
 
@@ -28,10 +36,10 @@ OLS_WINDOW = 365
 ZSCORE_WINDOW = 30
 
 
-def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
+def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Compute OLS fundamental value model for a zone.
 
-    Joins power_daily + prices_daily + generation_daily, fits:
+    Joins power_daily + prices_daily + generation_forecast_daily, fits:
       base_eur = b0 + b1*TTF + b2*EUA + b3*wind_pct + b4*solar_pct + epsilon
 
     Args:
@@ -44,26 +52,7 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
       - current: latest signal statistics
     """
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND pr.eua_eur_t IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"fundamental model query failed for {zone}: {exc!r}")
         return {}
@@ -221,7 +210,7 @@ _WIND_BINS = [
 ]
 
 
-def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU") -> dict:
+def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Compute wind-price nonlinearity analysis: per-bin price stats and OLS residuals.
 
     Bins days by wind penetration, shows median/mean/std price per bin, then computes
@@ -239,7 +228,7 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU") -> dict
                 mean_residual, median_residual}]
       - interpretation: {nonlinear_premium, cv_low_wind, cv_high_wind}
     """
-    model = compute_fundamental_model(query_fn, zone)
+    model = compute_fundamental_model(query_fn, zone, source)
     if not model or not model.get("series"):
         return {}
 
@@ -253,25 +242,7 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU") -> dict
 
     # Re-fetch raw data to get wind_pct for each row
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"wind-price query failed for {zone}: {exc!r}")
         return {}
@@ -328,7 +299,7 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU") -> dict
     }
 
 
-def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
+def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Backtest of the z-score mean-reversion signal.
 
     Strategy: continuous position = -zscore(t-1) (short when overbought, long when
@@ -346,7 +317,7 @@ def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU") -> dic
       - equity: [{date, daily_pnl, cum_pnl, zscore, position, in_sample}]
       - stats: {sharpe_oos, sharpe_is, sharpe_all, hit_rate_pct, max_dd_eur, n_oos, n_is}
     """
-    model = compute_fundamental_model(query_fn, zone)
+    model = compute_fundamental_model(query_fn, zone, source)
     if not model or not model.get("series"):
         return {}
 
@@ -435,6 +406,46 @@ LOW_WIND_KNOT_PCT = 8.0
 WF_MIN_TRAIN = 250   # minimum training rows before the first OOS prediction
 WF_MAX_OOS = 730     # cap OOS evaluation window (days) to bound response + compute
 
+def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE):
+    """Load the daily fair-value design inputs for one zone from energy_hub.duckdb.
+
+    Returns a DataFrame with price_date, base_eur, ttf_eur_mwh, eua_eur_t, wind_pct,
+    solar_pct - the renewable-penetration columns chosen by `source` ("forecast" = DA
+    forecast over forecast load, the gate-closure set; "actual" = realised over realised
+    load on the same denominator). Returns None on query failure. Both variants come from
+    generation_forecast_daily, so the forecast and actual books differ only by
+    forecast-vs-realised, never by denominator.
+    """
+    if source == "forecast":
+        wind_col, solar_col = "wind_pct", "solar_pct"
+    elif source == "actual":
+        wind_col, solar_col = "wind_pct_actual", "solar_pct_actual"
+    else:
+        raise ValueError(f"unknown feature source {source!r}")
+    try:
+        return query_fn(f"""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                g.{wind_col}  AS wind_pct,
+                g.{solar_col} AS solar_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_forecast_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.{wind_col} IS NOT NULL
+              AND g.{solar_col} IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"fundamental feature fetch failed for {zone} ({source}): {exc!r}")
+        return None
+
 
 def _design_linear(ttf, eua, wind, solar):
     """Linear design matrix: [1, TTF, EUA, wind%, solar%]."""
@@ -451,7 +462,7 @@ def _design_nonlinear(ttf, eua, wind, solar):
     ])
 
 
-def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
+def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Walk-forward comparison of a linear vs a nonlinear (basis-expansion) fair-value model.
 
     Both models regress the daily DA base price on TTF, EUA, wind%, solar%. The nonlinear
@@ -468,26 +479,7 @@ def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
     scatter[] (per-OOS-day actual + both predictions + wind%).
     """
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND pr.eua_eur_t IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"nonlinear model query failed for {zone}: {exc!r}")
         return {}
@@ -603,7 +595,7 @@ def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU") -> dict:
 WF_SIGNAL_WINDOW = 30
 
 
-def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
+def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Trade the linear vs nonlinear residual signals out-of-sample and compare P&L.
 
     Phase 42 showed the nonlinear (hinge/polynomial) fair-value model recovers the
@@ -626,26 +618,7 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
     improvement{}, equity[] (per-day cum P&L for both + wind%).
     """
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND pr.eua_eur_t IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"nonlinear backtest query failed for {zone}: {exc!r}")
         return {}
@@ -773,15 +746,36 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
             "wind_pct": round(float(w_pnl[last]), 1),
         })
 
+    # Look-ahead premium: re-run the same signal on REALISED generation (the old, peeking
+    # feature set) and report how much of the gross nonlinear Sharpe was hindsight. The
+    # forecast figure is what a desk can actually capture at gate closure; the gap is the
+    # part that evaporates once you can only use the day-ahead forecast.
+    lookahead = None
+    if source == "forecast":
+        sig_act = _nonlinear_signal_pnl(query_fn, zone, "actual")
+        if sig_act is not None:
+            act_nl_sharpe = sharpe(sig_act["gross_nl"])
+            act_lin_sharpe = sharpe(sig_act["gross_lin"])
+            fc_nl_sharpe = nl_stats["sharpe"]
+            lookahead = {
+                "actual_nonlinear_sharpe": act_nl_sharpe,
+                "actual_linear_sharpe": act_lin_sharpe,
+                "forecast_nonlinear_sharpe": fc_nl_sharpe,
+                "premium_sharpe": (round(act_nl_sharpe - fc_nl_sharpe, 3)
+                                   if act_nl_sharpe is not None and fc_nl_sharpe is not None else None),
+            }
+
     return {
         "zone": zone,
         "as_of": eval_dates[-1],
         "n_eval": int(len(pnl_lin)),
         "signal_window": WF_SIGNAL_WINDOW,
         "knot_pct": LOW_WIND_KNOT_PCT,
+        "source": source,
         "linear": lin_stats,
         "nonlinear": nl_stats,
         "improvement": improvement,
+        "lookahead": lookahead,
         "equity": equity,
     }
 
@@ -793,7 +787,7 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
 COST_GRID = [0.0, 0.02, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.75, 1.0]
 
 
-def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU") -> dict:
+def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Charge transaction costs against the linear vs nonlinear residual signals.
 
     Phase 43 showed the nonlinear signal earns a higher *gross* Sharpe than the linear
@@ -816,26 +810,7 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU") -
     the grid), and sweep[] (per-cost net Sharpe / cum P&L / deltas for the chart).
     """
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND pr.eua_eur_t IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"cost robustness query failed for {zone}: {exc!r}")
         return {}
@@ -967,7 +942,7 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU") -
 EDGE_NET_COST = 0.10
 
 
-def _nonlinear_signal_pnl(query_fn: Callable, zone: str) -> dict | None:
+def _nonlinear_signal_pnl(query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE) -> dict | None:
     """Walk-forward both fair-value signals for one zone, return aligned P&L arrays.
 
     Shared core of the nonlinear backtest: refits the linear and nonlinear OLS models
@@ -976,26 +951,7 @@ def _nonlinear_signal_pnl(query_fn: Callable, zone: str) -> dict | None:
     aligned to the same evaluation days. Returns None if the zone lacks enough data.
     """
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND pr.eua_eur_t IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"edge-by-zone query failed for {zone}: {exc!r}")
         return None
@@ -1056,7 +1012,7 @@ def _nonlinear_signal_pnl(query_fn: Callable, zone: str) -> dict | None:
     }
 
 
-def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_COST) -> dict:
+def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_COST, source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Cross-zone dose-response: does the nonlinear edge scale with wind penetration?
 
     The whole nonlinear arc rests on one claim - the nonlinear fair-value basis adds
@@ -1082,7 +1038,7 @@ def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_CO
 
     zones = []
     for zone in FUNDAMENTAL_ZONES:
-        sig = _nonlinear_signal_pnl(query_fn, zone)
+        sig = _nonlinear_signal_pnl(query_fn, zone, source)
         if sig is None:
             logger.warning(f"edge-by-zone: insufficient data for {zone}")
             continue
@@ -1133,8 +1089,16 @@ def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_CO
 # Short enough to ride a persistent-scarcity price run, long enough to be denoised.
 WF_MOM_WINDOW = 10
 
+# Drought regime is defined zone-relatively: a day is in the drought regime when the
+# zone's forecast wind penetration falls below this percentile of its OWN training-window
+# distribution. A fixed pp knot mis-partitions zones (a low-wind hub like IT-NORD would
+# be "always drought", a windy hub "never"); a per-zone percentile makes "drought" mean
+# "low wind for this zone". The threshold is computed only from pre-OOS data, so it adds
+# no look-ahead.
+DROUGHT_PCTILE = 25.0
 
-def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> dict:
+
+def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
     """Condition the fade on the live wind regime: fade in normal wind, ride trend in drought.
 
     The nonlinear arc (P42-P45) established that the contrarian residual fade earns alpha
@@ -1158,26 +1122,7 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> di
     (bool), equity[] (per-day cum P&L for all three + wind%).
     """
     try:
-        rows = query_fn("""
-            SELECT
-                p.price_date,
-                p.base_eur,
-                pr.ttf_eur_mwh,
-                pr.eua_eur_t,
-                (g.wind / NULLIF(g.total_mw, 0)) * 100  AS wind_pct,
-                (g.solar / NULLIF(g.total_mw, 0)) * 100 AS solar_pct
-            FROM power_daily p
-            JOIN prices_daily pr ON p.price_date = pr.price_date
-            JOIN generation_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
-            WHERE p.zone = ?
-              AND p.base_eur IS NOT NULL
-              AND pr.ttf_eur_mwh IS NOT NULL
-              AND pr.eua_eur_t IS NOT NULL
-              AND g.total_mw > 0
-              AND g.wind IS NOT NULL
-              AND g.solar IS NOT NULL
-            ORDER BY p.price_date
-        """, [zone])
+        rows = _fetch_fundamental_features(query_fn, zone, source)
     except Exception as exc:
         logger.warning(f"regime-aware backtest query failed for {zone}: {exc!r}")
         return {}
@@ -1214,6 +1159,9 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> di
     if len(idx) < WF_SIGNAL_WINDOW + 5:
         return {}
 
+    # Zone-relative drought threshold from the pre-OOS training window only (no look-ahead).
+    drought_thr = float(np.percentile(wind[:start], DROUGHT_PCTILE))
+
     idx = np.array(idx)
     prices = y[idx]
     w_eval = wind[idx]
@@ -1244,8 +1192,8 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> di
     pos_nl = fade_positions(res_nl)
     pos_mom = momentum_positions()
 
-    # Regime-aware book: nonlinear fade in normal wind, momentum in the sub-knot drought.
-    drought = w_eval < LOW_WIND_KNOT_PCT
+    # Regime-aware book: nonlinear fade in normal wind, momentum in the drought regime.
+    drought = w_eval < drought_thr
     pos_ra = pos_nl.copy()
     pos_ra[drought] = pos_mom[drought]
 
@@ -1261,7 +1209,7 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> di
     pnl_nl = book_pnl(pos_nl)
     pnl_ra = book_pnl(pos_ra)
     w_pnl = w_eval[1:]  # wind regime aligned to each P&L day
-    sub = w_pnl < LOW_WIND_KNOT_PCT
+    sub = w_pnl < drought_thr
 
     def sharpe(pnl: np.ndarray) -> float | None:
         if len(pnl) < 10 or pnl.std() == 0:
@@ -1336,7 +1284,9 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU") -> di
         "n_eval": int(len(pnl_lin)),
         "signal_window": WF_SIGNAL_WINDOW,
         "mom_window": WF_MOM_WINDOW,
-        "knot_pct": LOW_WIND_KNOT_PCT,
+        "source": source,
+        "drought_pctile": DROUGHT_PCTILE,
+        "drought_thr_pct": round(drought_thr, 2),
         "cost": round(cost, 3),
         "linear": lin_stats,
         "nonlinear": nl_stats,

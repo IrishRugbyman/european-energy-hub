@@ -302,6 +302,39 @@ def _seed_db(path: str) -> None:
         gen_rows.append(["FR", day, 300.0, 0.0, 3000.0, 0.0, 5000.0, fr_nuclear, 0.0, 200.0, fr_solar, fr_wind, fr_re_pct, round(fr_total, 1)])
     conn.executemany("INSERT INTO generation_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_rows)
 
+    # generation_forecast_daily (no-look-ahead DA-forecast wind/solar penetration over load).
+    # Seeds DE-LU (wind-heavy) and FR (nuclear baseload, low wind%) so the fundamental signal
+    # arc has both a high- and low-penetration zone to exercise.
+    conn.execute("""
+        CREATE TABLE generation_forecast_daily (
+            zone VARCHAR, gen_date DATE,
+            wind_pct REAL, solar_pct REAL,
+            wind_pct_actual REAL, solar_pct_actual REAL,
+            load_fc_mw REAL, load_actual_mw REAL
+        )
+    """)
+    fc_rows = []
+    for i in range((today - daily_start).days + 1):
+        day = (daily_start + timedelta(days=i)).isoformat()
+        load_de = 55000.0
+        de_wind = 28.0 + 14.0 * ((i % 365 - 90) / 365)          # ~21-35% of load, swings
+        de_solar = 10.0 + 8.0 * ((i % 365 - 180) / 365)
+        # actual ~ forecast + small deterministic noise (no RNG)
+        de_wind_a = de_wind + 1.2 * (((i * 7) % 11 - 5) / 5)
+        de_solar_a = de_solar + 0.8 * (((i * 5) % 9 - 4) / 4)
+        fc_rows.append(["DE-LU", day, round(de_wind, 3), round(de_solar, 3),
+                        round(de_wind_a, 3), round(de_solar_a, 3), load_de, load_de + 800.0])
+        load_fr = 52000.0
+        fr_wind = 9.0 + 4.0 * ((i % 365 - 90) / 365)            # ~5-13% of load
+        fr_solar = 11.0 + 7.0 * ((i % 365 - 180) / 365)
+        fr_wind_a = fr_wind + 0.9 * (((i * 3) % 7 - 3) / 3)
+        fr_solar_a = fr_solar + 0.7 * (((i * 4) % 9 - 4) / 4)
+        fc_rows.append(["FR", day, round(fr_wind, 3), round(fr_solar, 3),
+                        round(fr_wind_a, 3), round(fr_solar_a, 3), load_fr, load_fr + 600.0])
+    conn.executemany(
+        "INSERT INTO generation_forecast_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)", fc_rows
+    )
+
     # generation_hourly_recent (10 days of hourly data for DE-LU)
     # (12 cols: zone, ts, 10 fuels - no renewable_pct/total_mw)
     conn.execute(f"""

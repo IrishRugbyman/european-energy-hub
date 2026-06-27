@@ -14,6 +14,7 @@ are included. renewable_pct = (solar + wind + hydro + biomass) / total_mw.
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 from loguru import logger
 
@@ -42,17 +43,115 @@ RENEWABLE_COLS = ("solar", "wind", "hydro")
 
 
 def build_generation_tables() -> dict[str, pd.DataFrame]:
-    """Return all three generation DataFrames ready for energy_hub.duckdb."""
+    """Return all generation DataFrames ready for energy_hub.duckdb."""
     daily = _build_generation_daily()
     hourly_recent = _build_generation_hourly_recent()
     latest = _build_generation_latest_from_daily(daily)
     capacity_factors = _build_capacity_factors(daily)
+    forecast_daily = _build_generation_forecast_daily()
     return {
         "generation_daily": daily,
         "generation_hourly_recent": hourly_recent,
         "generation_latest": latest,
         "capacity_factors_daily": capacity_factors,
+        "generation_forecast_daily": forecast_daily,
     }
+
+
+# Columns of the no-look-ahead daily renewable-penetration table. Penetration is
+# defined over forecast (resp. actual) load so the forecast and actual variants share
+# a denominator and differ only by forecast-vs-realised - the clean basis for isolating
+# the look-ahead premium in the fundamental signal arc.
+FORECAST_DAILY_COLS = (
+    "zone", "gen_date",
+    "wind_pct", "solar_pct",                 # DA forecast wind/solar as % of forecast load
+    "wind_pct_actual", "solar_pct_actual",   # realised wind/solar as % of realised load
+    "load_fc_mw", "load_actual_mw",
+)
+
+
+def _empty_forecast_daily() -> pd.DataFrame:
+    return pd.DataFrame(columns=list(FORECAST_DAILY_COLS))
+
+
+def _build_generation_forecast_daily() -> pd.DataFrame:
+    """Daily wind/solar penetration from the ENTSO-E day-ahead forecast (A69) and load.
+
+    The fundamental fair-value signal (Phases 42-46) originally drove off *actual*
+    generation, which is not in the information set at day-ahead gate closure - a
+    look-ahead. This table provides the gate-closure analog: the published DA wind+solar
+    forecast as a share of the DA load forecast, per zone per day. It also carries the
+    realised (actual/actual-load) penetration on the same denominator so the two can be
+    compared like-for-like to quantify the look-ahead premium. All source series are read
+    from market_data via the loaders connection.
+    """
+    try:
+        conn = get_read_conn()
+        gen_fc = _query(conn, """
+            SELECT zone, DATE_TRUNC('day', ts)::DATE AS gen_date, tech, AVG(mw) AS mw
+            FROM power_generation_forecast
+            WHERE forecast_type = 'DA'
+              AND tech IN ('wind_onshore', 'wind_offshore', 'solar')
+            GROUP BY zone, gen_date, tech
+        """)
+        gen_act = _query(conn, """
+            SELECT zone, DATE_TRUNC('day', ts)::DATE AS gen_date, tech, AVG(mw) AS mw
+            FROM power_generation_actual
+            WHERE tech IN ('wind_onshore', 'wind_offshore', 'solar')
+            GROUP BY zone, gen_date, tech
+        """)
+        load = _query(conn, """
+            SELECT zone, DATE_TRUNC('day', ts)::DATE AS gen_date, kind, AVG(mw) AS mw
+            FROM power_load
+            WHERE kind IN ('forecast', 'actual')
+            GROUP BY zone, gen_date, kind
+        """)
+        conn.close()
+    except Exception:
+        logger.exception("_build_generation_forecast_daily failed")
+        return _empty_forecast_daily()
+
+    if gen_fc is None or gen_fc.empty or load is None or load.empty:
+        logger.warning("generation_forecast_daily: missing forecast or load data")
+        return _empty_forecast_daily()
+
+    def _pivot_ws(df: pd.DataFrame) -> pd.DataFrame:
+        """Long (zone, gen_date, tech, mw) -> wide wind (on+off) + solar MW."""
+        if df is None or df.empty:
+            return pd.DataFrame(columns=["zone", "gen_date", "wind_mw", "solar_mw"])
+        w = df.pivot_table(index=["zone", "gen_date"], columns="tech", values="mw", aggfunc="sum")
+        w.columns.name = None
+        w = w.reset_index()
+        for c in ("wind_onshore", "wind_offshore", "solar"):
+            if c not in w.columns:
+                w[c] = 0.0
+        w["wind_mw"] = w["wind_onshore"].fillna(0.0) + w["wind_offshore"].fillna(0.0)
+        w["solar_mw"] = w["solar"].fillna(0.0)
+        return w[["zone", "gen_date", "wind_mw", "solar_mw"]]
+
+    fc = _pivot_ws(gen_fc).rename(columns={"wind_mw": "wind_fc", "solar_mw": "solar_fc"})
+    act = _pivot_ws(gen_act).rename(columns={"wind_mw": "wind_act", "solar_mw": "solar_act"})
+    load_w = load.pivot_table(index=["zone", "gen_date"], columns="kind", values="mw", aggfunc="mean")
+    load_w.columns.name = None
+    load_w = load_w.reset_index().rename(columns={"forecast": "load_fc_mw", "actual": "load_actual_mw"})
+
+    df = fc.merge(load_w, on=["zone", "gen_date"], how="inner")
+    df = df.merge(act, on=["zone", "gen_date"], how="left")
+
+    fc_ok = df["load_fc_mw"].notna() & (df["load_fc_mw"] > 0)
+    df["wind_pct"] = np.where(fc_ok, df["wind_fc"] / df["load_fc_mw"] * 100, np.nan)
+    df["solar_pct"] = np.where(fc_ok, df["solar_fc"] / df["load_fc_mw"] * 100, np.nan)
+    act_ok = df["load_actual_mw"].notna() & (df["load_actual_mw"] > 0)
+    df["wind_pct_actual"] = np.where(act_ok, df["wind_act"] / df["load_actual_mw"] * 100, np.nan)
+    df["solar_pct_actual"] = np.where(act_ok, df["solar_act"] / df["load_actual_mw"] * 100, np.nan)
+
+    df = df[df["wind_pct"].notna()].copy()
+    for c in ("wind_pct", "solar_pct", "wind_pct_actual", "solar_pct_actual", "load_fc_mw", "load_actual_mw"):
+        df[c] = df[c].round(3)
+    df["gen_date"] = df["gen_date"].astype(str)
+    df = df.sort_values(["zone", "gen_date"]).reset_index(drop=True)
+    logger.info(f"generation_forecast_daily: {len(df)} rows, {df['zone'].nunique()} zones")
+    return df[list(FORECAST_DAILY_COLS)].copy()
 
 
 def _pivot_and_merge_wind(df: pd.DataFrame, ts_col: str) -> pd.DataFrame:

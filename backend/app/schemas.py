@@ -1237,15 +1237,24 @@ class NonlinearBacktestEquityPoint(BaseModel):
     wind_pct: float
 
 
+class LookaheadPremium(BaseModel):
+    actual_nonlinear_sharpe: float | None
+    actual_linear_sharpe: float | None
+    forecast_nonlinear_sharpe: float | None
+    premium_sharpe: float | None
+
+
 class NonlinearBacktestResponse(BaseModel):
     zone: str
     as_of: str | None
     n_eval: int
     signal_window: int
     knot_pct: float
+    source: str
     linear: BacktestModelStats
     nonlinear: BacktestModelStats
     improvement: NonlinearBacktestImprovement
+    lookahead: LookaheadPremium | None
     equity: list[NonlinearBacktestEquityPoint]
 
 
@@ -1324,7 +1333,9 @@ class RegimeAwareBacktestResponse(BaseModel):
     n_eval: int
     signal_window: int
     mom_window: int
-    knot_pct: float
+    source: str
+    drought_pctile: float
+    drought_thr_pct: float
     cost: float
     linear: RegimeBookStats
     nonlinear: RegimeBookStats

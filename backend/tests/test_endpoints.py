@@ -1148,6 +1148,7 @@ def test_spreads_nonlinear_backtest(client):
     assert data["n_eval"] > 0
     assert data["signal_window"] == 30
     assert data["knot_pct"] == 8.0
+    assert data["source"] == "forecast"
     for model_key in ("linear", "nonlinear"):
         m = data[model_key]
         assert m["n"] == data["n_eval"]
@@ -1158,6 +1159,11 @@ def test_spreads_nonlinear_backtest(client):
     imp = data["improvement"]
     assert "sharpe_delta" in imp
     assert "cum_pnl_delta" in imp
+    # Look-ahead premium: forecast is the canonical signal, actual is the peeking reference
+    la = data["lookahead"]
+    assert la is not None
+    assert {"actual_nonlinear_sharpe", "forecast_nonlinear_sharpe", "premium_sharpe"} <= la.keys()
+    assert la["forecast_nonlinear_sharpe"] == data["nonlinear"]["sharpe"]
     # Equity curve carries both cumulative series
     eq = data["equity"]
     assert len(eq) > 0
@@ -1249,7 +1255,9 @@ def test_spreads_regime_aware_backtest(client):
     assert data["n_eval"] > 0
     assert data["signal_window"] == 30
     assert data["mom_window"] == 10
-    assert data["knot_pct"] == 8.0
+    assert data["source"] == "forecast"
+    assert data["drought_pctile"] == 25.0
+    assert data["drought_thr_pct"] > 0
     assert data["cost"] > 0
     # Three books, identical accounting -> same eval count and same sub-knot count
     for book_key in ("linear", "nonlinear", "regime_aware"):
