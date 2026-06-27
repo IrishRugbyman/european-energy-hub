@@ -293,14 +293,7 @@ fabricate a series to "complete" a factor.
 
 ### Phase 49 - Gradient-boosted fair value vs the hinge OLS [COMPLETE 2026-06-27]
 
-### Phase 50 - Signal ensemble + cross-zone portfolio P&L
-*Goal: combine the per-zone signals into one book a desk would actually run, with risk decomposition.*
-*Depends on: P45 cross-zone harness, P47-49 signals, `quant_lib.portfolio`. 1-2 sessions.*
-
-- [ ] Analytics: build a cross-zone portfolio from the best signal per zone (equal-risk or sign-agreement weighting), produce a single portfolio equity curve, and decompose risk per zone with `quant_lib.portfolio` Euler decomposition.
-- [ ] Report portfolio Sharpe, per-zone risk contribution, drawdown, and the diversification benefit vs the single-zone DE-LU book; net of the P44 cost.
-- [ ] Endpoint `GET /api/spreads/portfolio-backtest`, schema, test, and a `PortfolioSection` capstone on /spreads (portfolio equity curve + per-zone contribution bars).
-- *Done when:* /spreads ends on a single portfolio P&L curve with risk attribution, the diversification benefit is quantified, and tests pass.
+### Phase 50 - Signal ensemble + cross-zone portfolio P&L [COMPLETE 2026-06-27]
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
 
 ## 10. Deliberately NOT building (v1)

@@ -1056,6 +1056,8 @@ function SpreadsDashboard() {
 
           <RegimeAwareSection />
 
+          <PortfolioSection />
+
           <BacktestSection zone="DE-LU" />
 
           <div className="bg-card border border-border rounded-lg p-4">
@@ -2646,6 +2648,125 @@ function RegimeAwareEquityChart({ equity }: { equity: RegimeAwareEquityPoint[] }
           <Line type="monotone" dataKey="cum_regime_aware" name="Regime-aware" stroke="#4ade80" dot={false} strokeWidth={2} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+function PortfolioSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['portfolio-backtest'],
+    queryFn: () => api.spreadsPortfolioBacktest(),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
+  const sharpeUplift =
+    data && data.portfolio.sharpe != null && data.de_lu?.sharpe != null
+      ? data.portfolio.sharpe - data.de_lu.sharpe
+      : null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Cross-Zone Portfolio: One Book, Risk-Decomposed</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Inverse-vol blend of the per-zone fades
+        </span>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Building cross-zone portfolio...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Headline cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Portfolio Sharpe</p>
+              <p className="text-sm font-semibold text-emerald-400">{fmt(data.portfolio.sharpe)}</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">vs DE-LU alone</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.de_lu?.sharpe)}{' '}
+                <span style={{ color: (sharpeUplift ?? 0) > 0 ? '#4ade80' : '#94a3b8' }}>
+                  ({(sharpeUplift ?? 0) >= 0 ? '+' : ''}{fmt(sharpeUplift)})
+                </span>
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Diversification ratio</p>
+              <p className="text-sm font-semibold text-foreground">{fmt(data.diversification_ratio)}×</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Max DD (port vs DE-LU)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.portfolio.max_dd_eur, 0)} <span className="text-muted-foreground">vs</span>{' '}
+                {fmt(data.de_lu?.max_dd_eur, 0)}
+              </p>
+            </div>
+          </div>
+
+          {/* Equity curve: portfolio vs DE-LU */}
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground font-medium">
+              Cumulative P&L — inverse-vol portfolio vs DE-LU alone ({data.n_days}d, net of cost)
+            </p>
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={data.equity} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} minTickGap={40} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} width={40}
+                  label={{ value: 'cum P&L', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }} />
+                <Tooltip
+                  contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                  formatter={(val: unknown, name: unknown) => [
+                    typeof val === 'number' ? val.toFixed(1) : '--',
+                    name === 'cum_portfolio' ? 'Portfolio' : 'DE-LU alone',
+                  ]}
+                />
+                <Legend wrapperStyle={{ fontSize: 10 }} />
+                <ReferenceLine y={0} stroke="#334155" strokeWidth={1} />
+                <Line type="monotone" dataKey="cum_portfolio" name="Portfolio" stroke="#4ade80" dot={false} strokeWidth={2} isAnimationActive={false} />
+                <Line type="monotone" dataKey="cum_de_lu" name="DE-LU alone" stroke="#60a5fa" dot={false} strokeWidth={1.5} isAnimationActive={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Per-zone risk contribution bars */}
+          <div>
+            <p className="text-xs text-muted-foreground font-medium mb-2">
+              Euler risk contribution by zone (weight · standalone Sharpe)
+            </p>
+            <div className="space-y-1">
+              {data.zones.map((z) => (
+                <div key={z.zone} className="flex items-center gap-2 text-[10px]">
+                  <span className="w-16 text-muted-foreground">{z.zone}</span>
+                  <div className="flex-1 bg-muted/20 rounded h-3 overflow-hidden">
+                    <div className="h-full bg-emerald-500/70" style={{ width: `${z.risk_contribution_pct}%` }} />
+                  </div>
+                  <span className="w-10 text-right text-foreground">{z.risk_contribution_pct}%</span>
+                  <span className="w-28 text-right text-muted-foreground">
+                    w={z.weight.toFixed(2)} · Sh {fmt(z.sharpe_standalone)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The capstone book combines each zone's canonical signal - the P47 nonlinear residual fade, net of the
+            {' '}{data.cost.toFixed(2)} €/MWh·u cost - into one portfolio with inverse-volatility (equal-risk)
+            weights, so no single hub dominates. The Euler decomposition (risk contribution = wᵢ·(Σw)ᵢ/σₚ) shows
+            each zone's actual share of portfolio risk; it deviates from equal because the per-zone fades are
+            imperfectly correlated, which is exactly the source of the diversification.{' '}
+            {(sharpeUplift ?? 0) > 0
+              ? `The portfolio Sharpe (${fmt(data.portfolio.sharpe)}) is well above the single-zone DE-LU book (${fmt(data.de_lu?.sharpe)}), at a ${fmt(data.diversification_ratio)}× diversification ratio and roughly ${data.de_lu && data.portfolio.max_dd_eur > data.de_lu.max_dd_eur ? 'smaller' : 'comparable'} drawdown - blending uncorrelated zone signals is the cleanest free lunch in the whole arc.`
+              : `On this sample the portfolio does not beat the single-zone DE-LU book.`}{' '}
+            Per-zone signals are genuinely walk-forward; the inverse-vol weighting overlay is set from full-sample
+            volatility, so it is an ex-post construction illustration on top of OOS signals.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

@@ -965,11 +965,13 @@ def _nonlinear_signal_pnl(query_fn: Callable, zone: str, source: str = FUNDAMENT
     df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
     df = df.reset_index(drop=True)
 
+    df["price_date"] = pd.to_datetime(df["price_date"])
     ttf = df["ttf_eur_mwh"].to_numpy(float)
     eua = df["eua_eur_t"].to_numpy(float)
     wind = df["wind_pct"].to_numpy(float)
     solar = df["solar_pct"].to_numpy(float)
     y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
     n = len(y)
 
     Xlin = _design_linear(ttf, eua, wind, solar)
@@ -1011,6 +1013,8 @@ def _nonlinear_signal_pnl(query_fn: Callable, zone: str, source: str = FUNDAMENT
         "to_lin": turnover(pos_lin),
         "to_nl": turnover(pos_nl),
         "w_pnl": w_eval[1:],
+        # P&L day t earns the change into eval day t+1, realised on that date.
+        "dates": [d.strftime("%Y-%m-%d") for d in dates.iloc[idx[1:]]],
     }
 
 
@@ -1635,4 +1639,140 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
         "gbm": gbm_stats,
         "importance": importance,
         "partial_wind": partial_wind,
+    }
+
+
+def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) -> dict:
+    """Cross-zone portfolio of the per-zone nonlinear fades, with Euler risk attribution.
+
+    The capstone of the /spreads signal arc: combine the canonical per-zone signal (the
+    P47 nonlinear residual fade, net of the P44 cost) into one book a desk would actually
+    run, and decompose its risk. Each zone's daily net P&L is aligned by date (a zone
+    contributes 0 on days it has no signal). Zones are combined with inverse-volatility
+    (equal-risk) weights so no single hub dominates; the realised Euler volatility
+    decomposition - risk contribution_i = w_i (Sigma w)_i / sigma_p - then shows each zone's
+    actual share of portfolio risk (which deviates from equal because of cross-zone
+    correlation). We report the portfolio Sharpe / drawdown vs the single-zone DE-LU book
+    and the diversification ratio (weighted-average standalone vol / portfolio vol).
+
+    Note: weights are set from full-sample volatility, so the portfolio construction is an
+    ex-post illustration on top of the genuinely walk-forward per-zone signals - the signals
+    are OOS, the weighting overlay is descriptive.
+
+    Returns dict with: as_of, n_days, cost, weighting, zones[] (zone, weight, vol,
+    sharpe_standalone, risk_contribution_pct, cum_pnl), portfolio{}, de_lu{},
+    diversification_ratio, equity[].
+    """
+    series = {}
+    for zone in FUNDAMENTAL_ZONES:
+        sig = _nonlinear_signal_pnl(query_fn, zone, "forecast")
+        if sig is None or len(sig["gross_nl"]) < 30:
+            continue
+        net = sig["gross_nl"] - cost * sig["to_nl"]
+        series[zone] = pd.Series(net, index=pd.to_datetime(sig["dates"]))
+    if len(series) < 2:
+        return {}
+
+    # Align by date; a zone holds no position (0 P&L) on days it has no signal.
+    pnl = pd.DataFrame(series).sort_index().fillna(0.0)
+    zones = list(pnl.columns)
+
+    vols = pnl.std()
+    if (vols <= 0).any():
+        zones = [z for z in zones if vols[z] > 0]
+        pnl = pnl[zones]
+        vols = pnl.std()
+    if len(zones) < 2:
+        return {}
+
+    # Inverse-volatility (equal-risk) weights.
+    inv = 1.0 / vols
+    weights = inv / inv.sum()
+
+    port = pnl.dot(weights)
+    cov = pnl.cov().to_numpy()
+    w = weights.to_numpy()
+    port_vol = float(np.sqrt(w @ cov @ w))
+
+    # Euler volatility decomposition: RC_i = w_i (Sigma w)_i / sigma_p; shares sum to sigma_p.
+    sigma_w = cov @ w
+    rc = w * sigma_w / port_vol if port_vol > 0 else np.zeros_like(w)
+    rc_pct = 100 * rc / rc.sum() if rc.sum() != 0 else np.zeros_like(rc)
+
+    def sharpe(s):
+        sd = float(s.std())
+        if len(s) < 10 or sd == 0:
+            return None
+        return float(round(s.mean() / sd * np.sqrt(252), 3))
+
+    def max_dd(s):
+        cum = s.cumsum().to_numpy()
+        if len(cum) == 0:
+            return 0.0
+        peak = np.maximum.accumulate(cum)
+        return float(round((cum - peak).min(), 2))
+
+    def standalone_sharpe(z):
+        return sharpe(pnl[z])
+
+    zone_rows = []
+    for i, z in enumerate(zones):
+        zone_rows.append({
+            "zone": z,
+            "weight": round(float(weights[z]), 3),
+            "vol": round(float(vols[z]), 3),
+            "sharpe_standalone": standalone_sharpe(z),
+            "risk_contribution_pct": round(float(rc_pct[i]), 1),
+            "cum_pnl": round(float(pnl[z].sum()), 2),
+        })
+    zone_rows.sort(key=lambda r: r["risk_contribution_pct"], reverse=True)
+
+    de_lu_pnl = pnl["DE-LU"] if "DE-LU" in pnl.columns else None
+    diversification_ratio = round(float((weights * vols).sum() / port_vol), 3) if port_vol > 0 else None
+
+    portfolio = {
+        "sharpe": sharpe(port),
+        "cum_pnl": round(float(port.sum()), 2),
+        "max_dd_eur": max_dd(port),
+        "vol": round(port_vol, 3),
+        "n_zones": len(zones),
+    }
+    de_lu = None
+    if de_lu_pnl is not None:
+        de_lu = {
+            "sharpe": sharpe(de_lu_pnl),
+            "cum_pnl": round(float(de_lu_pnl.sum()), 2),
+            "max_dd_eur": max_dd(de_lu_pnl),
+            "vol": round(float(de_lu_pnl.std()), 3),
+        }
+
+    # Equity curves (portfolio + DE-LU standalone), downsampled to <= 365 points.
+    cum_port = port.cumsum()
+    cum_de = de_lu_pnl.cumsum() if de_lu_pnl is not None else None
+    dates_idx = [d.strftime("%Y-%m-%d") for d in port.index]
+    step = max(1, len(port) // 365)
+    equity = []
+    for i in range(0, len(port), step):
+        equity.append({
+            "date": dates_idx[i],
+            "cum_portfolio": round(float(cum_port.iloc[i]), 2),
+            "cum_de_lu": round(float(cum_de.iloc[i]), 2) if cum_de is not None else None,
+        })
+    if equity and equity[-1]["date"] != dates_idx[-1]:
+        equity.append({
+            "date": dates_idx[-1],
+            "cum_portfolio": round(float(cum_port.iloc[-1]), 2),
+            "cum_de_lu": round(float(cum_de.iloc[-1]), 2) if cum_de is not None else None,
+        })
+
+    return {
+        "as_of": dates_idx[-1],
+        "n_days": int(len(port)),
+        "cost": round(cost, 3),
+        "weighting": "inverse_volatility",
+        "zones": zone_rows,
+        "portfolio": portfolio,
+        "de_lu": de_lu,
+        "diversification_ratio": diversification_ratio,
+        "equity": equity,
     }

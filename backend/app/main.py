@@ -193,6 +193,10 @@ from .schemas import (
     GbmModelResponse,
     GbmImportanceRow,
     GbmPartialPoint,
+    PortfolioBacktestResponse,
+    PortfolioZoneRow,
+    PortfolioStats,
+    PortfolioEquityPoint,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3819,6 +3823,35 @@ def spreads_gbm_model(zone: str = "DE-LU"):
         gbm=EnrichedModelStats(**result["gbm"]),
         importance=[GbmImportanceRow(**r) for r in result["importance"]],
         partial_wind=[GbmPartialPoint(**p) for p in result["partial_wind"]],
+    )
+
+
+@app.get("/api/spreads/portfolio-backtest", response_model=PortfolioBacktestResponse)
+def spreads_portfolio_backtest():
+    """Cross-zone portfolio of the per-zone nonlinear fades, with Euler risk attribution.
+
+    The capstone of the /spreads signal arc: combine the canonical per-zone signal (the P47
+    nonlinear residual fade, net of the P44 cost) into one inverse-volatility-weighted book
+    and decompose its risk. Reports the portfolio Sharpe / drawdown vs the single-zone DE-LU
+    book, each zone's Euler risk contribution, and the diversification ratio.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_portfolio_backtest
+
+    result = compute_portfolio_backtest(db.query)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for portfolio backtest")
+
+    return PortfolioBacktestResponse(
+        as_of=result.get("as_of"),
+        n_days=result["n_days"],
+        cost=result["cost"],
+        weighting=result["weighting"],
+        zones=[PortfolioZoneRow(**z) for z in result["zones"]],
+        portfolio=PortfolioStats(**result["portfolio"]),
+        de_lu=PortfolioStats(**result["de_lu"]) if result.get("de_lu") else None,
+        diversification_ratio=result["diversification_ratio"],
+        equity=[PortfolioEquityPoint(**p) for p in result["equity"]],
     )
 
 

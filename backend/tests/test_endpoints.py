@@ -1270,6 +1270,31 @@ def test_spreads_enriched_model(client):
     assert client.get("/api/spreads/enriched-model?zone=FAKE").status_code == 400
 
 
+def test_spreads_portfolio_backtest(client):
+    r = client.get("/api/spreads/portfolio-backtest")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["n_days"] > 0
+    assert data["cost"] > 0
+    assert data["weighting"] == "inverse_volatility"
+    # Weights are a normalised simplex; risk contributions sum to ~100%
+    zones = data["zones"]
+    assert len(zones) >= 2
+    assert abs(sum(z["weight"] for z in zones) - 1.0) < 0.01
+    assert abs(sum(z["risk_contribution_pct"] for z in zones) - 100.0) < 1.0
+    for z in zones:
+        assert {"zone", "weight", "vol", "risk_contribution_pct", "cum_pnl"} <= z.keys()
+        assert z["vol"] >= 0
+    p = data["portfolio"]
+    assert {"sharpe", "cum_pnl", "max_dd_eur", "vol", "n_zones"} <= p.keys()
+    assert p["max_dd_eur"] <= 0
+    # Diversification ratio >= 1 when the per-zone signals are imperfectly correlated
+    assert data["diversification_ratio"] is None or data["diversification_ratio"] >= 0.99
+    eq = data["equity"]
+    assert len(eq) > 0
+    assert {"date", "cum_portfolio", "cum_de_lu"} <= eq[0].keys()
+
+
 def test_spreads_gbm_model(client):
     r = client.get("/api/spreads/gbm-model?zone=DE-LU")
     assert r.status_code == 200

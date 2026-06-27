@@ -1344,6 +1344,41 @@ class EnrichedModelResponse(BaseModel):
     factors_deferred: list[str]
 
 
+class PortfolioZoneRow(BaseModel):
+    zone: str
+    weight: float
+    vol: float
+    sharpe_standalone: float | None
+    risk_contribution_pct: float
+    cum_pnl: float
+
+
+class PortfolioStats(BaseModel):
+    sharpe: float | None
+    cum_pnl: float
+    max_dd_eur: float
+    vol: float
+    n_zones: int | None = None
+
+
+class PortfolioEquityPoint(BaseModel):
+    date: str
+    cum_portfolio: float
+    cum_de_lu: float | None
+
+
+class PortfolioBacktestResponse(BaseModel):
+    as_of: str | None
+    n_days: int
+    cost: float
+    weighting: str
+    zones: list[PortfolioZoneRow]
+    portfolio: PortfolioStats
+    de_lu: PortfolioStats | None
+    diversification_ratio: float | None
+    equity: list[PortfolioEquityPoint]
+
+
 class GbmImportanceRow(BaseModel):
     feature: str
     importance_pct: float

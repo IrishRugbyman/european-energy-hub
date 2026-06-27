@@ -1106,6 +1106,7 @@ export const api = {
   spreadsRegimeAwareBacktest: (zone?: string) => get<RegimeAwareBacktestResponse>(`/spreads/regime-aware-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsEnrichedModel: (zone?: string) => get<EnrichedModelResponse>(`/spreads/enriched-model${zone ? `?zone=${zone}` : ''}`),
   spreadsGbmModel: (zone?: string) => get<GbmModelResponse>(`/spreads/gbm-model${zone ? `?zone=${zone}` : ''}`),
+  spreadsPortfolioBacktest: () => get<PortfolioBacktestResponse>('/spreads/portfolio-backtest'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1486,6 +1487,41 @@ export interface EnrichedModelResponse {
   }
   factors_added: string[]
   factors_deferred: string[]
+}
+
+export interface PortfolioZoneRow {
+  zone: string
+  weight: number
+  vol: number
+  sharpe_standalone: number | null
+  risk_contribution_pct: number
+  cum_pnl: number
+}
+
+export interface PortfolioStats {
+  sharpe: number | null
+  cum_pnl: number
+  max_dd_eur: number
+  vol: number
+  n_zones?: number | null
+}
+
+export interface PortfolioEquityPoint {
+  date: string
+  cum_portfolio: number
+  cum_de_lu: number | null
+}
+
+export interface PortfolioBacktestResponse {
+  as_of: string | null
+  n_days: number
+  cost: number
+  weighting: string
+  zones: PortfolioZoneRow[]
+  portfolio: PortfolioStats
+  de_lu: PortfolioStats | null
+  diversification_ratio: number | null
+  equity: PortfolioEquityPoint[]
 }
 
 export interface GbmImportanceRow {
