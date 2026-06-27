@@ -1469,3 +1469,170 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
         "factors_added": ENRICHED_FACTORS,
         "factors_deferred": DEFERRED_FACTORS,
     }
+
+
+# GBM walk-forward refit cadence (days). A daily refit of a gradient booster over the OOS
+# window would be ~300 fits/zone/request; refitting every block and predicting the block
+# OOS keeps the endpoint sub-second while staying a genuine walk-forward. All three models
+# (linear, hinge OLS, GBM) refit on the SAME cadence so the comparison isolates model class.
+GBM_REFIT_EVERY = 21
+
+# Raw factor set the GBM learns over (no manual hinge - the booster finds the nonlinearity).
+GBM_FEATURES = ["ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf"]
+
+
+def _fit_gbm(X, y):
+    """Train a LightGBM booster tuned for the small (~250-1000 row) daily fair-value problem.
+
+    Uses the native training API (not the sklearn wrapper) so scikit-learn is not required.
+    Shallow trees + bagging + L2 keep it from overfitting the short daily history.
+    """
+    import lightgbm as lgb
+
+    params = {
+        "objective": "regression", "learning_rate": 0.05, "num_leaves": 15, "max_depth": 4,
+        "min_child_samples": 20, "bagging_fraction": 0.8, "bagging_freq": 1,
+        "feature_fraction": 0.9, "lambda_l2": 1.0, "verbosity": -1, "num_threads": 1,
+    }
+    dtrain = lgb.Dataset(X, label=y, feature_name=list(GBM_FEATURES))
+    return lgb.train(params, dtrain, num_boost_round=200)
+
+
+def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+    """Walk-forward gradient-boosted fair value vs the hinge OLS and the linear baseline.
+
+    Tests honestly whether a nonparametric learner (LightGBM) on the raw factor set beats
+    the one-coefficient low-wind hinge, or just adds variance. All three models - linear OLS
+    (5 terms), the P47 hinge nonlinear OLS (9 terms), and a GBM over the six raw factors
+    (TTF, EUA, wind%, solar%, residual demand GW, dTTF) - are refit on the SAME block
+    cadence (every GBM_REFIT_EVERY days) and predict the block out-of-sample, so the only
+    difference is model class. Reports OOS RMSE (overall + low-wind) and tradeable Sharpe
+    (faded residual net of the P44 cost) for each, plus the GBM's gain feature importance and
+    a wind partial-dependence curve so its low-wind behaviour can be read against the hinge.
+
+    Returns dict with: zone, as_of, n_oos, source, knot_pct, refit_every, linear{}, hinge{},
+    gbm{} (each rmse_overall/rmse_low_wind/sharpe_net), importance[], partial_wind[].
+    """
+    rows = _fetch_fundamental_features(query_fn, zone, source)
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"gbm model: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"])
+    df = df.reset_index(drop=True)
+    if len(df) < WF_MIN_TRAIN + 40:
+        return {}
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    load_mw = df["load_mw"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    resid_gw = load_mw * (1.0 - (wind + solar) / 100.0) / 1000.0
+    dttf = np.diff(ttf, prepend=ttf[0])
+
+    Xlin = _design_linear(ttf, eua, wind, solar)
+    Xhinge = _design_nonlinear(ttf, eua, wind, solar)
+    Xgbm = np.column_stack([ttf, eua, wind, solar, resid_gw, dttf])
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx = list(range(start, n))
+    pred_lin = np.full(len(idx), np.nan)
+    pred_hinge = np.full(len(idx), np.nan)
+    pred_gbm = np.full(len(idx), np.nan)
+
+    last_gbm = None
+    # Block walk-forward: refit at each block boundary on all prior rows, predict the block.
+    for b0 in range(start, n, GBM_REFIT_EVERY):
+        b1 = min(b0 + GBM_REFIT_EVERY, n)
+        clin, _, _, _ = np.linalg.lstsq(Xlin[:b0], y[:b0], rcond=None)
+        chinge, _, _, _ = np.linalg.lstsq(Xhinge[:b0], y[:b0], rcond=None)
+        gbm = _fit_gbm(Xgbm[:b0], y[:b0])
+        last_gbm = gbm
+        block = np.array(range(b0, b1))
+        off = block - start
+        pred_lin[off] = Xlin[block] @ clin
+        pred_hinge[off] = Xhinge[block] @ chinge
+        pred_gbm[off] = gbm.predict(Xgbm[block])
+
+    idx = np.array(idx)
+    y_oos = y[idx]
+    w_oos = wind[idx]
+    price_changes = np.diff(y_oos)
+    low = w_oos < LOW_WIND_KNOT_PCT
+
+    def rmse(pred, mask=None):
+        a = y_oos if mask is None else y_oos[mask]
+        p = pred if mask is None else pred[mask]
+        if len(a) == 0:
+            return None
+        return float(round(np.sqrt(np.mean((a - p) ** 2)), 2))
+
+    def sharpe_net(pred):
+        residuals = y_oos - pred
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        pos = np.clip(-z, -1.0, 1.0)
+        gross = pos[:-1] * price_changes
+        turnover = np.abs(np.diff(pos, prepend=0.0))[:-1]
+        pnl = gross - EDGE_NET_COST * turnover
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    def stats(pred):
+        return {
+            "rmse_overall": rmse(pred),
+            "rmse_low_wind": rmse(pred, low),
+            "sharpe_net": sharpe_net(pred),
+        }
+
+    linear = stats(pred_lin)
+    hinge = stats(pred_hinge)
+    gbm_stats = stats(pred_gbm)
+
+    # GBM interpretability from the final fit: gain importance + a wind partial-dependence
+    # curve (vary wind over its observed range, hold the other factors at their median).
+    importance = []
+    partial_wind = []
+    if last_gbm is not None:
+        imp = np.asarray(last_gbm.feature_importance(importance_type="gain"), float)
+        tot = imp.sum()
+        importance = [
+            {"feature": GBM_FEATURES[i], "importance_pct": round(float(100 * imp[i] / tot), 1) if tot > 0 else 0.0}
+            for i in range(len(GBM_FEATURES))
+        ]
+        importance.sort(key=lambda r: r["importance_pct"], reverse=True)
+
+        med = np.median(Xgbm[:n], axis=0)
+        w_lo, w_hi = float(np.percentile(wind, 2)), float(np.percentile(wind, 98))
+        grid = np.linspace(w_lo, w_hi, 24)
+        base_pred = float(last_gbm.predict(med.reshape(1, -1))[0])
+        for wv in grid:
+            row = med.copy()
+            row[2] = wv  # wind is feature index 2
+            p = float(last_gbm.predict(row.reshape(1, -1))[0])
+            partial_wind.append({"wind_pct": round(float(wv), 1), "pred": round(p, 2),
+                                 "pred_centered": round(p - base_pred, 2)})
+
+    return {
+        "zone": zone,
+        "as_of": dates.iloc[-1].strftime("%Y-%m-%d"),
+        "n_oos": int(len(idx)),
+        "source": source,
+        "knot_pct": LOW_WIND_KNOT_PCT,
+        "refit_every": GBM_REFIT_EVERY,
+        "linear": linear,
+        "hinge": hinge,
+        "gbm": gbm_stats,
+        "importance": importance,
+        "partial_wind": partial_wind,
+    }

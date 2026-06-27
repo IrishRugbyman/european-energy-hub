@@ -1270,6 +1270,31 @@ def test_spreads_enriched_model(client):
     assert client.get("/api/spreads/enriched-model?zone=FAKE").status_code == 400
 
 
+def test_spreads_gbm_model(client):
+    r = client.get("/api/spreads/gbm-model?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_oos"] > 0
+    assert data["source"] == "forecast"
+    assert data["refit_every"] == 21
+    for key in ("linear", "hinge", "gbm"):
+        m = data[key]
+        assert {"rmse_overall", "rmse_low_wind", "sharpe_net"} <= m.keys()
+    # Feature importance covers the six factors and sums to ~100%
+    imp = data["importance"]
+    assert len(imp) == 6
+    assert abs(sum(row["importance_pct"] for row in imp) - 100.0) < 1.0
+    assert {row["feature"] for row in imp} == {"ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf"}
+    # Wind partial-dependence curve present, ascending in wind
+    pw = data["partial_wind"]
+    assert len(pw) > 1
+    winds = [p["wind_pct"] for p in pw]
+    assert winds == sorted(winds)
+    assert {"wind_pct", "pred", "pred_centered"} <= pw[0].keys()
+    assert client.get("/api/spreads/gbm-model?zone=FAKE").status_code == 400
+
+
 def test_spreads_regime_aware_backtest(client):
     r = client.get("/api/spreads/regime-aware-backtest?zone=DE-LU")
     assert r.status_code == 200

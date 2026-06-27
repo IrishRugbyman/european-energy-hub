@@ -17,6 +17,7 @@ dependencies = [
     "market-data",
     "quant-lib",
     "pulp>=2.9",
+    "lightgbm>=4.5",
 ]
 
 [project.optional-dependencies]

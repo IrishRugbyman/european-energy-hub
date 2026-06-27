@@ -1105,6 +1105,7 @@ export const api = {
   spreadsNonlinearEdgeByZone: () => get<EdgeByZoneResponse>('/spreads/nonlinear-edge-by-zone'),
   spreadsRegimeAwareBacktest: (zone?: string) => get<RegimeAwareBacktestResponse>(`/spreads/regime-aware-backtest${zone ? `?zone=${zone}` : ''}`),
   spreadsEnrichedModel: (zone?: string) => get<EnrichedModelResponse>(`/spreads/enriched-model${zone ? `?zone=${zone}` : ''}`),
+  spreadsGbmModel: (zone?: string) => get<GbmModelResponse>(`/spreads/gbm-model${zone ? `?zone=${zone}` : ''}`),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1485,6 +1486,31 @@ export interface EnrichedModelResponse {
   }
   factors_added: string[]
   factors_deferred: string[]
+}
+
+export interface GbmImportanceRow {
+  feature: string
+  importance_pct: number
+}
+
+export interface GbmPartialPoint {
+  wind_pct: number
+  pred: number
+  pred_centered: number
+}
+
+export interface GbmModelResponse {
+  zone: string
+  as_of: string | null
+  n_oos: number
+  source: string
+  knot_pct: number
+  refit_every: number
+  linear: EnrichedModelStats
+  hinge: EnrichedModelStats
+  gbm: EnrichedModelStats
+  importance: GbmImportanceRow[]
+  partial_wind: GbmPartialPoint[]
 }
 
 export interface RegimeBookStats {

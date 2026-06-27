@@ -1344,6 +1344,31 @@ class EnrichedModelResponse(BaseModel):
     factors_deferred: list[str]
 
 
+class GbmImportanceRow(BaseModel):
+    feature: str
+    importance_pct: float
+
+
+class GbmPartialPoint(BaseModel):
+    wind_pct: float
+    pred: float
+    pred_centered: float
+
+
+class GbmModelResponse(BaseModel):
+    zone: str
+    as_of: str | None
+    n_oos: int
+    source: str
+    knot_pct: float
+    refit_every: int
+    linear: EnrichedModelStats
+    hinge: EnrichedModelStats
+    gbm: EnrichedModelStats
+    importance: list[GbmImportanceRow]
+    partial_wind: list[GbmPartialPoint]
+
+
 class RegimeBookStats(BaseModel):
     sharpe: float | None
     sharpe_sub_knot: float | None

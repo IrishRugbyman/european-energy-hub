@@ -291,15 +291,7 @@ fabricate a series to "complete" a factor.
 
 ### Phase 48 - Expand the fundamental factor set [COMPLETE 2026-06-27]
 
-### Phase 49 - Gradient-boosted fair value vs the hinge OLS
-*Goal: test honestly whether a nonparametric learner beats the one-coefficient hinge, or just adds variance.*
-*Depends on: P48 factor set. Adds an ML dependency. 2 sessions.*
-
-- [ ] Infra: add `scikit-learn` (or `lightgbm`) to the energy `backend/pyproject.toml`, `uv lock`, `uv sync` (the energy venv currently has no ML library - this is the first).
-- [ ] Analytics: walk-forward gradient-boosted fair-value regressor on the P48 factor set, same daily-refit OOS protocol; compare OOS RMSE, tradeable Sharpe, and P44 cost robustness against the hinge OLS and the linear baseline.
-- [ ] Interpretability: feature importance + a wind partial-dependence curve, so the GBM's low-wind behaviour can be compared directly to the hinge coefficient.
-- [ ] Endpoint + schema + test + a `GbmModelSection` on /spreads with the RMSE/Sharpe comparison and the partial-dependence chart.
-- *Done when:* the GBM-vs-hinge-vs-linear comparison is shown OOS and net of cost on /spreads, with an explicit verdict on whether the extra flexibility is capturable or just overfitting, and tests pass.
+### Phase 49 - Gradient-boosted fair value vs the hinge OLS [COMPLETE 2026-06-27]
 
 ### Phase 50 - Signal ensemble + cross-zone portfolio P&L
 *Goal: combine the per-zone signals into one book a desk would actually run, with risk decomposition.*

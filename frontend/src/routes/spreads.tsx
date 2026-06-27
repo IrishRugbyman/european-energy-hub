@@ -1046,6 +1046,8 @@ function SpreadsDashboard() {
 
           <EnrichedModelSection />
 
+          <GbmModelSection />
+
           <NonlinearBacktestSection />
 
           <NonlinearCostRobustnessSection />
@@ -1665,6 +1667,135 @@ function NonlinearModelSection() {
             regime, where scarcity pricing turns convex and the linear model systematically under-prices the drought
             premium the wind-price analysis above surfaces. This is the empirical case that nonlinear ML adds capturable
             alpha, not just in-sample fit.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GbmModelSection() {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['gbm-model', zone],
+    queryFn: () => api.spreadsGbmModel(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
+  const models = [
+    { key: 'linear' as const, label: 'Linear OLS', color: '#60a5fa' },
+    { key: 'hinge' as const, label: 'Hinge OLS', color: '#a78bfa' },
+    { key: 'gbm' as const, label: 'LightGBM', color: '#f59e0b' },
+  ]
+  // Best (lowest) RMSE and best (highest) Sharpe across the three, to highlight the winner.
+  const bestRmse = data
+    ? Math.min(...models.map((m) => data[m.key].rmse_overall ?? Infinity))
+    : null
+  const bestSharpe = data
+    ? Math.max(...models.map((m) => data[m.key].sharpe_net ?? -Infinity))
+    : null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Does a Gradient Booster Beat the Hinge?</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          LightGBM vs the one-coefficient hinge OLS
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Refitting walk-forward LightGBM...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Three-model comparison grid */}
+          <div className="grid grid-cols-3 gap-3 text-[11px]">
+            {models.map((m) => {
+              const s = data[m.key]
+              const rmseWin = s.rmse_overall != null && s.rmse_overall === bestRmse
+              const sharpeWin = s.sharpe_net != null && s.sharpe_net === bestSharpe
+              return (
+                <div key={m.key} className="bg-muted/10 rounded-lg px-3 py-2">
+                  <p className="font-medium mb-1" style={{ color: m.color }}>{m.label}</p>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                    <span>RMSE</span>
+                    <span className="text-right" style={{ color: rmseWin ? '#4ade80' : '#e2e8f0' }}>
+                      {fmt(s.rmse_overall)}{rmseWin ? ' ★' : ''}
+                    </span>
+                    <span>Low-wind</span><span className="text-right text-foreground">{fmt(s.rmse_low_wind)}</span>
+                    <span>Sharpe</span>
+                    <span className="text-right" style={{ color: sharpeWin ? '#4ade80' : '#e2e8f0' }}>
+                      {fmt(s.sharpe_net)}{sharpeWin ? ' ★' : ''}
+                    </span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Feature importance + wind partial dependence */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium mb-2">GBM gain importance</p>
+              <div className="space-y-1">
+                {data.importance.map((f) => (
+                  <div key={f.feature} className="flex items-center gap-2 text-[10px]">
+                    <span className="w-24 text-muted-foreground truncate">{f.feature}</span>
+                    <div className="flex-1 bg-muted/20 rounded h-3 overflow-hidden">
+                      <div className="h-full bg-amber-500/70" style={{ width: `${f.importance_pct}%` }} />
+                    </div>
+                    <span className="w-10 text-right text-foreground">{f.importance_pct}%</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium mb-2">
+                Wind partial dependence (GBM price vs wind%, others at median)
+              </p>
+              <ResponsiveContainer width="100%" height={150}>
+                <LineChart data={data.partial_wind} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis dataKey="wind_pct" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} minTickGap={24} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} axisLine={false} width={36} />
+                  <Tooltip
+                    contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                    formatter={(val: unknown) => [typeof val === 'number' ? val.toFixed(1) : '--', '€/MWh']}
+                    labelFormatter={(l) => `wind ${l}% of load`}
+                  />
+                  <ReferenceLine x={data.knot_pct} stroke="#f87171" strokeDasharray="4 2" />
+                  <Line type="monotone" dataKey="pred" stroke="#f59e0b" dot={false} strokeWidth={2} isAnimationActive={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            All three models refit walk-forward every {data.refit_every} days on the {data.source} factor set and
+            predict the block out-of-sample; RMSE and the faded-residual Sharpe (net of cost) are the same OOS
+            metrics as the rest of the arc. The GBM (red dashed line marks the {data.knot_pct}% hinge knot) learns
+            its own nonlinearity from the six raw factors, so this is the honest test of whether flexibility beats
+            the one-coefficient hinge.{' '}
+            {(data.gbm.sharpe_net ?? -9) < (data.hinge.sharpe_net ?? 9)
+              ? `On ${data.zone} it does not: the GBM's tradeable Sharpe (${fmt(data.gbm.sharpe_net)}) trails the hinge OLS (${fmt(data.hinge.sharpe_net)}), and its RMSE is no better${(data.gbm.rmse_overall ?? 0) > (data.hinge.rmse_overall ?? 1e9) ? '' : ' on fit either'}. The extra flexibility fits in-sample noise that does not survive out-of-sample — the parsimonious, interpretable hinge wins. Residual demand dominates the importance, but (as the enriched-design panel shows) that information tightens fit while absorbing the mean-reverting residual the fade trades.`
+              : `On ${data.zone} the GBM edges the hinge on tradeable Sharpe (${fmt(data.gbm.sharpe_net)} vs ${fmt(data.hinge.sharpe_net)}) — here the nonlinear interactions it captures carry capturable signal.`}
           </p>
         </div>
       )}

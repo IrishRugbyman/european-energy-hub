@@ -190,6 +190,9 @@ from .schemas import (
     EnrichedModelImprovement,
     EnrichedModelCoef,
     EnrichedFactorStability,
+    GbmModelResponse,
+    GbmImportanceRow,
+    GbmPartialPoint,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3780,6 +3783,42 @@ def spreads_enriched_model(zone: str = "DE-LU"):
         ),
         factors_added=result["factors_added"],
         factors_deferred=result["factors_deferred"],
+    )
+
+
+@app.get("/api/spreads/gbm-model", response_model=GbmModelResponse)
+def spreads_gbm_model(zone: str = "DE-LU"):
+    """Gradient-boosted fair value vs the hinge OLS and the linear baseline.
+
+    Tests whether a LightGBM learner on the raw factor set beats the one-coefficient
+    low-wind hinge or just adds variance. All three models refit on the same block cadence
+    and predict out-of-sample; reports OOS RMSE (overall + low-wind) and tradeable Sharpe
+    (faded residual net of the P44 cost) for each, plus the GBM's gain feature importance
+    and a wind partial-dependence curve to read its low-wind behaviour against the hinge.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_gbm_model, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_gbm_model(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for GBM model")
+
+    return GbmModelResponse(
+        zone=result["zone"],
+        as_of=result.get("as_of"),
+        n_oos=result["n_oos"],
+        source=result["source"],
+        knot_pct=result["knot_pct"],
+        refit_every=result["refit_every"],
+        linear=EnrichedModelStats(**result["linear"]),
+        hinge=EnrichedModelStats(**result["hinge"]),
+        gbm=EnrichedModelStats(**result["gbm"]),
+        importance=[GbmImportanceRow(**r) for r in result["importance"]],
+        partial_wind=[GbmPartialPoint(**p) for p in result["partial_wind"]],
     )
 
 
