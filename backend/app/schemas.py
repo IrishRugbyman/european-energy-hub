@@ -1376,6 +1376,23 @@ class DeflatedSharpe(BaseModel):
     n_obs: int
 
 
+class ResidualMeanReversionRow(BaseModel):
+    zone: str
+    n_obs: int
+    half_life_days: float | None
+    ou_mu: float | None
+    vr: float | None
+    vr_pvalue: float | None
+    hurst: float | None
+    mean_reverting: bool
+
+
+class ResidualMeanReversionResponse(BaseModel):
+    zones: list[ResidualMeanReversionRow]
+    n_zones: int
+    n_mean_reverting: int
+
+
 class BootstrapSharpeCI(BaseModel):
     point: float
     ci_low: float

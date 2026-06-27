@@ -200,6 +200,8 @@ from .schemas import (
     PortfolioSignificance,
     DeflatedSharpe,
     BootstrapSharpeCI,
+    ResidualMeanReversionResponse,
+    ResidualMeanReversionRow,
     NonlinearModelResponse,
     BacktestEquityPoint,
     BacktestStats,
@@ -3873,6 +3875,29 @@ def spreads_portfolio_backtest():
             else None,
         ),
         equity=[PortfolioEquityPoint(**p) for p in result["equity"]],
+    )
+
+
+@app.get("/api/spreads/residual-mean-reversion", response_model=ResidualMeanReversionResponse)
+def spreads_residual_mean_reversion():
+    """Validate the premise of the fade: is the OOS fair-value residual mean-reverting?
+
+    The whole signal arc (P43-P52) bets that the nonlinear residual (actual DA price minus the
+    hinge fair value) reverts to zero. This tests that directly per zone with three independent
+    diagnostics - OU half-life, the Lo-MacKinlay variance-ratio test, and the variance-scaling
+    Hurst exponent - and flags a zone mean-reverting only when all three agree.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_residual_mean_reversion
+
+    result = compute_residual_mean_reversion(db.query)
+    if not result or not result.get("zones"):
+        raise HTTPException(status_code=503, detail="Insufficient data for residual diagnostic")
+
+    return ResidualMeanReversionResponse(
+        zones=[ResidualMeanReversionRow(**z) for z in result["zones"]],
+        n_zones=result["n_zones"],
+        n_mean_reverting=result["n_mean_reverting"],
     )
 
 

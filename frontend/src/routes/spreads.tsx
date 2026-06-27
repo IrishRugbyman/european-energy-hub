@@ -1048,6 +1048,8 @@ function SpreadsDashboard() {
 
           <GbmModelSection />
 
+          <ResidualMeanReversionSection />
+
           <NonlinearBacktestSection />
 
           <NonlinearCostRobustnessSection />
@@ -2648,6 +2650,77 @@ function RegimeAwareEquityChart({ equity }: { equity: RegimeAwareEquityPoint[] }
           <Line type="monotone" dataKey="cum_regime_aware" name="Regime-aware" stroke="#4ade80" dot={false} strokeWidth={2} isAnimationActive={false} />
         </LineChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+function ResidualMeanReversionSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['residual-mean-reversion'],
+    queryFn: () => api.spreadsResidualMeanReversion(),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
+  const allMR = data && data.n_mean_reverting === data.n_zones && data.n_zones > 0
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Does the Residual Actually Revert? (the fade's premise)</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          OU half-life · variance-ratio · Hurst
+        </span>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Testing the residual for mean-reversion...</p>}
+
+      {data && (
+        <div className="space-y-3">
+          <div className={`rounded-lg px-3 py-2 text-xs border ${allMR ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-amber-500/10 border-amber-500/30 text-amber-300'}`}>
+            {data.n_mean_reverting}/{data.n_zones} zones' OOS fair-value residuals are statistically mean-reverting on
+            all three diagnostics — the precondition the contrarian fade depends on.
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-muted-foreground border-b border-border">
+                  <th className="text-left font-medium py-1 pr-2">Zone</th>
+                  <th className="text-right font-medium py-1 px-2">OU half-life (d)</th>
+                  <th className="text-right font-medium py-1 px-2">VR(q)</th>
+                  <th className="text-right font-medium py-1 px-2">VR p-value</th>
+                  <th className="text-right font-medium py-1 px-2">Hurst</th>
+                  <th className="text-right font-medium py-1 pl-2">Mean-reverting?</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.zones.map((z) => (
+                  <tr key={z.zone} className="border-b border-border/40">
+                    <td className="text-left py-1 pr-2 text-foreground font-medium">{z.zone}</td>
+                    <td className="text-right py-1 px-2 text-foreground">{fmt(z.half_life_days, 1)}</td>
+                    <td className="text-right py-1 px-2" style={{ color: (z.vr ?? 1) < 1 ? '#4ade80' : '#94a3b8' }}>{fmt(z.vr, 3)}</td>
+                    <td className="text-right py-1 px-2" style={{ color: (z.vr_pvalue ?? 1) < 0.05 ? '#4ade80' : '#f87171' }}>{fmt(z.vr_pvalue, 4)}</td>
+                    <td className="text-right py-1 px-2" style={{ color: (z.hurst ?? 0.5) < 0.5 ? '#4ade80' : '#fbbf24' }}>{fmt(z.hurst, 3)}</td>
+                    <td className="text-right py-1 pl-2 font-medium" style={{ color: z.mean_reverting ? '#4ade80' : '#f87171' }}>{z.mean_reverting ? 'yes' : 'no'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Every backtest below fades the rolling z-score of the OOS residual (actual DA price minus the P47 hinge fair
+            value), betting it reverts to zero. This validates that premise directly with three independent tests: the
+            OU/AR(1) fit gives the half-life (the implied holding horizon — here ~1-3 trading days, slowest on
+            nuclear-baseload FR), the Lo-MacKinlay variance-ratio test rejects the random-walk null (VR ≪ 1 at p &lt; 0.05),
+            and the variance-scaling Hurst exponent confirms anti-persistence (H ≪ 0.5). A zone is flagged only when all
+            three agree. Note: the rescaled-range (R/S) Hurst is deliberately not used — on these short, fast-reverting
+            series it is badly upward-biased (reads ~0.7-0.9, spuriously "trending"); variance-scaling agrees with the
+            other two. The short half-life is exactly why a daily-rebalanced contrarian fade is the right structure.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

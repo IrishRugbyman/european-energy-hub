@@ -1312,6 +1312,23 @@ def test_spreads_portfolio_backtest(client):
     assert {"date", "cum_portfolio", "cum_portfolio_oos", "cum_de_lu"} <= eq[0].keys()
 
 
+def test_spreads_residual_mean_reversion(client):
+    r = client.get("/api/spreads/residual-mean-reversion")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["n_zones"] >= 1
+    assert 0 <= data["n_mean_reverting"] <= data["n_zones"]
+    for z in data["zones"]:
+        assert {"zone", "n_obs", "half_life_days", "vr", "vr_pvalue", "hurst", "mean_reverting"} <= z.keys()
+        assert z["n_obs"] >= 60
+        # The conservative AND verdict implies its three conditions when True
+        if z["mean_reverting"]:
+            assert z["half_life_days"] is not None
+            assert z["vr"] is not None and z["vr"] < 1.0
+            assert z["vr_pvalue"] is not None and z["vr_pvalue"] < 0.05
+            assert z["hurst"] is not None and z["hurst"] < 0.5
+
+
 def test_spreads_gbm_model(client):
     r = client.get("/api/spreads/gbm-model?zone=DE-LU")
     assert r.status_code == 200

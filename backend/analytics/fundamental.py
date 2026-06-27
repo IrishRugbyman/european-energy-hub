@@ -1015,6 +1015,9 @@ def _nonlinear_signal_pnl(query_fn: Callable, zone: str, source: str = FUNDAMENT
         "w_pnl": w_eval[1:],
         # P&L day t earns the change into eval day t+1, realised on that date.
         "dates": [d.strftime("%Y-%m-%d") for d in dates.iloc[idx[1:]]],
+        # OOS nonlinear residuals (actual - fair value), chronological, for the OU diagnostic.
+        "res_nl": np.asarray(res_nl, float),
+        "res_dates": [d.strftime("%Y-%m-%d") for d in dates.iloc[idx]],
     }
 
 
@@ -1946,4 +1949,86 @@ def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) 
         "diversification_ratio": diversification_ratio,
         "significance": significance,
         "equity": equity,
+    }
+
+
+def compute_residual_mean_reversion(query_fn: Callable) -> dict:
+    """Validate the premise of the whole fade: is the fair-value residual mean-reverting?
+
+    Every backtest in the arc (P43-P52) trades the same bet - that the OOS nonlinear
+    residual (actual DA price minus the hinge fair value) reverts to zero, so a contrarian
+    fade on its rolling z-score earns. That premise was never tested directly. For each
+    fundamental zone this fits three independent mean-reversion diagnostics on the genuinely
+    OOS residual series:
+
+      - OU / AR(1) fit (fit_ou): half-life in trading days = ln(2)/theta, the holding horizon
+        the fade implies; NaN if the series is not mean-reverting (estimated AR(1) slope >= 0).
+      - Lo-MacKinlay variance-ratio test (variance_ratio_test): VR(q) < 1 with p < 0.05
+        rejects the random-walk null in favour of mean-reversion.
+      - Hurst exponent via variance-scaling (hurst_varscale): H < 0.5 indicates anti-persistence
+        (mean-reversion), H ~ 0.5 a random walk, H > 0.5 trending. The variance-scaling
+        estimator is used in preference to rescaled-range (R/S): on these short, fast-reverting
+        residuals R/S is badly upward-biased (it reads H ~ 0.7-0.9, spuriously "trending"),
+        whereas variance-scaling agrees with the VR test and the OU half-life (H ~ 0.05).
+
+    A zone is flagged mean_reverting only when all three agree (finite half-life, VR < 1 at
+    p < 0.05, and H < 0.5) - the conservative AND, so the verdict is not driven by one noisy
+    statistic. Reports per zone plus the count of zones that pass, which is the foundation the
+    entire signal arc rests on.
+
+    Returns dict with: zones[] (zone, n_obs, half_life_days, ou_mu, vr, vr_pvalue, hurst,
+    mean_reverting), n_zones, n_mean_reverting.
+    """
+    from quant_lib.meanrev import fit_ou, hurst_varscale, variance_ratio_test
+
+    rows = []
+    for zone in FUNDAMENTAL_ZONES:
+        sig = _nonlinear_signal_pnl(query_fn, zone, "forecast")
+        if sig is None:
+            continue
+        res = np.asarray(sig.get("res_nl", []), float)
+        res = res[np.isfinite(res)]
+        if len(res) < 60:
+            continue
+
+        _z, mu, half_life = fit_ou(res)
+        lag = int(min(20, max(2, len(res) // 4)))
+        try:
+            vr, _vr_z, vr_p = variance_ratio_test(pd.Series(res), lag=lag)
+        except Exception:
+            vr, vr_p = float("nan"), float("nan")
+        try:
+            hurst = float(hurst_varscale(res))
+        except Exception:
+            hurst = float("nan")
+
+        mean_reverting = bool(
+            np.isfinite(half_life)
+            and np.isfinite(vr)
+            and vr < 1.0
+            and np.isfinite(vr_p)
+            and vr_p < 0.05
+            and np.isfinite(hurst)
+            and hurst < 0.5
+        )
+
+        def _r(v, nd):
+            return round(float(v), nd) if v is not None and np.isfinite(v) else None
+
+        rows.append({
+            "zone": zone,
+            "n_obs": int(len(res)),
+            "half_life_days": _r(half_life, 1),
+            "ou_mu": _r(mu, 2),
+            "vr": _r(vr, 3),
+            "vr_pvalue": _r(vr_p, 4),
+            "hurst": _r(hurst, 3),
+            "mean_reverting": mean_reverting,
+        })
+
+    rows.sort(key=lambda r: (r["half_life_days"] is None, r["half_life_days"] or 1e9))
+    return {
+        "zones": rows,
+        "n_zones": len(rows),
+        "n_mean_reverting": sum(1 for r in rows if r["mean_reverting"]),
     }

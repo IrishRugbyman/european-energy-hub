@@ -298,6 +298,8 @@ fabricate a series to "complete" a factor.
 ### Phase 51 - Harden the portfolio capstone: OOS rolling weights + deflated Sharpe [COMPLETE 2026-06-27]
 
 ### Phase 52 - Block-bootstrap Sharpe CI completes the portfolio robustness triad [COMPLETE 2026-06-27]
+
+### Phase 53 - Residual mean-reversion diagnostic (OU half-life / VR / Hurst) on /spreads [COMPLETE 2026-06-27]
 - US ISO day-ahead prices: ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE each publish DA LMP data. Adding a zone-level price choropleth to /us-power would mirror the EU /power dashboard pattern.
 
 ## 10. Deliberately NOT building (v1)

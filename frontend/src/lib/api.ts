@@ -1107,6 +1107,7 @@ export const api = {
   spreadsEnrichedModel: (zone?: string) => get<EnrichedModelResponse>(`/spreads/enriched-model${zone ? `?zone=${zone}` : ''}`),
   spreadsGbmModel: (zone?: string) => get<GbmModelResponse>(`/spreads/gbm-model${zone ? `?zone=${zone}` : ''}`),
   spreadsPortfolioBacktest: () => get<PortfolioBacktestResponse>('/spreads/portfolio-backtest'),
+  spreadsResidualMeanReversion: () => get<ResidualMeanReversionResponse>('/spreads/residual-mean-reversion'),
   powerZone: (zone: string) => get<PowerZoneResponse>(`/power/zone/${zone}`),
   powerZoneProfile: (zone: string) => get<PowerZoneProfileResponse>(`/power/zone/${zone}/profile`),
   powerZoneSeasonality: (zone: string) => get<PowerSeasonalityResponse>(`/power/zone/${zone}/seasonality`),
@@ -1519,6 +1520,23 @@ export interface DeflatedSharpe {
   psr: number | null
   dsr: number | null
   n_obs: number
+}
+
+export interface ResidualMeanReversionRow {
+  zone: string
+  n_obs: number
+  half_life_days: number | null
+  ou_mu: number | null
+  vr: number | null
+  vr_pvalue: number | null
+  hurst: number | null
+  mean_reverting: boolean
+}
+
+export interface ResidualMeanReversionResponse {
+  zones: ResidualMeanReversionRow[]
+  n_zones: number
+  n_mean_reverting: number
 }
 
 export interface BootstrapSharpeCI {
