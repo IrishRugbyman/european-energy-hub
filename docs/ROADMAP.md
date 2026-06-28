@@ -350,6 +350,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 75 - US natural gas storage (EIA weekly) on /prices [COMPLETE 2026-06-28]
 
+### Phase 76 - EU gas storage historical analog year comparison on /gas [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,

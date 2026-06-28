@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 76: EU gas storage historical analog year comparison on /gas
+
+**Built:** `GET /api/gas/storage-analogs` returning `StorageAnalogResponse`. Finds the 4 closest historical years by EU fill % on the same calendar date, returns their injection season trajectories (May 1 to Nov 1, weekly points) and the actual Nov 1 fill for each analog. Frontend: `StorageAnalogSection` on /gas with stat cards, multi-year LineChart (current year bold orange, analogs colored, 5yr median dashed), and analog outcome table with comfort classification. 124 tests.
+
+**Finding:** 2026 fill (42.8% on June 26) is closest to 2018 (43.2%, delta +0.3pp). Top analogs: 2018 (84.7% Nov 1 = "Comfortable"), 2017 (86.9% = "Comfortable"), 2021 (77.1% = "Tight"), 2025 (70.9% = "Critical"). Implied Nov 1 range: 71-87%, median 85%. The 2021 lower bound is cautionary: a similar start was followed by the gas crisis of winter 2021-22 when Russian pipeline flows were throttled. Current EU LNG terminal buildout (since 2022) structurally reduces this tail risk.
+
 ## 2026-06-28 - Phase 75: US natural gas storage (EIA weekly) on /prices
 
 **Built:** `GET /api/prices/us-gas-storage` returning `UsStorageResponse` with 5-region EIA storage breakdown vs 5yr seasonal range, 2yr weekly history, and latest HH price. Frontend: `UsGasStorageSection` with summary cards (surplus/deficit in %, Bcf, 5yr range), 2yr history LineChart with 5yr average reference, and regional table. 123 tests.
