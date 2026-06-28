@@ -362,6 +362,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 81 - Annual negative-price hours trend by zone on /spreads [COMPLETE 2026-06-28]
 
+### Phase 82 - Monthly cross-zone price dispersion (market integration metric) on /spreads [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,

@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 82: Monthly cross-zone price dispersion on /spreads
+
+**Built:** `GET /api/spreads/zone-dispersion` computing the monthly average daily cross-zone standard deviation of base DA prices across DE-LU, FR, NL, IT-NORD, BE. Returns the full monthly history, 2025 calendar-year average, 2026 YTD average, and peak dispersion month. Frontend: `ZoneDispersionSection` with a LineChart of monthly std plus a 2025 avg reference line, 4 stat cards, and a 12-month detail table with color-coded dispersion levels. 120 tests.
+
+**Findings:** 2025 avg cross-zone std = 21.8 EUR/MWh. 2026 YTD avg = 26.5 EUR/MWh (+21% YoY). Rising dispersion measures EU power market fragmentation: despite more HVDC links being commissioned, the underlying renewable asymmetry (surplus in FR/DE-LU, gas-marginal deficit in IT-NORD) is widening faster than grid can arbitrage. The monthly metric is the aggregate expression of the congestion premium (Phase 78): as long as the FR-IT NTC stays saturated, cross-zone price differences cannot be eliminated by trade and accumulate as rents for TSOs.
+
 ## 2026-06-28 - Phase 81: Annual negative-price hours trend by zone on /spreads
 
 **Built:** `GET /api/spreads/neg-price-annual` returning `NegPriceAnnualResponse` with year-by-year total negative-price hours per fundamental zone, current-year annualized projection. Frontend: `NegPriceAnnualSection` on /spreads with 4 stat cards (FR pace, FR YoY, DE-LU pace, IT-NORD structural zero), grouped BarChart (zones on x-axis, one bar per year with current year projected), and a zone detail table with YoY column. 119 tests.
