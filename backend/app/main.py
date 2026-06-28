@@ -267,6 +267,8 @@ from .schemas import (
     PassThroughPoint,
     PassThroughZone,
     GasPowerPassThroughResponse,
+    EuaMonthlySeasonalPoint,
+    EuaSeasonalityResponse,
 )
 
 
@@ -2264,6 +2266,106 @@ def spreads_regime_conditional_pnl():
         portfolio_coal=_stats(port.get("coal")),
         portfolio_transition=_stats(port.get("transition")),
     )
+
+
+@app.get("/api/prices/eua-seasonality", response_model=EuaSeasonalityResponse)
+def prices_eua_seasonality():
+    """EU ETS calendar seasonality: monthly realized volatility and average EUA price.
+
+    The EU ETS has a well-known compliance calendar:
+    - January: New annual free allowances are allocated to industrial installations.
+    - March: Verified emissions from the prior year are published (companies know if they
+      are long or short allowances).
+    - April 30: Annual surrender deadline - companies must surrender EUAs equal to their
+      verified emissions. If short, they must buy; if long, they can sell or bank.
+    - This typically creates elevated volatility in Q1 (Jan-Apr) and especially March-April
+      as compliance buyers and sellers are most active.
+
+    Returns monthly aggregates computed over all available history and current market metrics
+    including 30-day realized volatility vs historical seasonal expectation.
+    """
+    _rate_limited()
+
+    def _compute():
+        import numpy as np
+
+        df = db.query("""
+            WITH daily_ret AS (
+                SELECT price_date,
+                       eua_eur_t,
+                       LN(eua_eur_t / LAG(eua_eur_t) OVER (ORDER BY price_date)) AS log_ret,
+                       MONTH(price_date) AS month_num,
+                       STRFTIME(price_date, '%b') AS month_abbr
+                FROM prices_daily
+                WHERE eua_eur_t IS NOT NULL
+            )
+            SELECT month_num, month_abbr,
+                   AVG(eua_eur_t) AS avg_eua,
+                   STDDEV(log_ret) * SQRT(252) * 100 AS ann_vol_pct,
+                   COUNT(*) AS n
+            FROM daily_ret
+            WHERE log_ret IS NOT NULL
+            GROUP BY month_num, month_abbr
+            ORDER BY month_num
+        """)
+
+        if df is None or len(df) == 0:
+            raise HTTPException(status_code=503, detail="No EUA data available")
+
+        monthly = [
+            EuaMonthlySeasonalPoint(
+                month_num=int(r.month_num),
+                month=str(r.month_abbr),
+                avg_eua=round(float(r.avg_eua), 2),
+                ann_vol_pct=round(float(r.ann_vol_pct), 2),
+                n=int(r.n),
+            )
+            for r in df.itertuples()
+        ]
+
+        # Current state
+        latest_df = db.query("""
+            SELECT price_date, eua_eur_t, MONTH(price_date) AS month_num,
+                   LN(eua_eur_t / LAG(eua_eur_t) OVER (ORDER BY price_date)) AS log_ret
+            FROM prices_daily
+            WHERE eua_eur_t IS NOT NULL
+            ORDER BY price_date
+        """)
+
+        if latest_df is None or len(latest_df) < 30:
+            raise HTTPException(status_code=503, detail="Insufficient data")
+
+        import numpy as np
+
+        latest = latest_df.iloc[-1]
+        rolling_30d = latest_df.tail(30)["log_ret"].dropna()
+        roll_vol = float(rolling_30d.std() * np.sqrt(252) * 100) if len(rolling_30d) > 2 else 0.0
+
+        # Days to April 30 (next surrender deadline)
+        from datetime import date
+        today = date.today()
+        # Find next April 30
+        apr30 = date(today.year, 4, 30)
+        if today > apr30:
+            apr30 = date(today.year + 1, 4, 30)
+        days_to_surrender = (apr30 - today).days
+
+        historical_avg_vol = float(df["ann_vol_pct"].mean())
+        mar_row = df[df["month_num"] == 3]
+        historical_march_vol = float(mar_row["ann_vol_pct"].values[0]) if len(mar_row) > 0 else historical_avg_vol
+
+        return EuaSeasonalityResponse(
+            monthly=monthly,
+            current_month=int(latest.month_num),
+            current_eua=round(float(latest.eua_eur_t), 2),
+            current_rolling_30d_vol=round(roll_vol, 2),
+            days_to_surrender=days_to_surrender,
+            surrender_month="Apr",
+            historical_march_vol=round(historical_march_vol, 2),
+            historical_avg_vol=round(historical_avg_vol, 2),
+        )
+
+    return _cached_compute("eua_seasonality", _compute, ttl=3600)
 
 
 @app.get("/api/prices/fuel-switching-eua", response_model=FuelSwitchingEuaResponse)

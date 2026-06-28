@@ -1874,6 +1874,26 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 74: EUA surrender calendar seasonality
+class EuaMonthlySeasonalPoint(BaseModel):
+    month_num: int    # 1-12
+    month: str        # "Jan", "Feb", etc.
+    avg_eua: float
+    ann_vol_pct: float
+    n: int            # number of trading days in history
+
+
+class EuaSeasonalityResponse(BaseModel):
+    monthly: list[EuaMonthlySeasonalPoint]
+    current_month: int
+    current_eua: float
+    current_rolling_30d_vol: float    # current 30d realized vol annualized
+    days_to_surrender: int            # days until April 30 surrender deadline
+    surrender_month: str              # "Apr"
+    historical_march_vol: float       # avg March annualized vol (pre-surrender)
+    historical_avg_vol: float         # full-history avg annualized vol
+
+
 # Phase 73: Rolling gas-to-power pass-through coefficients
 class PassThroughPoint(BaseModel):
     date: str

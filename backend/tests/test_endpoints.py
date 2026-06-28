@@ -1634,6 +1634,24 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_prices_eua_seasonality(client):
+    r = client.get("/api/prices/eua-seasonality")
+    assert r.status_code == 200
+    data = r.json()
+    assert len(data["monthly"]) == 12
+    months = [m["month_num"] for m in data["monthly"]]
+    assert months == list(range(1, 13))
+    assert data["current_eua"] > 0
+    assert data["historical_march_vol"] >= 0  # fixture seeds constant EUA -> 0 vol
+    assert data["days_to_surrender"] >= 0
+    assert data["surrender_month"] == "Apr"
+    # March should have higher vol than average (historical surrender effect)
+    # (not asserted in test fixture since fixture has synthetic flat data)
+    assert data["historical_avg_vol"] >= 0  # fixture seeds constant EUA -> 0 vol
+    for m in data["monthly"]:
+        assert m["ann_vol_pct"] >= 0
+
+
 def test_spreads_gas_power_passthrough(client):
     r = client.get("/api/spreads/gas-power-passthrough")
     assert r.status_code == 200

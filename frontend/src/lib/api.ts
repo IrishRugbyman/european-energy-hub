@@ -1220,6 +1220,27 @@ export const api = {
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
   pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
+  pricesEuaSeasonality: () => get<EuaSeasonalityResponse>('/prices/eua-seasonality'),
+}
+
+// Phase 74: EUA surrender calendar seasonality
+export interface EuaMonthlySeasonalPoint {
+  month_num: number
+  month: string
+  avg_eua: number
+  ann_vol_pct: number
+  n: number
+}
+
+export interface EuaSeasonalityResponse {
+  monthly: EuaMonthlySeasonalPoint[]
+  current_month: number
+  current_eua: number
+  current_rolling_30d_vol: number
+  days_to_surrender: number
+  surrender_month: string
+  historical_march_vol: number
+  historical_avg_vol: number
 }
 
 // Phase 73: Rolling gas-to-power pass-through coefficients

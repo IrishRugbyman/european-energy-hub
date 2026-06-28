@@ -19,7 +19,7 @@ import {
   Cell,
   Area,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint, type EuaSeasonalityResponse, type EuaMonthlySeasonalPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1129,6 +1129,114 @@ const SEASON_COLORS: Record<string, string> = {
   autumn: '#a78bfa',
 }
 
+function EuaSeasonalitySection() {
+  const { data, isLoading } = useQuery<EuaSeasonalityResponse>({
+    queryKey: ['prices-eua-seasonality'],
+    queryFn: api.pricesEuaSeasonality,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const volColor = (v: number, avg: number) => {
+    if (v > avg * 1.3) return '#f87171'
+    if (v > avg * 1.1) return '#fbbf24'
+    return '#60a5fa'
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          EU ETS Calendar: Monthly EUA Price and Realized Volatility
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 74 - surrender deadline April 30 creates Q1 vol spike; July-August quietest
+        </span>
+        {data && (
+          <span className="ml-auto text-xs text-muted-foreground">
+            {data.days_to_surrender}d to next surrender (30 Apr)
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading EUA seasonality...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Current EUA</p>
+              <p className="text-sm font-semibold text-blue-400">{data.current_eua.toFixed(1)} EUR/t</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">30d realized vol</p>
+              <p className="text-sm font-semibold" style={{
+                color: volColor(data.current_rolling_30d_vol, data.historical_avg_vol)
+              }}>
+                {data.current_rolling_30d_vol.toFixed(1)}%
+              </p>
+              <p className="text-[10px] text-muted-foreground">vs {data.historical_avg_vol.toFixed(1)}% hist avg</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">March vol (surrender)</p>
+              <p className="text-sm font-semibold text-amber-400">{data.historical_march_vol.toFixed(1)}%</p>
+              <p className="text-[10px] text-muted-foreground">pre-deadline spike</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Days to 30 Apr</p>
+              <p className="text-sm font-semibold text-foreground">{data.days_to_surrender}</p>
+              <p className="text-[10px] text-muted-foreground">next surrender deadline</p>
+            </div>
+          </div>
+
+          {/* Monthly vol bar chart */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Monthly annualized realized volatility (%, all available history). March is highlighted
+              as the pre-surrender peak; July is the summer low.
+            </p>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={data.monthly} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis dataKey="month" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  tickFormatter={(v) => `${v.toFixed(0)}%`} />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v) => (typeof v === 'number' ? [`${v.toFixed(1)}%`, 'Realized vol (ann.)'] : [v, ''])}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <ReferenceLine y={data.historical_avg_vol} stroke="#64748b" strokeDasharray="3 3"
+                  label={{ value: 'avg', fill: '#64748b', fontSize: 8, position: 'insideTopRight' }} />
+                <Bar dataKey="ann_vol_pct" name="Ann. vol (%)" radius={[2, 2, 0, 0]}>
+                  {data.monthly.map((m: EuaMonthlySeasonalPoint) => (
+                    <Cell key={m.month_num}
+                      fill={m.month_num === data.current_month ? '#a78bfa'
+                        : volColor(m.ann_vol_pct, data.historical_avg_vol)} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The EU ETS calendar creates systematic volatility seasonality. Verified emissions from
+            the prior year are published in March; companies that are short must buy allowances before
+            the April 30 surrender deadline. This creates the observed March-April vol spike
+            ({data.historical_march_vol.toFixed(1)}% vs {data.historical_avg_vol.toFixed(1)}% full-year average).
+            July is typically the quietest month ({data.monthly.find((m: EuaMonthlySeasonalPoint) => m.month_num === 7)?.ann_vol_pct.toFixed(1) ?? '--'}%)
+            as compliance activity pauses between surrender (April) and the new compliance year
+            (February auction). December spikes again as companies adjust positions before year-end.
+            For spread analytics (CSS, CDS, FSS), EUA vol directly translates to spread vol
+            since EUA enters both the gas-marginal and coal-marginal cost formulas.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function LngArbSection() {
   const { data, isLoading } = useQuery<LngArbResponse>({
     queryKey: ['prices-lng-arb'],
@@ -1616,6 +1724,7 @@ function PricesDashboard() {
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />
           {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
+          <EuaSeasonalitySection />
           <LngArbSection />
           <FuelSwitchingEuaSection />
           <StorageTtfFundamentalSection />
