@@ -235,6 +235,8 @@ from .schemas import (
     MarketPulseSignal,
     HoldingPeriodRow,
     HoldingPeriodResponse,
+    ZonePostureRow,
+    SignalPostureResponse,
 )
 
 
@@ -4223,4 +4225,51 @@ def spreads_holding_period(zone: str = "DE-LU"):
             )
             for p in result["periods"]
         ],
+    )
+
+
+@app.get("/api/spreads/signal-posture", response_model=SignalPostureResponse)
+def spreads_signal_posture():
+    """Synthesised trading posture for today across all fundamental zones.
+
+    Combines the fair-value z-score, current wind regime, and optimal holding
+    period to produce a clear FADE / TREND / NEUTRAL posture per zone. The
+    drought regime (wind_pct < 8%) suppresses mean-reversion and favours
+    momentum; outside drought, a high z-score implies a FADE (short when rich,
+    long when cheap). A nuclear heat risk flag is surfaced for FR when Rhone
+    plants are at critical constraint, flagging asymmetric downside on the fade.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_signal_posture
+
+    # Get FR nuclear critical MW from heat risk data
+    nuclear_critical_mw = 0.0
+    heat_df = db.query("SELECT capacity_critical_mw FROM meta WHERE key = 'heat_risk_critical_mw' LIMIT 1")
+    if heat_df is None or heat_df.empty:
+        # Fall back to querying the plants table directly
+        nuke_df = db.query("""
+            SELECT SUM(capacity_mw) AS total
+            FROM nuclear_heat_risk_latest
+            WHERE alert_level = 'critical'
+        """)
+        if nuke_df is not None and not nuke_df.empty and nuke_df.iloc[0]["total"] is not None:
+            nuclear_critical_mw = float(nuke_df.iloc[0]["total"])
+    else:
+        nuclear_critical_mw = float(heat_df.iloc[0]["capacity_critical_mw"] or 0.0)
+
+    def _build():
+        return compute_signal_posture(db.query, nuclear_critical_mw)
+
+    result = _cached_compute("signal_posture", _build, ttl=300)
+    if not result or not result.get("zones"):
+        raise HTTPException(status_code=503, detail="Insufficient data for signal posture")
+
+    return SignalPostureResponse(
+        as_of=result.get("as_of"),
+        zones=[ZonePostureRow(**z) for z in result["zones"]],
+        n_fade=result["n_fade"],
+        n_trend=result["n_trend"],
+        n_neutral=result["n_neutral"],
+        systematic=result["systematic"],
+        systematic_note=result.get("systematic_note"),
     )

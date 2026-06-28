@@ -1560,3 +1560,32 @@ def test_spreads_holding_period(client):
     # k=1 always present
     ks = [p["k"] for p in data["periods"]]
     assert 1 in ks
+
+
+def test_spreads_signal_posture(client):
+    r = client.get("/api/spreads/signal-posture")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data
+    assert "n_fade" in data
+    assert "n_trend" in data
+    assert "n_neutral" in data
+    assert isinstance(data["systematic"], bool)
+    assert len(data["zones"]) >= 2
+    for z in data["zones"]:
+        assert "zone" in z
+        assert "posture" in z
+        assert "posture_detail" in z
+        assert "is_drought" in z
+        assert z["zone"] in ("DE-LU", "FR", "NL", "IT-NORD", "BE")
+    # postures must be valid values
+    valid_postures = {
+        "STRONG FADE (SHORT)", "STRONG FADE (LONG)",
+        "WEAK FADE (SHORT)", "WEAK FADE (LONG)",
+        "TREND", "NEUTRAL",
+    }
+    for z in data["zones"]:
+        assert z["posture"] in valid_postures, f"Unknown posture: {z['posture']}"
+    # drought and fade counts must add up to total zones
+    total = data["n_fade"] + data["n_trend"] + data["n_neutral"]
+    assert total == len(data["zones"])

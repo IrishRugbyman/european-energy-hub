@@ -112,6 +112,7 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
             "fitted": round(float(fitted[i]), 2),
             "residual": round(float(residual[i]), 2),
             "zscore": round(float(zscore.iloc[i]), 3),
+            "wind_pct": round(float(row["wind_pct"]), 1),
         }
         for i, row in df.iterrows()
     ]
@@ -2338,4 +2339,108 @@ def compute_holding_period_sensitivity(
         "periods": period_results,
         "best_k": best_k,
         "best_sharpe_net": best_net,
+    }
+
+
+def compute_signal_posture(query_fn: Callable, nuclear_critical_mw: float = 0.0) -> dict:
+    """Synthesise the research arc into a concrete daily trading posture for each zone.
+
+    Combines:
+    - Current fair-value z-score and 1yr percentile (from compute_fundamental_model)
+    - Today's wind regime (above or below LOW_WIND_KNOT_PCT=8%)
+    - Holding-period optimal k (from compute_holding_period_sensitivity)
+    - Nuclear heat risk flag for FR (passed in from the generation module)
+
+    Posture rules:
+    - DROUGHT regime (wind_pct < 8%): TREND (momentum, not fade). P56 showed the
+      fade loses money in sustained low-wind; the regime-aware book flips to trend.
+    - NORMAL regime (wind_pct >= 8%):
+        - |z| < 0.5: NEUTRAL (signal too weak to trade)
+        - 0.5 <= |z| < 1.0: WEAK FADE (half position)
+        - |z| >= 1.0: STRONG FADE (full position)
+    - FR nuclear flag: when FR nuclear plants are at critical heat risk, add a caveat
+      that the FR z-score reflects supply constraint, not overpriced fundamentals.
+      The fade may work (nuclear constraints usually resolve within days) but the
+      risk is asymmetric - FR can stay elevated if constraints persist through a heat wave.
+
+    Returns a list of zone posture rows plus summary context.
+    """
+    results = []
+    for zone in FUNDAMENTAL_ZONES:
+        fm = compute_fundamental_model(query_fn, zone)
+        if not fm:
+            continue
+        cur = fm["current"]
+        zscore = cur.get("zscore")
+        pct_rank = cur.get("pct_rank_1yr")
+        wind_today = fm.get("features", {}).get("wind_pct_today")
+
+        # Fallback: get wind from the latest series point
+        if wind_today is None and fm.get("series"):
+            last = fm["series"][-1]
+            wind_today = last.get("wind_pct")
+
+        is_drought = wind_today is not None and wind_today < LOW_WIND_KNOT_PCT
+
+        if zscore is None:
+            posture = "NEUTRAL"
+            posture_detail = "no signal"
+        elif is_drought:
+            posture = "TREND"
+            posture_detail = f"wind {wind_today:.1f}% < {LOW_WIND_KNOT_PCT}% knot - momentum, not fade"
+        elif abs(zscore) < 0.5:
+            posture = "NEUTRAL"
+            posture_detail = f"|z|={abs(zscore):.2f} < 0.5 - too weak to trade"
+        elif abs(zscore) < 1.0:
+            direction = "SHORT" if zscore > 0 else "LONG"
+            posture = f"WEAK FADE ({direction})"
+            posture_detail = f"z={zscore:.2f}, half position"
+        else:
+            direction = "SHORT" if zscore > 0 else "LONG"
+            posture = f"STRONG FADE ({direction})"
+            posture_detail = f"z={zscore:.2f} at {pct_rank}th pct"
+
+        # Nuclear caveat for FR
+        caveat = None
+        if zone == "FR" and nuclear_critical_mw > 0 and zscore is not None and zscore > 0:
+            caveat = (
+                f"{nuclear_critical_mw / 1000:.1f} GW critical heat risk on Rhone. "
+                f"FR residual partly reflects supply constraint - fade risk is asymmetric "
+                f"if heat wave persists beyond this week."
+            )
+
+        # Optimal holding period
+        hp = compute_holding_period_sensitivity(query_fn, zone)
+        best_k = hp.get("best_k") if hp else None
+        best_sharpe = hp.get("best_sharpe_net") if hp else None
+
+        results.append({
+            "zone": zone,
+            "zscore": round(float(zscore), 2) if zscore is not None else None,
+            "pct_rank_1yr": int(pct_rank) if pct_rank is not None else None,
+            "wind_today": round(float(wind_today), 1) if wind_today is not None else None,
+            "is_drought": is_drought,
+            "posture": posture,
+            "posture_detail": posture_detail,
+            "best_k": best_k,
+            "best_sharpe_net": round(float(best_sharpe), 2) if best_sharpe is not None else None,
+            "caveat": caveat,
+        })
+
+    n_fade = sum(1 for r in results if "FADE" in r["posture"])
+    n_trend = sum(1 for r in results if r["posture"] == "TREND")
+    n_neutral = sum(1 for r in results if r["posture"] == "NEUTRAL")
+    systematic = n_fade >= 4 or n_trend >= 4
+
+    return {
+        "as_of": fm["series"][-1]["price_date"] if fm and fm.get("series") else None,
+        "zones": results,
+        "n_fade": n_fade,
+        "n_trend": n_trend,
+        "n_neutral": n_neutral,
+        "systematic": systematic,
+        "systematic_note": (
+            "All zones aligned - likely a common systematic factor (nuclear, weather event)."
+            if systematic else None
+        ),
     }

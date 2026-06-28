@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1256,6 +1256,8 @@ function SpreadsDashboard() {
           <RegimeAwareSection />
 
           <HoldingPeriodSection />
+
+          <SignalPostureSection />
 
           <PortfolioSection />
 
@@ -3278,6 +3280,122 @@ function HoldingPeriodSection() {
             (NL, BE), the curve peaks earlier.
           </p>
         </div>
+      )}
+    </div>
+  )
+}
+
+function SignalPostureSection() {
+  const { data, isLoading } = useQuery<SignalPostureResponse>({
+    queryKey: ['signal-posture'],
+    queryFn: api.spreadsSignalPosture,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const postureColor = (posture: string) => {
+    if (posture.includes('STRONG FADE')) return '#4ade80'
+    if (posture.includes('WEAK FADE')) return '#86efac'
+    if (posture === 'TREND') return '#fb923c'
+    return '#64748b'
+  }
+
+  const postureLabel = (posture: string) => {
+    if (posture.includes('SHORT')) return 'FADE SHORT'
+    if (posture.includes('LONG')) return 'FADE LONG'
+    if (posture === 'TREND') return 'TREND'
+    return 'NEUTRAL'
+  }
+
+  const postureStrength = (posture: string) => {
+    if (posture.includes('STRONG')) return 'strong'
+    if (posture.includes('WEAK')) return 'half'
+    return ''
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Today's Signal Posture</h2>
+        <span className="text-xs text-muted-foreground">
+          Fundamental z-score + wind regime + holding-period synthesis
+        </span>
+        {data?.as_of && (
+          <span className="ml-auto text-xs text-muted-foreground">as of {data.as_of}</span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-xs text-muted-foreground">Computing posture...</p>}
+
+      {data && (
+        <>
+          {data.systematic_note && (
+            <div className="mb-3 px-3 py-2 rounded bg-amber-950/40 border border-amber-800/50 text-xs text-amber-300">
+              {data.systematic_note}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 mb-3">
+            {data.zones.map((z: ZonePostureRow) => (
+              <div
+                key={z.zone}
+                className="rounded border border-border bg-background/50 p-3 flex flex-col gap-1"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground">{z.zone}</span>
+                  <span
+                    className="text-xs font-bold px-1.5 py-0.5 rounded"
+                    style={{
+                      color: postureColor(z.posture),
+                      backgroundColor: postureColor(z.posture) + '1a',
+                    }}
+                  >
+                    {postureLabel(z.posture)}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {z.zscore != null && (
+                    <span style={{ color: postureColor(z.posture) }}>z {z.zscore > 0 ? '+' : ''}{z.zscore}</span>
+                  )}
+                  {z.pct_rank_1yr != null && (
+                    <span>{z.pct_rank_1yr}th pct</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {z.wind_today != null && (
+                    <span
+                      style={{ color: z.is_drought ? '#fb923c' : '#64748b' }}
+                    >
+                      {z.is_drought ? 'drought' : 'wind'} {z.wind_today}%
+                    </span>
+                  )}
+                  {postureStrength(z.posture) && (
+                    <span className="text-muted-foreground">{postureStrength(z.posture)} pos.</span>
+                  )}
+                </div>
+
+                {z.best_k != null && z.best_sharpe_net != null && (
+                  <div className="text-xs text-muted-foreground">
+                    k={z.best_k}d, SR {z.best_sharpe_net.toFixed(2)}
+                  </div>
+                )}
+
+                {z.caveat && (
+                  <div className="mt-1 text-xs text-amber-400 leading-tight">{z.caveat}</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Posture rules: in drought regime (wind &lt; 8%), the mean-reversion fade loses its edge
+            (Phase 56 walk-forward) - the position flips to TREND (momentum). Outside drought, the
+            z-score drives a FADE (short when overbought, long when cheap): |z| &lt; 0.5 is noise (NEUTRAL),
+            0.5-1.0 is a half position (WEAK FADE), and |z| &ge; 1.0 is a full position (STRONG FADE).
+            Optimal holding period k is from the Phase 60 holding-period sensitivity sweep.
+          </p>
+        </>
       )}
     </div>
   )

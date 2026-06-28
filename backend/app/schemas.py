@@ -1731,3 +1731,29 @@ class HoldingPeriodResponse(BaseModel):
     best_k: int
     best_sharpe_net: float | None
     periods: list[HoldingPeriodRow]
+
+
+# --- Signal posture ---
+
+
+class ZonePostureRow(BaseModel):
+    zone: str
+    zscore: float | None
+    pct_rank_1yr: int | None
+    wind_today: float | None
+    is_drought: bool
+    posture: str
+    posture_detail: str
+    best_k: int | None
+    best_sharpe_net: float | None
+    caveat: str | None
+
+
+class SignalPostureResponse(BaseModel):
+    as_of: str | None
+    zones: list[ZonePostureRow]
+    n_fade: int
+    n_trend: int
+    n_neutral: int
+    systematic: bool
+    systematic_note: str | None
