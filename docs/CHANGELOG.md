@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 78: Interconnection congestion premium quantification on /spreads
+
+**Built:** `GET /api/spreads/congestion-premium` returning `CongestionPremiumResponse` with per-border summary (utilization, days saturated, spread sat/free, premium), FR-IT-NORD monthly trend, and scatter. Frontend: `CongestionPremiumSection` on /spreads with 4 stat cards, ComposedChart (monthly spread bars + utilization line), and border table. 126 tests.
+
+**Finding:** FR-IT-NORD congestion premium = 43 EUR/MWh (64 when saturated, 22 when free). Border saturated 83% of days (332/398) at 96% avg NTC utilization. June 2026: spread widened to 88 EUR/MWh (summer cooling demand + FR nuclear maintenance). The interconnection bottleneck explains why IT-NORD has the highest TTF attribution (53%, Phase 77) and highest gas-to-power pass-through (beta 1.5x, Phase 73) - Italy cannot arbitrage away its gas-marginal pricing by importing cheap French nuclear power. Benelux borders: 3 EUR/MWh premium only.
+
 ## 2026-06-28 - Phase 77: EU power price variance decomposition (factor attribution) on /spreads
 
 **Built:** `GET /api/spreads/price-variance-decomp` returning `PriceVarianceDecompResponse`. Uses Pratt decomposition (att_i = beta_i * cov(Xi, Y) / var(Y)) which partitions R-squared exactly across 4 fundamental factors + residual per zone. Frontend: `PriceVarianceDecompSection` on /spreads with stacked bar chart and attribution table with dominant-driver annotation. 125 tests.
