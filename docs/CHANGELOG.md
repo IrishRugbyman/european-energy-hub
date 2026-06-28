@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 75: US natural gas storage (EIA weekly) on /prices
+
+**Built:** `GET /api/prices/us-gas-storage` returning `UsStorageResponse` with 5-region EIA storage breakdown vs 5yr seasonal range, 2yr weekly history, and latest HH price. Frontend: `UsGasStorageSection` with summary cards (surplus/deficit in %, Bcf, 5yr range), 2yr history LineChart with 5yr average reference, and regional table. 123 tests.
+
+**Finding:** US total storage at +4.5% above 5yr seasonal average (5,670 vs 5,426 Bcf as of June 19), structurally opposite to EU storage at -10.9pp below average. This transatlantic divergence drives the LNG arb spread (+31 EUR/MWh above breakeven) and explains the sustained US-to-EU LNG flow: US surplus = depressed HH ($3.23/MMBtu) = wide TTF-HH spread = economics for US LNG exports to Europe at all times. South Central (Gulf Coast) has the highest absolute storage and is the most price-sensitive region.
+
 ## 2026-06-28 - Phase 74: EU ETS surrender calendar seasonality on /prices
 
 **Built:** `GET /api/prices/eua-seasonality` returning `EuaSeasonalityResponse` with 12 monthly aggregates of annualized realized vol and average EUA price, plus current 30d rolling vol and days-to-surrender countdown. Frontend: `EuaSeasonalitySection` with stat cards and a per-month vol bar chart (cells colored by vol level relative to average; current month highlighted in purple). 122 tests.
