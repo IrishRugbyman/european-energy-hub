@@ -346,6 +346,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 73 - Rolling gas-to-power pass-through OLS coefficients on /spreads [COMPLETE 2026-06-28]
 
+### Phase 74 - EU ETS surrender calendar seasonality on /prices [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,

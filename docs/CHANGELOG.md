@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 74: EU ETS surrender calendar seasonality on /prices
+
+**Built:** `GET /api/prices/eua-seasonality` returning `EuaSeasonalityResponse` with 12 monthly aggregates of annualized realized vol and average EUA price, plus current 30d rolling vol and days-to-surrender countdown. Frontend: `EuaSeasonalitySection` with stat cards and a per-month vol bar chart (cells colored by vol level relative to average; current month highlighted in purple). 122 tests.
+
+**Finding:** March has the highest historical EUA annualized vol at 55.1% (vs 37.1% full-year avg), driven by the April 30 annual surrender deadline when carbon-short industrial companies must buy allowances. July is the quietest month at 26.3%. December at 44.8% reflects year-end position adjustments. Current 30d EUA vol is only 18.7% (below seasonal average; the next surrender deadline is 306 days away). EUA vol directly propagates into spark/dark/fuel-switching spread vol since EUA enters both cost formulas.
+
 ## 2026-06-28 - Phase 73: Rolling gas-to-power pass-through OLS coefficients on /spreads
 
 **Built:** `GET /api/spreads/gas-power-passthrough` returning `GasPowerPassThroughResponse`. Per fundamental zone, runs rolling 90-day multivariate OLS (power = alpha + beta_ttf * TTF + beta_eua * EUA) over the full daily history. Returns the rolling coefficient time series plus full-sample and 90d OLS summaries. Theory reference: beta_ttf = 1/CCGT_efficiency = 2.04. Frontend: `GasPowerPassThroughSection` with per-zone stat cards, rolling TTF-beta LineChart with theory reference line, and a regime-shift comparison table (full-sample vs 90d, TTF shift). 121 tests.
