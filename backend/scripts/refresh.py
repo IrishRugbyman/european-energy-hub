@@ -45,6 +45,7 @@ from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
 from analytics.us_gas import build_us_storage_tables
 from analytics.hydro import build_hydro_tables
+from analytics.hydro_balance import build_hydro_price_balance
 from analytics.us_plants import build_us_plants_table
 from analytics.us_power import build_us_power_tables
 
@@ -136,6 +137,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building hydro reservoir tables from market_data (PostgreSQL)...")
     hydro_tables = build_hydro_tables()
 
+    logger.info("Building hydro balance vs price tables from market_data (PostgreSQL)...")
+    hydro_balance_tables = build_hydro_price_balance()
+
     logger.info("Loading US NG power plants dataset (cleanview + EIA-860)...")
     us_plants_df = build_us_plants_table()
 
@@ -168,6 +172,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_us_power(conn, us_power_tables)
         _write_us_plants(conn, us_plants_df)
         _write_hydro(conn, hydro_tables)
+        _write_hydro_balance(conn, hydro_balance_tables)
         _write_heat_risk(conn, heat_risk_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -984,6 +989,36 @@ def _write_hydro(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.unregister("_hydro_latest")
 
     logger.info("hydro tables written")
+
+
+def _write_hydro_balance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    summary = tables.get("hydro_price_balance_summary", pd.DataFrame())
+    series = tables.get("hydro_price_balance_series", pd.DataFrame())
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE hydro_price_balance_summary (
+            country VARCHAR, n_weeks INTEGER, corr REAL, r2 REAL,
+            slope_eur_per_pct REAL, latest_week VARCHAR,
+            current_balance_pct REAL, current_price_eur REAL,
+            fitted_price_eur REAL, residual_eur REAL
+        )
+    """)
+    if not summary.empty:
+        conn.register("_hydro_bal_sum", summary)
+        conn.execute("INSERT INTO hydro_price_balance_summary SELECT * FROM _hydro_bal_sum")
+        conn.unregister("_hydro_bal_sum")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE hydro_price_balance_series (
+            country VARCHAR, week_date VARCHAR, balance_pct REAL, price_eur REAL
+        )
+    """)
+    if not series.empty:
+        conn.register("_hydro_bal_ser", series)
+        conn.execute("INSERT INTO hydro_price_balance_series SELECT * FROM _hydro_bal_ser")
+        conn.unregister("_hydro_bal_ser")
+
+    logger.info("hydro balance tables written")
 
 
 def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

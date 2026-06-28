@@ -307,6 +307,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 84 - Hydro reservoir levels on /power [COMPLETE 2026-06-28]
 
+### Phase 85 - Hydrological balance as a price fundamental on /spreads [COMPLETE 2026-06-28]
+
 ### Phase 56 - US ISO day-ahead LMP choropleth on /us-power (future)
 - ERCOT, PJM, CAISO, MISO, NYISO, ISO-NE publish free DA LMP data via their public APIs.
 - Needs: new fetcher(s) per ISO, US bidding-zone GeoJSON, /us-power page choropleth mode.

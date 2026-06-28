@@ -2269,6 +2269,34 @@ class HydroCountryResponse(BaseModel):
     latest: HydroCountryLatest | None
 
 
+# Hydro balance vs power price (hydrological balance as a price fundamental)
+
+class HydroBalanceCountry(BaseModel):
+    country: str
+    n_weeks: int
+    corr: float
+    r2: float
+    slope_eur_per_pct: float
+    latest_week: str
+    current_balance_pct: float
+    current_price_eur: float
+    fitted_price_eur: float
+    residual_eur: float
+
+
+class HydroBalancePoint(BaseModel):
+    country: str
+    week_date: str
+    balance_pct: float
+    price_eur: float
+
+
+class HydroBalanceResponse(BaseModel):
+    countries: list[HydroBalanceCountry]
+    series: list[HydroBalancePoint]
+    refreshed_at: str | None
+
+
 # Phase 83: Monthly peak-offpeak spread trend (EU duck curve)
 class PeakOffpeakPoint(BaseModel):
     month: str

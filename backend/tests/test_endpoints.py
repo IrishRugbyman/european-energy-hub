@@ -2032,3 +2032,22 @@ def test_hydro_country_found(client):
 def test_hydro_country_not_found(client):
     r = client.get("/api/hydro/country/XX")
     assert r.status_code == 404
+
+
+def test_hydro_price_balance(client):
+    r = client.get("/api/hydro/price-balance")
+    assert r.status_code == 200
+    data = r.json()
+    assert "countries" in data and "series" in data
+    assert len(data["countries"]) == 2  # NO, SE seeded
+    # Sorted by corr ascending (most hydro-driven first)
+    corrs = [c["corr"] for c in data["countries"]]
+    assert corrs == sorted(corrs)
+    no_row = next(c for c in data["countries"] if c["country"] == "NO")
+    assert no_row["corr"] == pytest.approx(-0.47)
+    assert no_row["r2"] == pytest.approx(0.221, abs=0.01)
+    assert no_row["current_price_eur"] == pytest.approx(58.8)
+    assert no_row["n_weeks"] == 387
+    # Series present for both countries
+    series_countries = {p["country"] for p in data["series"]}
+    assert series_countries == {"NO", "SE"}

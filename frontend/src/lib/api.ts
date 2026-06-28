@@ -387,6 +387,32 @@ export interface HydroCountryResponse {
   latest: HydroCountryLatest | null
 }
 
+export interface HydroBalanceCountry {
+  country: string
+  n_weeks: number
+  corr: number
+  r2: number
+  slope_eur_per_pct: number
+  latest_week: string
+  current_balance_pct: number
+  current_price_eur: number
+  fitted_price_eur: number
+  residual_eur: number
+}
+
+export interface HydroBalancePoint {
+  country: string
+  week_date: string
+  balance_pct: number
+  price_eur: number
+}
+
+export interface HydroBalanceResponse {
+  countries: HydroBalanceCountry[]
+  series: HydroBalancePoint[]
+  refreshed_at: string | null
+}
+
 export interface GenDailyPoint {
   gen_date: string
   renewable_pct: number | null
@@ -1208,6 +1234,7 @@ export const api = {
   genEuCfLatest: () => get<EuCfLatestResponse>('/generation/eu/cf-latest'),
   hydroMap: () => get<HydroMapResponse>('/hydro/map'),
   hydroCountry: (cc: string) => get<HydroCountryResponse>(`/hydro/country/${cc}`),
+  hydroPriceBalance: () => get<HydroBalanceResponse>('/hydro/price-balance'),
   genEuCarbonIntensity: () => get<EuCiDailyResponse>('/generation/eu/carbon-intensity'),
   genZonesCf: () => get<ZoneCfResponse>('/generation/zones/cf'),
   genEuPriceRe: () => get<EuPriceReResponse>('/generation/eu/price-re'),

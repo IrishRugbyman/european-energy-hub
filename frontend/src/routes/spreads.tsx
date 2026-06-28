@@ -9,6 +9,7 @@ import {
   Cell,
   Line,
   Scatter,
+  ScatterChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -18,7 +19,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, type CongestionPremiumResponse, type CongestionPremiumRow, type ReMeritOrderResponse, type ReMeritOrderZone, type ReMeritOrderBin, type NegPriceAnnualZone, type NegPriceAnnualYear, type ZoneDispersionMonth, type PeakOffpeakPoint } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, type CongestionPremiumResponse, type CongestionPremiumRow, type ReMeritOrderResponse, type ReMeritOrderZone, type ReMeritOrderBin, type NegPriceAnnualZone, type NegPriceAnnualYear, type ZoneDispersionMonth, type PeakOffpeakPoint, type HydroBalanceCountry, type HydroBalancePoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1304,6 +1305,7 @@ function SpreadsDashboard() {
               <PriceVarianceDecompSection />
               <CongestionPremiumSection />
               <ReMeritOrderSection />
+              <HydroBalanceSection />
               <NegPriceAnnualSection />
               <ZoneDispersionSection />
               <PeakOffpeakSection />
@@ -5226,6 +5228,226 @@ function ReMeritOrderSection() {
             curve is therefore market-integration evidence: a tighter IT-NORD grid connection would
             compress this 46 EUR/MWh structural gap. FR at 40-50% RE averaged only 12 EUR/MWh --
             nuclear + renewable saturation periodically drives French prices to near zero.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+const HYDRO_COUNTRY_NAMES: Record<string, string> = {
+  NO: 'Norway', SE: 'Sweden', FI: 'Finland', ES: 'Spain', PT: 'Portugal',
+  FR: 'France', IT: 'Italy', AT: 'Austria', CH: 'Switzerland', RO: 'Romania', GR: 'Greece',
+}
+
+function HydroBalanceSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['hydro-price-balance'],
+    queryFn: api.hydroPriceBalance,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  // Default to the most hydro-driven market that has a meaningful fit.
+  const countries = data?.countries ?? []
+  const defaultCc = countries.find((c) => Math.abs(c.corr) >= 0.4)?.country
+    ?? countries[0]?.country ?? 'NO'
+  const [cc, setCc] = useState<string>(defaultCc)
+  const selectedCc = countries.some((c) => c.country === cc) ? cc : defaultCc
+
+  const sel = useMemo(
+    () => countries.find((c) => c.country === selectedCc),
+    [countries, selectedCc],
+  )
+
+  // Scatter points (balance% vs price) + OLS regression segment for the selected country.
+  const scatter = useMemo(() => {
+    const pts = (data?.series ?? [])
+      .filter((p: HydroBalancePoint) => p.country === selectedCc)
+      .map((p: HydroBalancePoint) => ({ x: p.balance_pct, y: p.price_eur }))
+    if (!sel || pts.length === 0) return { pts, line: null as null | [{ x: number; y: number }, { x: number; y: number }] }
+    const xs = pts.map((p) => p.x)
+    const xMin = Math.min(...xs)
+    const xMax = Math.max(...xs)
+    // intercept recovered from the summary's current point: fitted = slope*bal + b
+    const b = sel.fitted_price_eur - sel.slope_eur_per_pct * sel.current_balance_pct
+    const line: [{ x: number; y: number }, { x: number; y: number }] = [
+      { x: xMin, y: sel.slope_eur_per_pct * xMin + b },
+      { x: xMax, y: sel.slope_eur_per_pct * xMax + b },
+    ]
+    return { pts, line }
+  }, [data, selectedCc, sel])
+
+  if (isLoading) {
+    return (
+      <div className="bg-card border border-border rounded-lg p-4 mt-4">
+        <p className="text-muted-foreground text-xs">Loading hydro balance...</p>
+      </div>
+    )
+  }
+  if (!data || countries.length === 0) return null
+
+  const corrColor = (corr: number) =>
+    corr <= -0.5 ? 'text-cyan-400' : corr <= -0.3 ? 'text-sky-400' : Math.abs(corr) < 0.15 ? 'text-muted-foreground' : 'text-amber-400'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mt-4">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">
+          Hydrological Balance as a Price Fundamental
+        </h2>
+        <span className="text-xs text-muted-foreground">
+          Weekly reservoir balance (storage vs 5yr seasonal norm) vs day-ahead price.
+          A strong negative correlation marks a hydro-set market; near zero marks a thermally-set one.
+        </span>
+      </div>
+
+      {/* Country selector - meaningful hydro markets first */}
+      <div className="flex flex-wrap gap-1 mb-3">
+        {countries.map((c: HydroBalanceCountry) => (
+          <button
+            key={c.country}
+            onClick={() => setCc(c.country)}
+            className={`px-2 py-0.5 rounded text-[11px] border transition-colors ${
+              c.country === selectedCc
+                ? 'bg-cyan-900/40 border-cyan-700 text-cyan-200'
+                : 'border-border text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {c.country}
+          </button>
+        ))}
+      </div>
+
+      {sel && (
+        <div className="space-y-3">
+          {/* Stat cards for the selected country */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground">corr(balance, price)</p>
+              <p className={`text-lg font-semibold ${corrColor(sel.corr)}`}>{sel.corr.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground/70">R² {sel.r2.toFixed(2)} · {sel.n_weeks} wks</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground">current balance</p>
+              <p className={`text-lg font-semibold ${sel.current_balance_pct < 0 ? 'text-amber-300' : 'text-cyan-300'}`}>
+                {sel.current_balance_pct > 0 ? '+' : ''}{sel.current_balance_pct.toFixed(1)}%
+              </p>
+              <p className="text-[10px] text-muted-foreground/70">vs 5yr seasonal norm</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground">price vs hydro fit</p>
+              <p className={`text-lg font-semibold ${sel.residual_eur > 0 ? 'text-red-300' : 'text-emerald-300'}`}>
+                {sel.residual_eur > 0 ? '+' : ''}{sel.residual_eur.toFixed(0)}
+              </p>
+              <p className="text-[10px] text-muted-foreground/70">EUR/MWh residual</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground">slope</p>
+              <p className="text-lg font-semibold text-foreground">{sel.slope_eur_per_pct.toFixed(2)}</p>
+              <p className="text-[10px] text-muted-foreground/70">EUR/MWh per +1pp fill</p>
+            </div>
+          </div>
+
+          {/* Scatter: balance% vs price with OLS line */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              {HYDRO_COUNTRY_NAMES[selectedCc] ?? selectedCc}: each point is one week
+              ({sel.n_weeks} weeks). The fitted line slope ({sel.slope_eur_per_pct.toFixed(2)} EUR/MWh per
+              percentage point of reservoir fill) is the marginal price impact of the hydrological balance.
+            </p>
+            <ResponsiveContainer width="100%" height={220}>
+              <ScatterChart margin={{ top: 8, right: 12, bottom: 14, left: -6 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis
+                  type="number"
+                  dataKey="x"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => `${v > 0 ? '+' : ''}${v}%`}
+                  label={{ value: 'Reservoir balance vs 5yr norm', position: 'insideBottom', offset: -6, fontSize: 9, fill: '#64748b' }}
+                />
+                <YAxis
+                  type="number"
+                  dataKey="y"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => `${v}€`}
+                />
+                <ReferenceLine x={0} stroke="#475569" strokeWidth={1} />
+                {scatter.line && (
+                  <ReferenceLine
+                    segment={scatter.line}
+                    stroke="#22d3ee"
+                    strokeWidth={1.5}
+                    strokeDasharray="4 3"
+                    ifOverflow="extendDomain"
+                  />
+                )}
+                <Tooltip
+                  cursor={{ stroke: '#475569', strokeDasharray: '3 3' }}
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v, name) => [
+                    name === 'y' ? `${Number(v).toFixed(0)} EUR/MWh` : `${Number(v) > 0 ? '+' : ''}${Number(v).toFixed(1)}%`,
+                    name === 'y' ? 'price' : 'balance',
+                  ]}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Scatter data={scatter.pts} fill="#0e7490" fillOpacity={0.55} />
+              </ScatterChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Cross-country ranking table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Country</th>
+                  <th className="text-right font-semibold">Corr</th>
+                  <th className="text-right">R²</th>
+                  <th className="text-right">Balance now</th>
+                  <th className="text-right">Price</th>
+                  <th className="text-right">Slope</th>
+                  <th className="text-left pl-3">Price formation</th>
+                </tr>
+              </thead>
+              <tbody>
+                {countries.map((c: HydroBalanceCountry) => (
+                  <tr
+                    key={c.country}
+                    onClick={() => setCc(c.country)}
+                    className={`border-b border-border/30 cursor-pointer hover:bg-muted/20 ${c.country === selectedCc ? 'bg-cyan-950/30' : ''}`}
+                  >
+                    <td className="py-1 font-medium text-foreground">
+                      {c.country} <span className="text-muted-foreground/60">{HYDRO_COUNTRY_NAMES[c.country] ?? ''}</span>
+                    </td>
+                    <td className={`text-right font-semibold ${corrColor(c.corr)}`}>{c.corr.toFixed(2)}</td>
+                    <td className="text-right text-muted-foreground">{c.r2.toFixed(2)}</td>
+                    <td className={`text-right ${c.current_balance_pct < 0 ? 'text-amber-300' : 'text-cyan-300'}`}>
+                      {c.current_balance_pct > 0 ? '+' : ''}{c.current_balance_pct.toFixed(0)}%
+                    </td>
+                    <td className="text-right text-foreground">{c.current_price_eur.toFixed(0)}</td>
+                    <td className="text-right text-muted-foreground">{c.slope_eur_per_pct.toFixed(2)}</td>
+                    <td className="pl-3 text-muted-foreground/80">
+                      {c.corr <= -0.4 ? 'hydro-set' : c.corr <= -0.2 ? 'hydro-influenced' : Math.abs(c.corr) < 0.15 ? 'thermal/other-set' : 'weak'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The hydrological balance is the canonical Nordic power fundamental: hydro producers hold
+            an option to wait, so when reservoirs run below the seasonal norm they withhold water and
+            the marginal unit shifts toward thermal generation and imports, lifting prices. The
+            correlation magnitude grades how hydro-set each market is - strongly negative where hydro
+            sets the margin, near zero where gas, nuclear, or congestion dominate. The residual
+            (price minus the hydro-fitted level) flags weeks where price is rich or cheap relative to
+            what reservoirs alone imply, i.e. a non-hydro driver (cold snap, outage, fuel shock) is
+            doing the work. Country price is the cross-zone mean of that country&apos;s day-ahead
+            bidding zones; balance is storage vs the 5-year same-week average from ENTSO-E weekly
+            reservoir filling (A72).
           </p>
         </div>
       )}

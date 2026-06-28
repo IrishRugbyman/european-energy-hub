@@ -298,6 +298,9 @@ from .schemas import (
     HydroHistPoint,
     HydroSeasonalPoint,
     HydroCountryResponse,
+    HydroBalanceCountry,
+    HydroBalancePoint,
+    HydroBalanceResponse,
 )
 
 
@@ -5945,3 +5948,53 @@ def hydro_country(cc: str):
     ] if not seasonal_df.empty else []
 
     return HydroCountryResponse(country=cc, history=history, seasonal=seasonal, latest=latest)
+
+
+@app.get("/api/hydro/price-balance", response_model=HydroBalanceResponse)
+def hydro_price_balance():
+    """Reservoir balance (vs 5yr seasonal norm) vs weekly DA price, per country.
+
+    Quantifies the hydrological-balance price fundamental: a strongly negative
+    correlation marks a hydro-set market (low reservoirs -> high prices); near
+    zero marks a thermally-set market where reservoir levels do not move price.
+    """
+    summary_df = db.query(
+        """
+        SELECT country, n_weeks, corr, r2, slope_eur_per_pct, latest_week,
+               current_balance_pct, current_price_eur, fitted_price_eur, residual_eur
+        FROM hydro_price_balance_summary
+        ORDER BY corr
+        """
+    )
+    countries = [
+        HydroBalanceCountry(
+            country=r.country,
+            n_weeks=int(r.n_weeks),
+            corr=_float(r.corr),
+            r2=_float(r.r2),
+            slope_eur_per_pct=_float(r.slope_eur_per_pct),
+            latest_week=str(r.latest_week),
+            current_balance_pct=_float(r.current_balance_pct),
+            current_price_eur=_float(r.current_price_eur),
+            fitted_price_eur=_float(r.fitted_price_eur),
+            residual_eur=_float(r.residual_eur),
+        )
+        for r in summary_df.itertuples()
+    ] if not summary_df.empty else []
+
+    series_df = db.query(
+        "SELECT country, week_date, balance_pct, price_eur FROM hydro_price_balance_series ORDER BY country, week_date"
+    )
+    series = [
+        HydroBalancePoint(
+            country=r.country,
+            week_date=str(r.week_date),
+            balance_pct=_float(r.balance_pct),
+            price_eur=_float(r.price_eur),
+        )
+        for r in series_df.itertuples()
+    ] if not series_df.empty else []
+
+    return HydroBalanceResponse(
+        countries=countries, series=series, refreshed_at=_meta_val("refreshed_at_hydro")
+    )
