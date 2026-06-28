@@ -241,6 +241,12 @@ from .schemas import (
     RebapZscoreScatterPoint,
     RebapZscoreDoseBucket,
     RebapZscoreCorrelationResponse,
+    StorageFactorStats,
+    StorageFactorImprovementStats,
+    StorageFactorCoef,
+    StorageFactorRollingPoint,
+    StorageFactorScatterPoint,
+    StorageFactorTestResponse,
 )
 
 
@@ -4309,4 +4315,50 @@ def imbalance_rebap_zscore_correlation():
         rolling=[RebapZscoreRollingPoint(**r) for r in result["rolling"]],
         scatter=[RebapZscoreScatterPoint(**r) for r in result["scatter"]],
         dose_response=[RebapZscoreDoseBucket(**r) for r in result["dose_response"]],
+    )
+
+
+@app.get("/api/spreads/storage-factor-test", response_model=StorageFactorTestResponse)
+def spreads_storage_factor_test(zone: str = "DE-LU"):
+    """EU gas storage deviation as a fundamental factor: does it add information beyond TTF?
+
+    Walk-forward test of whether adding EU gas storage fill% vs 5yr seasonal average
+    improves the enriched nonlinear OLS fair-value model (P48+P54, 12 terms) by AIC,
+    OOS RMSE, or tradeable Sharpe. The key question: does gas scarcity/abundance (measured
+    by inventory vs seasonal norm) predict DA power price residuals through a channel beyond
+    what TTF spot already captures?
+
+    Returns AIC verdict, coefficient stability, rolling correlation between storage deviation
+    and the baseline enriched residual, and a scatter of the raw relationship.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_storage_factor_test
+
+    cache_key = f"storage_factor_{zone}"
+    result = _cached_compute(
+        cache_key,
+        lambda: compute_storage_factor_test(db.query, zone=zone),
+        ttl=3600,
+    )
+    if not result or result.get("n_oos", 0) < 30:
+        raise HTTPException(status_code=503, detail=f"Insufficient data for storage factor test ({zone})")
+
+    return StorageFactorTestResponse(
+        zone=result["zone"],
+        as_of=result["as_of"],
+        n_oos=result["n_oos"],
+        source=result["source"],
+        aic_delta_mean=result["aic_delta_mean"],
+        bic_delta_mean=result["bic_delta_mean"],
+        justified=result["justified"],
+        pearson_r=result.get("pearson_r"),
+        enriched=StorageFactorStats(**result["enriched"]),
+        extended=StorageFactorStats(**result["extended"]),
+        improvement=StorageFactorImprovementStats(**result["improvement"]),
+        coef=StorageFactorCoef(**result["coef"]),
+        rolling_corr=[StorageFactorRollingPoint(**r) for r in result["rolling_corr"]],
+        scatter=[StorageFactorScatterPoint(**r) for r in result["scatter"]],
+        current_storage_dev=result.get("current_storage_dev"),
+        current_residual=result.get("current_residual"),
+        corr_window=result["corr_window"],
     )

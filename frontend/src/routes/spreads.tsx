@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1240,6 +1240,8 @@ function SpreadsDashboard() {
           <NonlinearModelSection />
 
           <EnrichedModelSection />
+
+          <StorageFactorSection />
 
           <NuclearWindInteractionSection />
 
@@ -3711,6 +3713,253 @@ function SpreadExplainer() {
         Constants: gas eff 49%, gas EF 0.364 tCO2/MWh; coal eff 36%, coal EF 0.96 tCO2/MWh.
         Power = DE-LU day-ahead base. TTF = front-month EUR/MWh. EUA = ETS front-year.
       </p>
+    </div>
+  )
+}
+
+
+function StorageFactorSection() {
+  const [zone, setZone] = useState<FundZone>('FR')
+
+  const { data, isLoading } = useQuery<StorageFactorTestResponse>({
+    queryKey: ['storage-factor-test', zone],
+    queryFn: () => api.spreadsStorageFactorTest(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
+  const fmtPct = (v: number | null | undefined) => (v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : '--')
+  const fmtDelta = (v: number | null | undefined) => (v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}` : '--')
+
+  const aicColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v < -2 ? '#4ade80' : v < 0 ? '#facc15' : '#f87171'
+  const sharpeColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v > 0 ? '#4ade80' : '#f87171'
+  const corrColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : Math.abs(v) > 0.2 ? '#4ade80' : Math.abs(v) > 0.1 ? '#facc15' : '#94a3b8'
+  const cvColor = (cv: number | null | undefined) =>
+    cv == null ? '#94a3b8' : cv < 0.5 ? '#4ade80' : cv < 1.5 ? '#facc15' : '#f87171'
+
+  const verdictText = () => {
+    if (!data) return null
+    if (data.justified) {
+      return `On ${data.zone} the EU storage deviation clears the AIC threshold (ΔAIC ${data.aic_delta_mean.toFixed(2)} < −2), with Pearson r = ${data.pearson_r?.toFixed(2) ?? '--'} between storage deviation and the enriched model residual. Gas inventory scarcity adds predictive power beyond what TTF spot already captures — likely because nuclear-heavy systems like France face asymmetric price spikes when gas is tight and any baseload outage occurs simultaneously.`
+    }
+    return `On ${data.zone}, TTF spot already fully impounds the EU gas storage information (ΔAIC = ${data.aic_delta_mean.toFixed(2)}, Pearson r ≈ ${data.pearson_r?.toFixed(2) ?? '--'}). Storage deviation adds no marginal signal here — the TTF-to-power transmission is direct and well-arbitraged for this gas-anchored zone.`
+  }
+
+  // For rolling corr chart, trim to last 300 points for readability
+  const rollingCorr = data?.rolling_corr?.slice(-300) ?? []
+  const scatter = data?.scatter ?? []
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          EU Gas Storage Deviation as a Power Price Factor
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 66 — does storage inventory add signal above TTF?
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running walk-forward factor test...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* AIC verdict banner */}
+          <div className={`rounded-lg px-3 py-2 border text-xs ${
+            data.justified
+              ? 'border-green-500/40 bg-green-500/10 text-green-400'
+              : 'border-muted/40 bg-muted/10 text-muted-foreground'
+          }`}>
+            <span className="font-semibold mr-2">
+              {data.justified ? 'Factor justified (AIC)' : 'Factor not justified (AIC)'}
+            </span>
+            ΔAIC = {data.aic_delta_mean.toFixed(2)} (threshold: &lt; −2) | n OOS = {data.n_oos}
+            {data.current_storage_dev != null && (
+              <span className="ml-3">
+                EU storage today: <span style={{ color: data.current_storage_dev < -5 ? '#f87171' : data.current_storage_dev > 5 ? '#4ade80' : '#94a3b8' }}>
+                  {data.current_storage_dev >= 0 ? '+' : ''}{data.current_storage_dev.toFixed(1)}pp
+                </span> vs 5yr avg
+                {data.current_residual != null && (
+                  <span className="ml-2">
+                    | {zone} residual today: <span style={{ color: data.current_residual > 5 ? '#f87171' : data.current_residual < -5 ? '#4ade80' : '#94a3b8' }}>
+                      {data.current_residual >= 0 ? '+' : ''}{data.current_residual.toFixed(1)} EUR/MWh
+                    </span>
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+
+          {/* Four stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">OOS RMSE (enr → enr+storage)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.enriched.rmse_overall)} → {fmt(data.extended.rmse_overall)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Tradeable Sharpe (enr → enr+storage)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.enriched.sharpe_net)} → {fmt(data.extended.sharpe_net)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe change</p>
+              <p className="text-sm font-semibold" style={{ color: sharpeColor(data.improvement.sharpe_delta) }}>
+                {fmtDelta(data.improvement.sharpe_delta)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Mean ΔAIC (&lt; −2 = justified)</p>
+              <p className="text-sm font-semibold" style={{ color: aicColor(data.aic_delta_mean) }}>
+                {data.aic_delta_mean.toFixed(2)}
+                <span className="text-[10px] ml-1">{data.justified ? 'justified' : 'not justified'}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Coefficient + information criteria + raw correlation */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px]">
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Storage factor coefficient (EU fill% deviation)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>Mean</span>
+                <span className="text-right text-foreground">{fmt(data.coef.mean, 3)} EUR/MWh per pp</span>
+                <span>WF std</span>
+                <span className="text-right text-foreground">{fmt(data.coef.std, 3)}</span>
+                <span>Stability (CV)</span>
+                <span className="text-right" style={{ color: cvColor(data.coef.cv) }}>
+                  {data.coef.cv != null ? data.coef.cv.toFixed(2) : 'n/a'}
+                  {data.coef.cv != null && data.coef.cv > 1.5 ? ' ⚠' : ''}
+                </span>
+              </div>
+            </div>
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Information criteria (mean over WF)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>ΔAIC</span>
+                <span className="text-right" style={{ color: aicColor(data.aic_delta_mean) }}>
+                  {data.aic_delta_mean.toFixed(2)}
+                </span>
+                <span>ΔBIC</span>
+                <span className="text-right" style={{ color: aicColor(data.bic_delta_mean) }}>
+                  {data.bic_delta_mean.toFixed(2)}
+                </span>
+                <span>Verdict</span>
+                <span className="text-right" style={{ color: data.justified ? '#4ade80' : '#f87171' }}>
+                  {data.justified ? 'add it' : 'skip it'}
+                </span>
+              </div>
+            </div>
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Raw correlation (storage dev vs residual)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>Pearson r</span>
+                <span className="text-right" style={{ color: corrColor(data.pearson_r) }}>
+                  {data.pearson_r != null ? data.pearson_r.toFixed(3) : '--'}
+                </span>
+                <span>Corr window</span>
+                <span className="text-right text-foreground">{data.corr_window}d rolling</span>
+                <span>RMSE improvement</span>
+                <span className="text-right" style={{ color: sharpeColor(-(data.improvement.rmse_pct ?? 0)) }}>
+                  {fmtPct(data.improvement.rmse_pct)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Rolling 60d correlation chart */}
+          {rollingCorr.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                {data.corr_window}-day rolling Pearson: EU storage deviation vs {zone} enriched model residual
+              </p>
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart data={rollingCorr} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    interval={Math.floor(rollingCorr.length / 4)} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} domain={[-1, 1]}
+                    tickFormatter={(v) => v.toFixed(1)} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v) => [typeof v === 'number' ? v.toFixed(3) : '--', 'Pearson r']}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <ReferenceLine y={0} stroke="#334155" strokeDasharray="3 3" />
+                  <Line type="monotone" dataKey="corr" stroke="#60a5fa" dot={false} strokeWidth={1.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Scatter: storage_dev vs enriched residual */}
+          {scatter.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                EU storage deviation (pp vs 5yr avg) vs {zone} enriched model residual (EUR/MWh)
+              </p>
+              <ResponsiveContainer width="100%" height={140}>
+                <ComposedChart margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="storage_dev" type="number" name="EU storage dev (pp)"
+                    tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}pp`}
+                    label={{ value: 'EU storage deviation (pp)', position: 'insideBottom', offset: -2, fontSize: 9, fill: '#64748b' }} />
+                  <YAxis type="number" name={`${zone} residual (EUR/MWh)`}
+                    tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}`} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v, name) => {
+                      const n = typeof v === 'number' ? v : 0
+                      return name === 'storage_dev'
+                        ? [`${n >= 0 ? '+' : ''}${n.toFixed(1)}pp`, 'EU storage dev']
+                        : [`${n >= 0 ? '+' : ''}${n.toFixed(1)} EUR/MWh`, `${zone} residual`]
+                    }}
+                    labelStyle={{ color: '#94a3b8' }}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
+                  />
+                  <Scatter data={scatter} fill="#60a5fa" opacity={0.55} r={2.5} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Hypothesis: EU gas storage fill% deviation from the 5yr seasonal average adds predictive
+            power to the enriched nonlinear OLS fair-value model (P48+P54) beyond what TTF spot
+            already captures. The mechanism: inventory scarcity may create a supply-risk premium in
+            power prices that the TTF spot level does not fully reflect — especially in markets where
+            gas is an indirect input through the nuclear fallback stack. Walk-forward AIC test:
+            at each day t, the enriched 12-factor model and the extended 13-factor model
+            (+eu_storage_dev_pct) are both refit on [0..t−1] and compared on OOS RMSE, tradeable
+            Sharpe, and AIC (conventional threshold ΔAIC &lt; −2). Storage deviation = EU fill% −
+            the 5yr DOY average from energy_hub.duckdb.{' '}
+            {verdictText()}
+            {!data.justified && ` The coefficient is ${data.coef.cv != null && data.coef.cv > 1.5 ? 'highly unstable (CV = ' + data.coef.cv.toFixed(2) + ') — it fluctuates in sign and magnitude across the walk-forward window, consistent with noise rather than a real effect.' : 'low-magnitude with no consistent direction.'} For ${zone}, the right choice is to keep TTF in the model and drop inventory.`}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

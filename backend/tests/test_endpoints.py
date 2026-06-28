@@ -1580,6 +1580,36 @@ def test_imbalance_rebap_zscore_correlation(client):
     assert "n" in b and "mean_rebap" in b
 
 
+def test_spreads_storage_factor_test(client):
+    r = client.get("/api/spreads/storage-factor-test?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_oos"] > 0
+    assert data["source"] == "forecast"
+    # AIC / BIC are finite floats; justified is a boolean
+    assert isinstance(data["aic_delta_mean"], float)
+    assert isinstance(data["bic_delta_mean"], float)
+    assert isinstance(data["justified"], bool)
+    # Pearson correlation may be None if storage data sparse, but normally present
+    if data["pearson_r"] is not None:
+        assert -1.0 <= data["pearson_r"] <= 1.0
+    # enriched vs extended stats
+    for key in ("enriched", "extended"):
+        m = data[key]
+        assert {"rmse_overall", "rmse_low_wind", "sharpe_net"} <= m.keys()
+    imp = data["improvement"]
+    assert {"rmse_pct", "low_wind_rmse_pct", "sharpe_delta"} <= imp.keys()
+    # Storage coefficient stability
+    c = data["coef"]
+    assert {"mean", "std", "cv"} <= c.keys()
+    # Rolling correlation and scatter series present
+    assert "rolling_corr" in data
+    assert "scatter" in data
+    # Correlation window documented
+    assert data["corr_window"] == 60
+
+
 def test_spreads_signal_posture(client):
     r = client.get("/api/spreads/signal-posture")
     assert r.status_code == 200

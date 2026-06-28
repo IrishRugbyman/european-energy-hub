@@ -1790,3 +1790,53 @@ class RebapZscoreCorrelationResponse(BaseModel):
     rolling: list[RebapZscoreRollingPoint]
     scatter: list[RebapZscoreScatterPoint]
     dose_response: list[RebapZscoreDoseBucket]
+
+
+# Phase 66: EU gas storage deviation as a fundamental factor
+class StorageFactorStats(BaseModel):
+    rmse_overall: float | None
+    rmse_low_wind: float | None
+    sharpe_net: float | None
+
+
+class StorageFactorImprovementStats(BaseModel):
+    rmse_pct: float | None
+    low_wind_rmse_pct: float | None
+    sharpe_delta: float | None
+
+
+class StorageFactorCoef(BaseModel):
+    mean: float
+    std: float
+    cv: float | None
+
+
+class StorageFactorRollingPoint(BaseModel):
+    date: str
+    corr: float
+
+
+class StorageFactorScatterPoint(BaseModel):
+    date: str
+    storage_dev: float
+    residual: float
+
+
+class StorageFactorTestResponse(BaseModel):
+    zone: str
+    as_of: str
+    n_oos: int
+    source: str
+    aic_delta_mean: float
+    bic_delta_mean: float
+    justified: bool
+    pearson_r: float | None
+    enriched: StorageFactorStats
+    extended: StorageFactorStats
+    improvement: StorageFactorImprovementStats
+    coef: StorageFactorCoef
+    rolling_corr: list[StorageFactorRollingPoint]
+    scatter: list[StorageFactorScatterPoint]
+    current_storage_dev: float | None
+    current_residual: float | None
+    corr_window: int

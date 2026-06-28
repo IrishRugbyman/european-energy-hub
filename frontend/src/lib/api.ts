@@ -1212,6 +1212,7 @@ export const api = {
   marketPulse: () => get<MarketPulseResponse>('/market-pulse'),
   spreadsHoldingPeriod: (zone?: string) => get<HoldingPeriodResponse>(`/spreads/holding-period${zone ? `?zone=${zone}` : ''}`),
   spreadsSignalPosture: () => get<SignalPostureResponse>('/spreads/signal-posture'),
+  spreadsStorageFactorTest: (zone?: string) => get<StorageFactorTestResponse>(`/spreads/storage-factor-test${zone ? `?zone=${zone}` : ''}`),
 }
 
 // US power generation
@@ -1766,6 +1767,57 @@ export interface RebapZscoreCorrelationResponse {
   rolling: RebapZscoreRollingPoint[]
   scatter: RebapZscoreScatterPoint[]
   dose_response: RebapZscoreDoseBucket[]
+}
+
+// --- Storage factor test (Phase 66) ---
+
+export interface StorageFactorStats {
+  rmse_overall: number | null
+  rmse_low_wind: number | null
+  sharpe_net: number | null
+}
+
+export interface StorageFactorImprovementStats {
+  rmse_pct: number | null
+  low_wind_rmse_pct: number | null
+  sharpe_delta: number | null
+}
+
+export interface StorageFactorCoef {
+  mean: number
+  std: number
+  cv: number | null
+}
+
+export interface StorageFactorRollingPoint {
+  date: string
+  corr: number
+}
+
+export interface StorageFactorScatterPoint {
+  date: string
+  storage_dev: number
+  residual: number
+}
+
+export interface StorageFactorTestResponse {
+  zone: string
+  as_of: string
+  n_oos: number
+  source: string
+  aic_delta_mean: number
+  bic_delta_mean: number
+  justified: boolean
+  pearson_r: number | null
+  enriched: StorageFactorStats
+  extended: StorageFactorStats
+  improvement: StorageFactorImprovementStats
+  coef: StorageFactorCoef
+  rolling_corr: StorageFactorRollingPoint[]
+  scatter: StorageFactorScatterPoint[]
+  current_storage_dev: number | null
+  current_residual: number | null
+  corr_window: number
 }
 
 // --- Signal posture ---

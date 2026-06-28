@@ -2558,3 +2558,289 @@ def compute_rebap_zscore_correlation(query_fn: Callable) -> dict:
         "scatter": scatter,
         "dose_response": dose,
     }
+
+
+_STORAGE_CORR_WINDOW = 60  # days for rolling Pearson between storage_dev and residual
+
+
+def _fetch_fundamental_features_with_storage(query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE):
+    """Like _fetch_fundamental_features but also joins EU gas storage deviation.
+
+    Adds eu_storage_dev_pct = storage fill% - 5yr seasonal average at the same DOY.
+    Returns None on failure; rows without a matching storage day are kept with NULL
+    (LEFT JOIN), callers must dropna on eu_storage_dev_pct as appropriate.
+    """
+    if source == "forecast":
+        wind_col, solar_col, load_col = "wind_pct", "solar_pct", "load_fc_mw"
+    elif source == "actual":
+        wind_col, solar_col, load_col = "wind_pct_actual", "solar_pct_actual", "load_actual_mw"
+    else:
+        raise ValueError(f"unknown feature source {source!r}")
+    try:
+        return query_fn(f"""
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                g.{wind_col}  AS wind_pct,
+                g.{solar_col} AS solar_pct,
+                g.{load_col}  AS load_mw,
+                COALESCE(g.nuclear_lag1_gw, 0.0) AS nuclear_lag1_gw,
+                (s.full_pct - ss.avg5) AS eu_storage_dev_pct
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN generation_forecast_daily g ON p.price_date = g.gen_date AND g.zone = p.zone
+            LEFT JOIN storage_history s ON s.gas_day = p.price_date AND s.country = 'EU'
+            LEFT JOIN storage_seasonal ss
+                ON ss.country = 'EU' AND ss.doy = dayofyear(p.price_date)
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND pr.eua_eur_t IS NOT NULL
+              AND g.{wind_col} IS NOT NULL
+              AND g.{solar_col} IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone])
+    except Exception as exc:
+        logger.warning(f"fundamental feature fetch (with storage) failed for {zone} ({source}): {exc!r}")
+        return None
+
+
+def compute_storage_factor_test(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
+    """Does EU gas storage deviation (fill% vs 5yr DOY average) add information to the
+    enriched nonlinear OLS model beyond what TTF spot already captures?
+
+    Hypothesis: when EU gas storage is anomalously low (or high) vs the seasonal norm,
+    the risk premium on gas supply tightness may bleed into DA power prices through a
+    channel distinct from TTF spot. TTF is forward-looking and efficient, so it should
+    already reflect most of the storage information; but scarcity/abundance states that
+    persist for weeks may create a regime overlay that TTF alone does not fully price.
+
+    Methodology:
+    1. Fetch the enriched feature set (P48+P54, 12 terms) plus EU storage deviation.
+    2. Walk-forward OLS: at each day t, refit both the enriched 12-term model and the
+       extended 13-term model (+ eu_storage_dev_pct) on rows [0..t-1], predict day t.
+    3. Report: ΔAIC and ΔBIC mean over the WF window (< -2 = factor justified by AIC),
+       OOS RMSE comparison, tradeable Sharpe comparison.
+    4. Storage coefficient stability (mean, std, CV) across the WF.
+    5. Rolling 60d Pearson correlation between eu_storage_dev_pct and the enriched
+       baseline OOS residual (to show when storage explains residual variance).
+    6. Scatter: eu_storage_dev_pct vs enriched residual (raw relationship).
+    7. Current snapshot: today's EU storage_dev, zone residual, model contribution.
+
+    Returns:
+        dict with: zone, as_of, n_oos, aic_delta_mean, bic_delta_mean, justified,
+        enriched{}, extended{}, improvement{}, coef{}, rolling_corr (list), scatter (list),
+        current_storage_dev, current_residual
+    """
+    rows = _fetch_fundamental_features_with_storage(query_fn, zone, source)
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"storage factor test: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(
+        subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"]
+    )
+    df = df.reset_index(drop=True)
+    if len(df) < WF_MIN_TRAIN + 40:
+        logger.warning(f"storage factor test: insufficient data for {zone} after dropna")
+        return {}
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    load_mw = df["load_mw"].to_numpy(float)
+    nuclear_gw = (
+        df["nuclear_lag1_gw"].to_numpy(float)
+        if "nuclear_lag1_gw" in df.columns
+        else np.zeros(len(df))
+    )
+    # eu_storage_dev_pct may be NaN where storage history has no entry; fill with 0 (neutral).
+    storage_dev = df["eu_storage_dev_pct"].fillna(0.0).to_numpy(float)
+    has_storage = df["eu_storage_dev_pct"].notna().to_numpy(bool)
+
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    resid_gw = load_mw * (1.0 - (wind + solar) / 100.0) / 1000.0
+    dttf = np.diff(ttf, prepend=ttf[0])
+
+    Xenr = _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw)
+    Xext = np.column_stack([Xenr, storage_dev])
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, pred_enr, pred_ext, res_enr, res_ext = [], [], [], [], []
+    storage_coefs, aic_deltas, bic_deltas = [], [], []
+
+    for t in range(start, n):
+        cenr, _, _, _ = np.linalg.lstsq(Xenr[:t], y[:t], rcond=None)
+        cext, _, _, _ = np.linalg.lstsq(Xext[:t], y[:t], rcond=None)
+
+        idx.append(t)
+        pe = float(Xenr[t] @ cenr)
+        px = float(Xext[t] @ cext)
+        pred_enr.append(pe)
+        pred_ext.append(px)
+        res_enr.append(y[t] - pe)
+        res_ext.append(y[t] - px)
+        storage_coefs.append(float(cext[-1]))
+
+        # AIC / BIC on the training window
+        k_enr = Xenr.shape[1]
+        k_ext = Xext.shape[1]
+        rss_enr = float(np.sum((y[:t] - Xenr[:t] @ cenr) ** 2))
+        rss_ext = float(np.sum((y[:t] - Xext[:t] @ cext) ** 2))
+        nt = t
+        aic_enr = nt * np.log(max(rss_enr / nt, 1e-12)) + 2 * k_enr
+        aic_ext = nt * np.log(max(rss_ext / nt, 1e-12)) + 2 * k_ext
+        bic_enr = nt * np.log(max(rss_enr / nt, 1e-12)) + k_enr * np.log(nt)
+        bic_ext = nt * np.log(max(rss_ext / nt, 1e-12)) + k_ext * np.log(nt)
+        aic_deltas.append(aic_ext - aic_enr)
+        bic_deltas.append(bic_ext - bic_enr)
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    y_oos = y[idx]
+    w_oos = wind[idx]
+    prices = y_oos
+    price_changes = np.diff(prices)
+    low = w_oos < LOW_WIND_KNOT_PCT
+
+    def rmse(actual, pred, mask=None):
+        a = actual if mask is None else actual[mask]
+        p = pred if mask is None else pred[mask]
+        if len(a) == 0:
+            return None
+        return float(round(np.sqrt(np.mean((a - p) ** 2)), 2))
+
+    pred_enr = np.array(pred_enr)
+    pred_ext = np.array(pred_ext)
+
+    def sharpe_net(residuals):
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        pos = np.clip(-z, -1.0, 1.0)
+        gross = pos[:-1] * price_changes
+        turnover = np.abs(np.diff(pos, prepend=0.0))[:-1]
+        pnl = gross - EDGE_NET_COST * turnover
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    enriched_stats = {
+        "rmse_overall": rmse(y_oos, pred_enr),
+        "rmse_low_wind": rmse(y_oos, pred_enr, low),
+        "sharpe_net": sharpe_net(res_enr),
+    }
+    extended_stats = {
+        "rmse_overall": rmse(y_oos, pred_ext),
+        "rmse_low_wind": rmse(y_oos, pred_ext, low),
+        "sharpe_net": sharpe_net(res_ext),
+    }
+
+    def pct_drop(a, b):
+        if a is None or b is None or a == 0:
+            return None
+        return float(round(100.0 * (a - b) / a, 1))
+
+    def delta(a, b):
+        return float(round(b - a, 3)) if a is not None and b is not None else None
+
+    improvement = {
+        "rmse_pct": pct_drop(enriched_stats["rmse_overall"], extended_stats["rmse_overall"]),
+        "low_wind_rmse_pct": pct_drop(enriched_stats["rmse_low_wind"], extended_stats["rmse_low_wind"]),
+        "sharpe_delta": delta(enriched_stats["sharpe_net"], extended_stats["sharpe_net"]),
+    }
+
+    sc_arr = np.array(storage_coefs)
+    m = float(np.mean(sc_arr))
+    sd = float(np.std(sc_arr))
+    cv = float(abs(sd / m)) if m != 0 else None
+
+    aic_delta_mean = float(round(np.mean(aic_deltas), 2))
+    bic_delta_mean = float(round(np.mean(bic_deltas), 2))
+    justified = bool(aic_delta_mean < -2.0)
+
+    # Rolling correlation between EU storage deviation and the enriched baseline residual
+    oos_dates = dates.iloc[idx].reset_index(drop=True)
+    storage_dev_oos = storage_dev[idx]
+    res_enr_arr = np.array(res_enr)
+
+    # Filter to rows where we actually have storage data
+    has_storage_oos = has_storage[idx]
+    if has_storage_oos.sum() >= 30:
+        s_dev = pd.Series(storage_dev_oos, index=oos_dates)
+        s_res = pd.Series(res_enr_arr, index=oos_dates)
+        rolling_corr = (
+            s_dev.rolling(_STORAGE_CORR_WINDOW, min_periods=20)
+            .corr(s_res)
+            .dropna()
+        )
+        rolling = [
+            {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
+            for d, v in rolling_corr.items()
+        ]
+        pearson_r = float(round(s_dev.corr(s_res), 3))
+    else:
+        rolling = []
+        pearson_r = None
+
+    # Scatter: storage_dev vs enriched baseline residual (downsample to last 730 days)
+    cutoff = oos_dates.iloc[-1] - pd.Timedelta(days=730)
+    mask_cut = oos_dates >= cutoff
+    scatter = [
+        {
+            "date": d.strftime("%Y-%m-%d"),
+            "storage_dev": round(float(sd_v), 2),
+            "residual": round(float(rv), 1),
+        }
+        for d, sd_v, rv, ok in zip(
+            oos_dates[mask_cut], storage_dev_oos[mask_cut],
+            res_enr_arr[mask_cut], has_storage_oos[mask_cut]
+        )
+        if ok
+    ]
+
+    # Current snapshot: last row with storage data
+    last_idx = df["eu_storage_dev_pct"].last_valid_index()
+    current_storage_dev = None
+    current_residual = None
+    if last_idx is not None and last_idx in set(idx):
+        pos = list(idx).index(last_idx)
+        current_storage_dev = round(float(storage_dev[last_idx]), 2)
+        current_residual = round(float(res_enr[pos]), 1)
+
+    return {
+        "zone": zone,
+        "as_of": dates.iloc[-1].strftime("%Y-%m-%d"),
+        "n_oos": int(len(idx)),
+        "source": source,
+        "aic_delta_mean": aic_delta_mean,
+        "bic_delta_mean": bic_delta_mean,
+        "justified": justified,
+        "pearson_r": pearson_r,
+        "enriched": enriched_stats,
+        "extended": extended_stats,
+        "improvement": improvement,
+        "coef": {
+            "mean": round(m, 4),
+            "std": round(sd, 4),
+            "cv": round(cv, 3) if cv is not None else None,
+        },
+        "rolling_corr": rolling,
+        "scatter": scatter,
+        "current_storage_dev": current_storage_dev,
+        "current_residual": current_residual,
+        "corr_window": _STORAGE_CORR_WINDOW,
+    }
