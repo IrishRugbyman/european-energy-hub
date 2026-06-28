@@ -789,6 +789,199 @@ function FuelSwitchContext({ rows }: { rows: SpreadsDailyPoint[] }) {
   )
 }
 
+// --- Fuel cost decomposition ---
+// Constants (identical to spread_options and market-data transforms)
+const GAS_EFF = 0.49       // CCGT thermal efficiency
+const GAS_EF = 0.364       // tCO2/MWh_el at 49% eff (0.202 tCO2/MWh_th / eff)
+const COAL_EFF = 0.36      // supercritical coal efficiency
+const COAL_EF = 0.96       // tCO2/MWh_el at 36% eff
+
+function computeFuelCosts(r: SpreadsDailyPoint) {
+  const gasFC = r.ttf != null ? r.ttf / GAS_EFF : null
+  const gasCO2 = r.eua != null ? r.eua * GAS_EF : null
+  const coalFC = r.coal_eur_mwh != null ? r.coal_eur_mwh / COAL_EFF : null
+  const coalCO2 = r.eua != null ? r.eua * COAL_EF : null
+  const ccgtMC = gasFC != null && gasCO2 != null ? gasFC + gasCO2 : null
+  const coalMC = coalFC != null && coalCO2 != null ? coalFC + coalCO2 : null
+  return { gasFC, gasCO2, coalFC, coalCO2, ccgtMC, coalMC }
+}
+
+function FuelCostDecompositionChart({ rows, window: w }: { rows: SpreadsDailyPoint[]; window: Window }) {
+  const cutoff = cutoffDate(w)
+  const filtered = cutoff ? rows.filter((r) => r.price_date >= cutoff) : rows
+  const step = Math.max(1, Math.floor(filtered.length / 300))
+
+  const chartData = useMemo(() =>
+    filtered
+      .filter((_, i) => i % step === 0 || i === filtered.length - 1)
+      .map((r) => {
+        const { gasFC, gasCO2, coalFC, coalCO2 } = computeFuelCosts(r)
+        return {
+          date: r.price_date,
+          power: r.power_de,
+          gas_fuel: gasFC != null ? Math.round(gasFC * 10) / 10 : null,
+          gas_carbon: gasCO2 != null ? Math.round(gasCO2 * 10) / 10 : null,
+          coal_fuel: coalFC != null ? Math.round(coalFC * 10) / 10 : null,
+          coal_carbon: coalCO2 != null ? Math.round(coalCO2 * 10) / 10 : null,
+          ccgt_mc: gasFC != null && gasCO2 != null ? Math.round((gasFC + gasCO2) * 10) / 10 : null,
+          coal_mc: coalFC != null && coalCO2 != null ? Math.round((coalFC + coalCO2) * 10) / 10 : null,
+          regime: r.regime_threshold,
+        }
+      }),
+  [filtered, step])
+
+  // Today's snapshot for the breakdown strip
+  const last = filtered.length ? filtered[filtered.length - 1] : null
+  const snap = last ? computeFuelCosts(last) : null
+
+  const [mode, setMode] = useState<'mc' | 'components'>('mc')
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-1">
+        <h2 className="text-sm font-semibold text-foreground">
+          Fuel cost stack - CCGT vs coal marginal cost (DE-LU)
+        </h2>
+        <div className="flex items-center gap-1 ml-auto">
+          <button
+            onClick={() => setMode('mc')}
+            className={`px-2 py-0.5 rounded text-xs ${mode === 'mc' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
+          >
+            Marginal cost
+          </button>
+          <button
+            onClick={() => setMode('components')}
+            className={`px-2 py-0.5 rounded text-xs ${mode === 'components' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'}`}
+          >
+            Components
+          </button>
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground mb-3">
+        {mode === 'mc'
+          ? 'CCGT marginal cost = TTF / 49% + EUA × 0.364. Coal MC = API2 / 36% + EUA × 0.96. CSS = power − CCGT MC; CDS = power − coal MC.'
+          : 'Each marginal cost split into fuel (TTF or coal) and carbon (EUA) components. Carbon cost has grown from ~5 EUR/MWh (2019) to ~25-30 EUR/MWh (2023-24).'}
+      </p>
+
+      {snap && (
+        <div className="flex flex-wrap gap-4 mb-3 text-xs">
+          {/* CCGT breakdown */}
+          <div className="flex items-center gap-2 bg-secondary/40 rounded px-3 py-1.5">
+            <span className="text-muted-foreground">CCGT:</span>
+            <span className="font-mono text-cyan-400">
+              fuel {snap.gasFC?.toFixed(1) ?? '-'}
+            </span>
+            <span className="text-muted-foreground/50">+</span>
+            <span className="font-mono text-blue-400">
+              CO₂ {snap.gasCO2?.toFixed(1) ?? '-'}
+            </span>
+            <span className="text-muted-foreground/50">=</span>
+            <span className="font-semibold font-mono text-foreground">
+              {snap.ccgtMC?.toFixed(1) ?? '-'} EUR/MWh
+            </span>
+          </div>
+          {/* Coal breakdown */}
+          <div className="flex items-center gap-2 bg-secondary/40 rounded px-3 py-1.5">
+            <span className="text-muted-foreground">Coal:</span>
+            <span className="font-mono text-amber-400">
+              fuel {snap.coalFC?.toFixed(1) ?? '-'}
+            </span>
+            <span className="text-muted-foreground/50">+</span>
+            <span className="font-mono text-orange-400">
+              CO₂ {snap.coalCO2?.toFixed(1) ?? '-'}
+            </span>
+            <span className="text-muted-foreground/50">=</span>
+            <span className="font-semibold font-mono text-foreground">
+              {snap.coalMC?.toFixed(1) ?? '-'} EUR/MWh
+            </span>
+          </div>
+          {/* Spreads */}
+          <div className="flex items-center gap-2 bg-secondary/40 rounded px-3 py-1.5">
+            <span className="text-muted-foreground">Power {last?.power_de?.toFixed(0) ?? '-'}</span>
+            <span className="text-muted-foreground/50">|</span>
+            <span className="font-mono text-blue-300">
+              CSS {snap.ccgtMC != null && last?.power_de != null ? (last.power_de - snap.ccgtMC).toFixed(1) : '-'}
+            </span>
+            <span className="font-mono text-amber-300">
+              CDS {snap.coalMC != null && last?.power_de != null ? (last.power_de - snap.coalMC).toFixed(1) : '-'}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <ResponsiveContainer width="100%" height={220}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="date"
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            interval={Math.floor(chartData.length / 6)}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            width={36}
+            label={{ value: '€/MWh', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 9 }}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            formatter={(val: unknown, name: unknown) => {
+              const v = typeof val === 'number' ? val.toFixed(1) : '--'
+              const labels: Record<string, string> = {
+                power: 'DA power', ccgt_mc: 'CCGT MC', coal_mc: 'Coal MC',
+                gas_fuel: 'Gas fuel', gas_carbon: 'Gas CO₂', coal_fuel: 'Coal fuel', coal_carbon: 'Coal CO₂',
+              }
+              return [v + ' €/MWh', labels[String(name)] ?? String(name)]
+            }}
+            labelFormatter={(l) => String(l)}
+          />
+          {mode === 'mc' ? (
+            <>
+              <Line dataKey="power" stroke="#f8fafc" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+              <Line dataKey="ccgt_mc" stroke="#22d3ee" strokeWidth={1.2} dot={false} isAnimationActive={false} strokeDasharray="4 2" />
+              <Line dataKey="coal_mc" stroke="#f59e0b" strokeWidth={1.2} dot={false} isAnimationActive={false} strokeDasharray="4 2" />
+            </>
+          ) : (
+            <>
+              <Line dataKey="power" stroke="#f8fafc" strokeWidth={1.5} dot={false} isAnimationActive={false} />
+              <Line dataKey="gas_fuel" stroke="#22d3ee" strokeWidth={1} dot={false} isAnimationActive={false} />
+              <Line dataKey="gas_carbon" stroke="#3b82f6" strokeWidth={1} dot={false} isAnimationActive={false} />
+              <Line dataKey="coal_fuel" stroke="#f59e0b" strokeWidth={1} dot={false} isAnimationActive={false} />
+              <Line dataKey="coal_carbon" stroke="#f97316" strokeWidth={1} dot={false} isAnimationActive={false} />
+            </>
+          )}
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap items-center gap-4 mt-2 text-[10px] text-muted-foreground">
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5 rounded" style={{ background: '#f8fafc' }} /> DE-LU DA
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5 rounded" style={{ background: '#22d3ee' }} />
+          {mode === 'mc' ? 'CCGT MC' : 'Gas fuel cost'}
+        </span>
+        <span className="flex items-center gap-1">
+          <span className="inline-block w-4 h-0.5 rounded" style={{ background: mode === 'mc' ? '#f59e0b' : '#3b82f6' }} />
+          {mode === 'mc' ? 'Coal MC' : 'Gas CO₂ cost'}
+        </span>
+        {mode === 'components' && (
+          <>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-4 h-0.5 rounded" style={{ background: '#f59e0b' }} /> Coal fuel cost
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-4 h-0.5 rounded" style={{ background: '#f97316' }} /> Coal CO₂ cost
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 type SpreadField = 'css' | 'cds' | 'fss'
@@ -1031,6 +1224,8 @@ function SpreadsDashboard() {
             </div>
             <SpreadChart rows={rows} window={window} showDisruption={showDisruption} />
           </div>
+
+          <FuelCostDecompositionChart rows={rows} window={window} />
 
           <MultiZoneSection window={window} />
 
