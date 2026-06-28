@@ -19,7 +19,7 @@ import {
   YAxis,
 } from 'recharts'
 import { X } from 'lucide-react'
-import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow, type GasPriceScatterRow, type LngLatestRow, type LngTrendPoint } from '@/lib/api'
+import { api, type StorageLatestRow, type GasPaceStats, type CountryPaceRow, type StorageCountryRow, type GasPriceScatterRow, type LngLatestRow, type LngTrendPoint, type StorageAnalogResponse, type StorageAnalogYear } from '@/lib/api'
 import { GasMap, type GasColorMode } from '@/components/gas/GasMap'
 import { CountryPanel } from '@/components/gas/CountryPanel'
 import { GasFlowPanel } from '@/components/gas/GasFlowPanel'
@@ -912,6 +912,7 @@ function StorageRankings({
             <StorageCountryCompare rows={compareData.rows} />
           )}
           <StoragePriceScatter />
+          <StorageAnalogSection />
         </div>
       ) : (
         <>
@@ -1087,6 +1088,286 @@ const LNG_COUNTRY_NAMES: Record<string, string> = {
   PL: 'Poland',
   PT: 'Portugal',
 }
+
+const ANALOG_COLORS: Record<number, string> = {
+  2018: '#60a5fa',
+  2017: '#f472b6',
+  2021: '#34d399',
+  2025: '#a78bfa',
+  2022: '#fbbf24',
+  2023: '#fb923c',
+  2024: '#38bdf8',
+}
+
+const CURRENT_COLOR = '#f97316'
+
+function StorageAnalogSection() {
+  const { data, isLoading } = useQuery<StorageAnalogResponse>({
+    queryKey: ['gas-storage-analogs'],
+    queryFn: api.gasStorageAnalogs,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  // Build recharts data: x = doy, one key per year + seasonal_median
+  const chartData = useMemo(() => {
+    if (!data) return []
+    const byDoy: Record<number, Record<string, number>> = {}
+
+    // Seasonal median
+    for (const pt of data.seasonal_median) {
+      if (!byDoy[pt.doy]) byDoy[pt.doy] = {}
+      byDoy[pt.doy]['5yr_median'] = pt.fill_pct
+    }
+
+    // Each analog year (including current)
+    for (const ay of data.analog_years) {
+      for (const pt of ay.trajectory) {
+        if (!byDoy[pt.doy]) byDoy[pt.doy] = {}
+        byDoy[pt.doy][String(ay.year)] = pt.fill_pct
+      }
+    }
+
+    return Object.entries(byDoy)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([doy, vals]) => ({ doy: Number(doy), ...vals }))
+  }, [data])
+
+  // Find the current day-of-year position on the x-axis
+  const todayDoy = useMemo(() => {
+    if (!data) return null
+    const d = new Date(data.current_date)
+    const start = new Date(d.getFullYear(), 0, 0)
+    return Math.floor((d.getTime() - start.getTime()) / 86400000)
+  }, [data])
+
+  const analogYears = data?.analog_years.filter(ay => ay.year !== data.current_year) ?? []
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mt-4">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">
+          EU Gas Storage: Historical Analog Years
+        </h2>
+        {data && (
+          <span className="text-xs text-muted-foreground">
+            Current fill {data.current_fill.toFixed(1)}% on {data.current_date} vs top analogs
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading analog year data...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Summary: current vs analogs and implied Nov 1 */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Current fill</p>
+              <p className="text-sm font-semibold text-orange-400">{data.current_fill.toFixed(1)}%</p>
+              <p className="text-[10px] text-muted-foreground">{data.current_date}</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Closest analog</p>
+              <p className="text-sm font-semibold" style={{ color: ANALOG_COLORS[analogYears[0]?.year] ?? '#94a3b8' }}>
+                {analogYears[0]?.year ?? '--'}
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {analogYears[0] ? `${analogYears[0].fill_on_date.toFixed(1)}% (${analogYears[0].delta_pp > 0 ? '+' : ''}${analogYears[0].delta_pp.toFixed(1)}pp)` : ''}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Implied Nov 1 range</p>
+              {data.implied_nov1_min != null && data.implied_nov1_max != null ? (
+                <p className="text-sm font-semibold text-foreground">
+                  {data.implied_nov1_min.toFixed(0)}-{data.implied_nov1_max.toFixed(0)}%
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">--</p>
+              )}
+              <p className="text-[10px] text-muted-foreground">from analog outcomes</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Analog median Nov 1</p>
+              {data.implied_nov1_median != null ? (
+                <p className={`text-sm font-semibold ${data.implied_nov1_median < 80 ? 'text-amber-400' : 'text-green-400'}`}>
+                  {data.implied_nov1_median.toFixed(1)}%
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">--</p>
+              )}
+              <p className="text-[10px] text-muted-foreground">
+                {data.implied_nov1_median != null && data.implied_nov1_median < 75
+                  ? 'Below 75% - supply risk'
+                  : data.implied_nov1_median != null && data.implied_nov1_median >= 80
+                  ? 'Above 80% - comfortable'
+                  : 'Moderate supply adequacy'}
+              </p>
+            </div>
+          </div>
+
+          {/* Trajectory chart */}
+          {chartData.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                EU working gas fill % by day-of-year: current {data.current_year} (orange) vs closest analog years.
+                Injection season: May 1 to Nov 1. Dashed grey = 5yr seasonal median.
+              </p>
+              <ResponsiveContainer width="100%" height={200}>
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis
+                    dataKey="doy"
+                    tick={{ fontSize: 9, fill: '#64748b' }}
+                    tickLine={false}
+                    tickFormatter={(doy: number) => {
+                      const now = new Date(2024, 0, 1)
+                      now.setDate(now.getDate() + doy - 1)
+                      return now.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })
+                    }}
+                    minTickGap={40}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 9, fill: '#64748b' }}
+                    tickLine={false}
+                    tickFormatter={(v) => `${v.toFixed(0)}%`}
+                    domain={['auto', 'auto']}
+                  />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v) => (typeof v === 'number' ? `${v.toFixed(1)}%` : v)}
+                    labelStyle={{ color: '#94a3b8' }}
+                    labelFormatter={(doy) => {
+                      const n = Number(doy)
+                      const d = new Date(2024, 0, 1)
+                      d.setDate(d.getDate() + n - 1)
+                      return `DOY ${n} (${d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' })})`
+                    }}
+                  />
+                  {/* 5yr seasonal median - dashed */}
+                  <Line
+                    type="monotone"
+                    dataKey="5yr_median"
+                    stroke="#64748b"
+                    strokeDasharray="4 2"
+                    dot={false}
+                    strokeWidth={1.2}
+                    name="5yr median"
+                  />
+                  {/* Current year - bold orange */}
+                  <Line
+                    type="monotone"
+                    dataKey={String(data.current_year)}
+                    stroke={CURRENT_COLOR}
+                    dot={false}
+                    strokeWidth={2.5}
+                    name={`${data.current_year} (current)`}
+                  />
+                  {/* Analog years */}
+                  {analogYears.map((ay: StorageAnalogYear) => (
+                    <Line
+                      key={ay.year}
+                      type="monotone"
+                      dataKey={String(ay.year)}
+                      stroke={ANALOG_COLORS[ay.year] ?? '#94a3b8'}
+                      dot={false}
+                      strokeWidth={1.2}
+                      strokeOpacity={0.8}
+                      name={`${ay.year} (${ay.delta_pp > 0 ? '+' : ''}${ay.delta_pp.toFixed(1)}pp)`}
+                    />
+                  ))}
+                  {/* Today marker */}
+                  {todayDoy != null && (
+                    <ReferenceLine
+                      x={todayDoy}
+                      stroke="#f97316"
+                      strokeDasharray="3 3"
+                      strokeOpacity={0.6}
+                      label={{ value: 'Today', fill: '#f97316', fontSize: 8, position: 'insideTopLeft' }}
+                    />
+                  )}
+                  {/* Nov 1 = DOY ~305 */}
+                  <ReferenceLine
+                    x={305}
+                    stroke="#64748b"
+                    strokeDasharray="2 2"
+                    strokeOpacity={0.5}
+                    label={{ value: 'Nov 1', fill: '#64748b', fontSize: 8, position: 'insideTopRight' }}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Analog year outcome table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Year</th>
+                  <th className="text-right">Fill on date</th>
+                  <th className="text-right">Delta from 2026</th>
+                  <th className="text-right">Nov 1 fill</th>
+                  <th className="text-right">Outcome</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.analog_years.map((ay: StorageAnalogYear) => (
+                  <tr key={ay.year} className="border-b border-border/30">
+                    <td
+                      className="py-1 font-semibold"
+                      style={{ color: ay.year === data.current_year ? CURRENT_COLOR : (ANALOG_COLORS[ay.year] ?? '#94a3b8') }}
+                    >
+                      {ay.year}{ay.year === data.current_year ? ' (current)' : ''}
+                    </td>
+                    <td className="text-right text-foreground">{ay.fill_on_date.toFixed(1)}%</td>
+                    <td className="text-right text-muted-foreground">
+                      {ay.year === data.current_year
+                        ? '--'
+                        : `${ay.delta_pp > 0 ? '+' : ''}${ay.delta_pp.toFixed(1)}pp`}
+                    </td>
+                    <td className="text-right font-semibold">
+                      {ay.nov1_fill != null ? (
+                        <span className={ay.nov1_fill >= 80 ? 'text-green-400' : ay.nov1_fill >= 75 ? 'text-amber-400' : 'text-red-400'}>
+                          {ay.nov1_fill.toFixed(1)}%
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">pending</span>
+                      )}
+                    </td>
+                    <td className="text-right text-muted-foreground">
+                      {ay.nov1_fill == null
+                        ? '--'
+                        : ay.nov1_fill >= 85
+                        ? 'Comfortable'
+                        : ay.nov1_fill >= 80
+                        ? 'Adequate'
+                        : ay.nov1_fill >= 75
+                        ? 'Tight'
+                        : 'Critical'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Analog years selected by proximity of EU fill % on {data.current_date} to the same
+            calendar date in prior years. The trajectory chart shows each analog year's injection
+            season path (May 1 to Nov 1). Implied Nov 1 range is the actual outcome spread from
+            analog years - it does not account for structural differences in supply (LNG imports,
+            pipeline flows) or demand (weather, industrial activity) between years. The 2021 analog
+            ({analogYears.find(ay => ay.year === 2021)?.nov1_fill?.toFixed(1) ?? '--'}% Nov 1) is
+            cautionary: a similar starting fill was followed by the gas supply crisis of winter
+            2021-22 when Russian pipeline deliveries began declining. Current EU LNG import
+            capacity (higher than 2021 after terminal buildout) reduces this tail risk.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 
 function LngPanel({
   rows,

@@ -1222,6 +1222,33 @@ export const api = {
   pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
   pricesEuaSeasonality: () => get<EuaSeasonalityResponse>('/prices/eua-seasonality'),
   pricesUsGasStorage: () => get<UsStorageResponse>('/prices/us-gas-storage'),
+  gasStorageAnalogs: () => get<StorageAnalogResponse>('/gas/storage-analogs'),
+}
+
+// Phase 76: EU gas storage analog year comparison
+export interface AnalogTrajectoryPoint {
+  gas_day: string
+  doy: number
+  fill_pct: number
+}
+
+export interface StorageAnalogYear {
+  year: number
+  fill_on_date: number
+  delta_pp: number
+  nov1_fill: number | null
+  trajectory: AnalogTrajectoryPoint[]
+}
+
+export interface StorageAnalogResponse {
+  current_year: number
+  current_fill: number
+  current_date: string
+  analog_years: StorageAnalogYear[]
+  implied_nov1_min: number | null
+  implied_nov1_max: number | null
+  implied_nov1_median: number | null
+  seasonal_median: AnalogTrajectoryPoint[]
 }
 
 // Phase 75: US gas storage

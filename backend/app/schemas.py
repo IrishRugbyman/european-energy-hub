@@ -2044,6 +2044,32 @@ class StorageTtfFundamentalResponse(BaseModel):
     corr_window: int
 
 
+# Phase 76: EU gas storage historical analog year comparison
+class AnalogTrajectoryPoint(BaseModel):
+    gas_day: str
+    doy: int
+    fill_pct: float
+
+
+class StorageAnalogYear(BaseModel):
+    year: int
+    fill_on_date: float
+    delta_pp: float
+    nov1_fill: float | None
+    trajectory: list[AnalogTrajectoryPoint]
+
+
+class StorageAnalogResponse(BaseModel):
+    current_year: int
+    current_fill: float
+    current_date: str
+    analog_years: list[StorageAnalogYear]
+    implied_nov1_min: float | None
+    implied_nov1_max: float | None
+    implied_nov1_median: float | None
+    seasonal_median: list[AnalogTrajectoryPoint]
+
+
 # Phase 68: Zone signal correlation heatmap
 class ZoneSignalCorrPoint(BaseModel):
     date: str

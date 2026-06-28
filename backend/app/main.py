@@ -272,6 +272,9 @@ from .schemas import (
     UsStorageRegionPoint,
     UsStorageHistPoint,
     UsStorageResponse,
+    AnalogTrajectoryPoint,
+    StorageAnalogYear,
+    StorageAnalogResponse,
 )
 
 
@@ -1052,6 +1055,169 @@ def gas_lng_country(cc: str):
     ]
 
     return LngCountryResponse(country=cc, latest=latest, history=history, seasonal=seasonal, trend=trend)
+
+
+@app.get("/api/gas/storage-analogs", response_model=StorageAnalogResponse)
+def gas_storage_analogs():
+    """EU gas storage historical analog year comparison.
+
+    Finds the 4 closest historical years by fill % on today's calendar date,
+    returns their full injection season trajectories (May 1 to Nov 1) and
+    the actual Nov 1 fill for each analog year.
+    """
+    _rate_limited()
+
+    def _compute():
+        import math
+        from datetime import date as _date
+
+        today = _date.today()
+        cal_month = today.month
+        cal_day = today.day
+
+        # Latest EU fill for current year
+        latest_df = db.query(
+            "SELECT gas_day::VARCHAR AS gas_day, full_pct FROM storage_history"
+            " WHERE country = 'EU' ORDER BY gas_day DESC LIMIT 1"
+        )
+        if latest_df is None or latest_df.empty:
+            raise HTTPException(status_code=503, detail="EU storage data unavailable")
+
+        current_date = str(latest_df["gas_day"].iloc[0])
+        current_fill = float(latest_df["full_pct"].iloc[0])
+        current_year = int(current_date[:4])
+
+        # Fill % on same calendar date in each prior year
+        same_day_df = db.query(
+            "SELECT YEAR(gas_day) AS year, AVG(full_pct) AS fill_pct"
+            " FROM storage_history"
+            " WHERE country = 'EU'"
+            "   AND MONTH(gas_day) = ? AND DAY(gas_day) = ?"
+            "   AND YEAR(gas_day) < ?"
+            " GROUP BY YEAR(gas_day)"
+            " ORDER BY ABS(AVG(full_pct) - ?) ASC"
+            " LIMIT 4",
+            [cal_month, cal_day, current_year, current_fill],
+        )
+        if same_day_df is None or same_day_df.empty:
+            raise HTTPException(status_code=503, detail="Insufficient historical storage data")
+
+        analog_year_ints = same_day_df["year"].tolist()
+        all_years = [current_year] + analog_year_ints
+
+        # Full injection season trajectories (May 1 - Nov 1, every 7 days)
+        years_placeholder = ", ".join(str(y) for y in all_years)
+        traj_df = db.query(
+            f"SELECT YEAR(gas_day) AS year, gas_day::VARCHAR AS gas_day,"
+            f"       DAYOFYEAR(gas_day) AS doy, full_pct"
+            f" FROM storage_history"
+            f" WHERE country = 'EU'"
+            f"   AND YEAR(gas_day) IN ({years_placeholder})"
+            f"   AND ("
+            f"     (MONTH(gas_day) > 5 OR (MONTH(gas_day) = 5 AND DAY(gas_day) >= 1))"
+            f"     AND (MONTH(gas_day) < 11 OR (MONTH(gas_day) = 11 AND DAY(gas_day) <= 1))"
+            f"   )"
+            f"   AND DAYOFYEAR(gas_day) % 7 = 0"
+            f" ORDER BY year, gas_day"
+        )
+
+        # Nov 1 fill per year
+        nov1_df = db.query(
+            f"SELECT YEAR(gas_day) AS year, AVG(full_pct) AS fill_pct"
+            f" FROM storage_history"
+            f" WHERE country = 'EU'"
+            f"   AND YEAR(gas_day) IN ({years_placeholder})"
+            f"   AND MONTH(gas_day) = 11 AND DAY(gas_day) = 1"
+            f" GROUP BY YEAR(gas_day)"
+        )
+        nov1_by_year: dict[int, float] = {}
+        if nov1_df is not None:
+            for row in nov1_df.itertuples():
+                nov1_by_year[int(row.year)] = float(row.fill_pct)
+
+        # 5yr seasonal median trajectory (May 1 - Nov 1, weekly DOY points)
+        seasonal_df = db.query(
+            "SELECT DAYOFYEAR(gas_day) AS doy, MEDIAN(full_pct) AS fill_pct"
+            " FROM storage_history"
+            " WHERE country = 'EU'"
+            "   AND YEAR(gas_day) BETWEEN ? AND ?"
+            "   AND ("
+            "     (MONTH(gas_day) > 5 OR (MONTH(gas_day) = 5 AND DAY(gas_day) >= 1))"
+            "     AND (MONTH(gas_day) < 11 OR (MONTH(gas_day) = 11 AND DAY(gas_day) <= 1))"
+            "   )"
+            "   AND DAYOFYEAR(gas_day) % 7 = 0"
+            " GROUP BY DAYOFYEAR(gas_day)"
+            " ORDER BY doy",
+            [current_year - 5, current_year - 1],
+        )
+
+        # Group trajectory rows by year
+        traj_by_year: dict[int, list[AnalogTrajectoryPoint]] = {}
+        if traj_df is not None:
+            for row in traj_df.itertuples():
+                y = int(row.year)
+                if y not in traj_by_year:
+                    traj_by_year[y] = []
+                traj_by_year[y].append(
+                    AnalogTrajectoryPoint(
+                        gas_day=str(row.gas_day),
+                        doy=int(row.doy),
+                        fill_pct=float(row.full_pct),
+                    )
+                )
+
+        analog_years_out: list[StorageAnalogYear] = []
+
+        # Current year first
+        analog_years_out.append(
+            StorageAnalogYear(
+                year=current_year,
+                fill_on_date=current_fill,
+                delta_pp=0.0,
+                nov1_fill=nov1_by_year.get(current_year),
+                trajectory=traj_by_year.get(current_year, []),
+            )
+        )
+
+        nov1_fills: list[float] = []
+        for row in same_day_df.itertuples():
+            y = int(row.year)
+            nov1 = nov1_by_year.get(y)
+            if nov1 is not None:
+                nov1_fills.append(nov1)
+            analog_years_out.append(
+                StorageAnalogYear(
+                    year=y,
+                    fill_on_date=float(row.fill_pct),
+                    delta_pp=round(float(row.fill_pct) - current_fill, 2),
+                    nov1_fill=nov1,
+                    trajectory=traj_by_year.get(y, []),
+                )
+            )
+
+        seasonal_pts: list[AnalogTrajectoryPoint] = []
+        if seasonal_df is not None:
+            for row in seasonal_df.itertuples():
+                seasonal_pts.append(
+                    AnalogTrajectoryPoint(
+                        gas_day="",
+                        doy=int(row.doy),
+                        fill_pct=float(row.fill_pct),
+                    )
+                )
+
+        return StorageAnalogResponse(
+            current_year=current_year,
+            current_fill=current_fill,
+            current_date=current_date,
+            analog_years=analog_years_out,
+            implied_nov1_min=min(nov1_fills) if nov1_fills else None,
+            implied_nov1_max=max(nov1_fills) if nov1_fills else None,
+            implied_nov1_median=sorted(nov1_fills)[len(nov1_fills) // 2] if nov1_fills else None,
+            seasonal_median=seasonal_pts,
+        )
+
+    return _cached_compute("gas_storage_analogs", _compute, ttl=3600)
 
 
 @app.get("/api/generation/nuclear-tracker", response_model=NuclearTrackerResponse)

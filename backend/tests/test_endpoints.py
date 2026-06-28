@@ -1823,3 +1823,35 @@ def test_spreads_signal_posture(client):
     # drought and fade counts must add up to total zones
     total = data["n_fade"] + data["n_trend"] + data["n_neutral"]
     assert total == len(data["zones"])
+
+
+def test_gas_storage_analogs(client):
+    r = client.get("/api/gas/storage-analogs")
+    assert r.status_code == 200
+    data = r.json()
+    assert "current_year" in data and isinstance(data["current_year"], int)
+    assert "current_fill" in data and 0 < data["current_fill"] < 100
+    assert "current_date" in data
+    # analog_years: first entry is always current year; then up to 4 analog years
+    assert len(data["analog_years"]) >= 1
+    current = data["analog_years"][0]
+    assert current["year"] == data["current_year"]
+    assert current["delta_pp"] == 0.0
+    # Each analog year has required fields
+    for ay in data["analog_years"]:
+        assert "year" in ay
+        assert "fill_on_date" in ay
+        assert "delta_pp" in ay
+        assert isinstance(ay["trajectory"], list)
+    # Analog trajectories have gas_day and fill_pct
+    for ay in data["analog_years"]:
+        for pt in ay["trajectory"]:
+            assert "doy" in pt
+            assert "fill_pct" in pt
+            assert 0 <= pt["fill_pct"] <= 100
+    # seasonal_median has trajectory points
+    assert isinstance(data["seasonal_median"], list)
+    # implied range fields are nullable (fixture may have limited history)
+    assert "implied_nov1_min" in data
+    assert "implied_nov1_max" in data
+    assert "implied_nov1_median" in data
