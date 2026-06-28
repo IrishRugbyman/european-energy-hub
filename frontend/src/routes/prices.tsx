@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -961,6 +961,166 @@ function PowerMonthlyHeatmap({ data }: { data: PowerMonthlyResponse }) {
   )
 }
 
+function FuelSwitchingEuaSection() {
+  const { data, isLoading } = useQuery<FuelSwitchingEuaResponse>({
+    queryKey: ['prices-fuel-switching-eua'],
+    queryFn: api.pricesFuelSwitchingEua,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const rows = data?.rows?.slice(-730) ?? []  // 2 years max for chart readability
+
+  const regimeColor = (regime: string) =>
+    regime === 'gas' ? '#4ade80' : regime === 'coal' ? '#f87171' : '#facc15'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Fuel-Switching EUA: Carbon Price Required to Make Gas the Marginal Fuel
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 70 - EUA level where CSS = CDS (gas and coal equally competitive)
+        </span>
+        {data && (
+          <span
+            className="ml-auto text-xs font-semibold px-2 py-0.5 rounded border"
+            style={{
+              color: regimeColor(data.current_regime),
+              borderColor: regimeColor(data.current_regime) + '60',
+              background: regimeColor(data.current_regime) + '15',
+            }}
+          >
+            {data.current_regime === 'gas' ? 'Gas marginal' : data.current_regime === 'coal' ? 'Coal marginal' : 'Transition zone'}
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading fuel-switching analysis...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">EUA actual</p>
+              <p className="text-sm font-semibold text-foreground">{data.current_eua_actual.toFixed(1)} EUR/t</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">EUA switching price</p>
+              <p className="text-sm font-semibold text-foreground">{data.current_eua_switching.toFixed(1)} EUR/t</p>
+              <p className="text-[10px] text-muted-foreground">CSS = CDS at this level</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Gap to fuel switch</p>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: data.eua_gap_to_switch > 0 ? '#f87171' : '#4ade80' }}
+              >
+                {data.eua_gap_to_switch > 0 ? '+' : ''}{data.eua_gap_to_switch.toFixed(1)} EUR/t
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {data.eua_gap_to_switch > 0 ? 'EUA needs to rise to switch to gas marginal' : 'Gas would be marginal now if EUA rose'}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Last 90 days</p>
+              <p className="text-sm font-semibold text-foreground">
+                <span className="text-green-400">{data.days_gas_regime}d gas</span>
+                {' / '}
+                <span className="text-red-400">{data.days_coal_regime}d coal</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Time series chart: EUA actual vs EUA switching */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              EUA actual (white) vs fuel-switching equilibrium price (dashed green) - last 2 years.
+              When actual EUA is above the switching price: gas marginal. When below: coal marginal.
+            </p>
+            <ResponsiveContainer width="100%" height={180}>
+              <ComposedChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  interval={Math.floor(rows.length / 6)} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  tickFormatter={(v) => `${v}`}
+                  label={{ value: 'EUR/t', angle: -90, position: 'insideLeft', offset: 18, fontSize: 9, fill: '#64748b' }} />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v, name) => [typeof v === 'number' ? `${v.toFixed(1)} EUR/t` : v, name]}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="eua_switching"
+                  stroke="#4ade80"
+                  strokeDasharray="4 3"
+                  strokeWidth={1.5}
+                  dot={false}
+                  name="EUA switching price"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="eua_actual"
+                  stroke="#f1f5f9"
+                  strokeWidth={1.5}
+                  dot={false}
+                  name="EUA actual"
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Premium/discount bar */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              EUA premium to fuel-switching price (EUR/t) - positive = gas marginal, negative = coal marginal
+            </p>
+            <ResponsiveContainer width="100%" height={100}>
+              <ComposedChart data={rows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  interval={Math.floor(rows.length / 6)} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  tickFormatter={(v) => `${v}`} />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v) => [typeof v === 'number' ? `${v.toFixed(1)} EUR/t` : v, 'EUA premium']}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <ReferenceLine y={0} stroke="#64748b" />
+                <Bar dataKey="eua_premium" name="EUA premium" radius={[0, 0, 0, 0]}>
+                  {rows.map((r: FuelSwitchingEuaPoint, index) => (
+                    <Cell key={index} fill={r.eua_premium > 0 ? '#4ade80' : '#f87171'} />
+                  ))}
+                </Bar>
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The fuel-switching EUA price (CSS = CDS equilibrium) is derived from the
+            instantaneous gas and coal fuel costs:
+            EUA_switch = (TTF / 0.49 - coal_EUR/MWh / 0.36) / 0.596.
+            When actual EUA is above this level, gas-fired CCGTs are cheaper to run than
+            coal plants on a total-cost basis (carbon-inclusive), making gas the marginal
+            fuel that sets power prices. When EUA is below the switching price, coal is
+            cheaper and sets the price - as is currently the case (switching price: {data.current_eua_switching.toFixed(1)},
+            actual: {data.current_eua_actual.toFixed(1)} EUR/t, gap = {data.eua_gap_to_switch.toFixed(1)} EUR/t).
+            This metric directly determines whether power prices are anchored to TTF or
+            coal, which is the primary regime variable for the spark and dark spread strategy.
+            In {data.days_coal_regime} of the last 90 days, coal has been the cheaper fuel;
+            gas has been cheaper in only {data.days_gas_regime} days.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 const SEASON_COLORS: Record<string, string> = {
   winter: '#60a5fa',
   spring: '#4ade80',
@@ -1285,6 +1445,7 @@ function PricesDashboard() {
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />
           {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
+          <FuelSwitchingEuaSection />
           <StorageTtfFundamentalSection />
         </div>
       )}

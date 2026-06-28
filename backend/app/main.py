@@ -257,6 +257,8 @@ from .schemas import (
     StorageTtfScatterPoint,
     StorageTtfRollingCorrPoint,
     StorageTtfFundamentalResponse,
+    FuelSwitchingEuaPoint,
+    FuelSwitchingEuaResponse,
 )
 
 
@@ -2017,7 +2019,7 @@ def prices_storage_ttf():
     cur_pred = ols_alpha + ols_beta * cur_dev
     cur_resid = cur_ttf - cur_pred
 
-    return StorageTtfFundamentalResponse(
+    return StorageTtfFundamentalResponse(  # noqa: RET504
         scatter=scatter,
         rolling_corr=rolling_corr,
         full_pearson=round(full_pearson, 3),
@@ -2029,6 +2031,76 @@ def prices_storage_ttf():
         current_predicted_ttf=round(cur_pred, 2),
         current_residual=round(cur_resid, 2),
         corr_window=CORR_WINDOW,
+    )
+
+
+@app.get("/api/prices/fuel-switching-eua", response_model=FuelSwitchingEuaResponse)
+def prices_fuel_switching_eua():
+    """Fuel-switching EUA indicator: the carbon price at which gas and coal are equally competitive.
+
+    CSS = CDS (gas and coal equally economic) when:
+        TTF/GAS_EFF + EUA*GAS_EF = coal_eur_mwh/COAL_EFF + EUA*COAL_EF
+        EUA_switch = (TTF/0.49 - coal_eur_mwh/0.36) / (COAL_EF - GAS_EF)
+                   = (TTF/0.49 - coal_eur_mwh/0.36) / 0.596
+
+    - EUA_actual > EUA_switching: gas is cheaper -> gas marginal (CSS > CDS, FSS > 0)
+    - EUA_actual < EUA_switching: coal is cheaper -> coal marginal (CSS < CDS, FSS < 0)
+    - The gap (EUA_actual - EUA_switching) is the "EUA premium to fuel switch" and is the
+      most direct expression of the EU power sector's fuel-mix regime in carbon-price space.
+
+    Uses pre-computed coal_eur_mwh from spreads_daily (includes EUR/USD FX correction).
+    Returns time series from 2021-10 (when EUA data starts) to present.
+    """
+    _rate_limited()
+    df = db.query("""
+        SELECT
+            price_date,
+            eua,
+            (ttf / 0.49 - coal_eur_mwh / 0.36) / 0.596 AS eua_switching,
+            eua - (ttf / 0.49 - coal_eur_mwh / 0.36) / 0.596 AS eua_premium
+        FROM spreads_daily
+        WHERE ttf IS NOT NULL
+          AND eua IS NOT NULL
+          AND coal_eur_mwh IS NOT NULL
+          AND coal_eur_mwh > 0
+        ORDER BY price_date
+    """)
+    if df is None or len(df) < 10:
+        raise HTTPException(status_code=503, detail="Insufficient data for fuel-switching EUA")
+
+    def _regime(premium: float) -> str:
+        if premium > 2:
+            return "gas"
+        if premium < -2:
+            return "coal"
+        return "transition"
+
+    rows = [
+        FuelSwitchingEuaPoint(
+            date=str(r.price_date),
+            eua_actual=round(float(r.eua), 2),
+            eua_switching=round(float(r.eua_switching), 2),
+            eua_premium=round(float(r.eua_premium), 2),
+            regime=_regime(float(r.eua_premium)),
+        )
+        for r in df.itertuples()
+        if _float(r.eua_switching) is not None
+    ]
+
+    latest = rows[-1]
+    last_90 = rows[-90:] if len(rows) >= 90 else rows
+    days_gas = sum(1 for r in last_90 if r.regime == "gas")
+    days_coal = sum(1 for r in last_90 if r.regime == "coal")
+
+    return FuelSwitchingEuaResponse(
+        rows=rows,
+        current_eua_actual=latest.eua_actual,
+        current_eua_switching=latest.eua_switching,
+        current_eua_premium=latest.eua_premium,
+        current_regime=latest.regime,
+        eua_gap_to_switch=round(latest.eua_switching - latest.eua_actual, 2),
+        days_gas_regime=days_gas,
+        days_coal_regime=days_coal,
     )
 
 

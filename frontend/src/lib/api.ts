@@ -1216,6 +1216,27 @@ export const api = {
   spreadsLoadErrorFactorTest: (zone?: string) => get<LoadErrorFactorTestResponse>(`/spreads/load-error-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsZoneSignalCorrelations: () => get<ZoneSignalCorrelationResponse>('/spreads/zone-signal-correlations'),
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
+  pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
+}
+
+// Phase 70: Fuel-switching EUA indicator
+export interface FuelSwitchingEuaPoint {
+  date: string
+  eua_actual: number
+  eua_switching: number
+  eua_premium: number
+  regime: string
+}
+
+export interface FuelSwitchingEuaResponse {
+  rows: FuelSwitchingEuaPoint[]
+  current_eua_actual: number
+  current_eua_switching: number
+  current_eua_premium: number
+  current_regime: string
+  eua_gap_to_switch: number
+  days_gas_regime: number
+  days_coal_regime: number
 }
 
 // Phase 69: TTF-storage fundamental scatter

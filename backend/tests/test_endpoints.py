@@ -1634,6 +1634,28 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_prices_fuel_switching_eua(client):
+    r = client.get("/api/prices/fuel-switching-eua")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data and len(data["rows"]) > 10
+    pt = data["rows"][0]
+    assert "date" in pt and "eua_actual" in pt and "eua_switching" in pt
+    assert "eua_premium" in pt and "regime" in pt
+    assert pt["regime"] in ("gas", "coal", "transition")
+    # eua_premium = eua_actual - eua_switching
+    assert abs(pt["eua_premium"] - (pt["eua_actual"] - pt["eua_switching"])) < 0.01
+    assert isinstance(data["current_eua_actual"], float) and data["current_eua_actual"] > 0
+    assert isinstance(data["current_eua_switching"], float)
+    assert isinstance(data["current_eua_premium"], float)
+    assert data["current_regime"] in ("gas", "coal", "transition")
+    assert isinstance(data["eua_gap_to_switch"], float)
+    assert isinstance(data["days_gas_regime"], int)
+    assert isinstance(data["days_coal_regime"], int)
+    # gas + coal days <= 90
+    assert data["days_gas_regime"] + data["days_coal_regime"] <= 90
+
+
 def test_prices_storage_ttf(client):
     r = client.get("/api/prices/storage-ttf")
     assert r.status_code == 200

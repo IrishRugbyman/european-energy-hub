@@ -1874,6 +1874,26 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 70: Fuel-switching EUA indicator
+class FuelSwitchingEuaPoint(BaseModel):
+    date: str
+    eua_actual: float
+    eua_switching: float
+    eua_premium: float   # eua_actual - eua_switching; >0 = gas marginal, <0 = coal marginal
+    regime: str          # 'gas' | 'coal' | 'transition'
+
+
+class FuelSwitchingEuaResponse(BaseModel):
+    rows: list[FuelSwitchingEuaPoint]
+    current_eua_actual: float
+    current_eua_switching: float
+    current_eua_premium: float
+    current_regime: str
+    eua_gap_to_switch: float   # how many EUR/t needed to change regime
+    days_gas_regime: int       # days out of last 90 that EUA was above switching price
+    days_coal_regime: int
+
+
 # Phase 69: TTF-storage fundamental scatter
 class StorageTtfScatterPoint(BaseModel):
     date: str
