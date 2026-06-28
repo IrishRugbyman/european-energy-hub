@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 77: EU power price variance decomposition (factor attribution) on /spreads
+
+**Built:** `GET /api/spreads/price-variance-decomp` returning `PriceVarianceDecompResponse`. Uses Pratt decomposition (att_i = beta_i * cov(Xi, Y) / var(Y)) which partitions R-squared exactly across 4 fundamental factors + residual per zone. Frontend: `PriceVarianceDecompSection` on /spreads with stacked bar chart and attribution table with dominant-driver annotation. 125 tests.
+
+**Finding (last 365 days):** DE-LU is 64% wind-driven (R2=72%) - a renewable price maker where wind dispatch sets DA clearing. IT-NORD is 53% TTF-driven (R2=67%) - a gas price maker where CCGTs are typically marginal. FR has 52% residual (R2=48%) due to nuclear availability being unmodeled. BE/NL show balanced wind/residual attribution at 50% R2. This structural split directly explains the gas-to-power pass-through coefficient difference: IT-NORD's high TTF beta (1.5) aligns with its 53% gas attribution; DE-LU's low beta (0.84) aligns with 64% wind domination making gas a secondary factor.
+
 ## 2026-06-28 - Phase 76: EU gas storage historical analog year comparison on /gas
 
 **Built:** `GET /api/gas/storage-analogs` returning `StorageAnalogResponse`. Finds the 4 closest historical years by EU fill % on the same calendar date, returns their injection season trajectories (May 1 to Nov 1, weekly points) and the actual Nov 1 fill for each analog. Frontend: `StorageAnalogSection` on /gas with stat cards, multi-year LineChart (current year bold orange, analogs colored, 5yr median dashed), and analog outcome table with comfort classification. 124 tests.
