@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 79: TTF winter premium history (gas-year seasonal spread) on /prices
+
+**Built:** `GET /api/prices/ttf-winter-premium` returning `TtfWinterPremiumResponse` with per-year winter/summer averages and premium on a gas-year basis (Nov-Mar vs Apr-Oct). Frontend: `TtfWinterPremiumSection` with 3 stat cards (pre-crisis baseline, current year, crisis range), bar chart with sign-colored cells and pre-crisis reference line, and a detail table with event narrative annotations. 127 tests.
+
+**Findings (gas-year basis):** pre-crisis baseline = +4.7 EUR/MWh (avg 2019-2020). 2021: -27 (summer surged). 2022: -50 (crisis peak; summer at 151 EUR/MWh). 2023: +43 (fear premium over-correction). 2024: -2 (normalization). 2025: +12 (cold winter). 2026 partial: -10 (summer 2026 elevated; winter forward cheaper = no injection incentive at current spot vs 2027 curve). Storage operators will not inject at current spot unless they believe forward prices are wrong.
+
 ## 2026-06-28 - Phase 78: Interconnection congestion premium quantification on /spreads
 
 **Built:** `GET /api/spreads/congestion-premium` returning `CongestionPremiumResponse` with per-border summary (utilization, days saturated, spread sat/free, premium), FR-IT-NORD monthly trend, and scatter. Frontend: `CongestionPremiumSection` on /spreads with 4 stat cards, ComposedChart (monthly spread bars + utilization line), and border table. 126 tests.

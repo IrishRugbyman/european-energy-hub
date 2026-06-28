@@ -356,6 +356,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 78 - Interconnection congestion premium quantification on /spreads [COMPLETE 2026-06-28]
 
+### Phase 79 - TTF winter premium history (gas-year seasonal spread) on /prices [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,
