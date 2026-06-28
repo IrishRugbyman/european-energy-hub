@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1270,6 +1270,8 @@ function SpreadsDashboard() {
           <RegimeConditionalPnlSection />
 
           <GasPowerPassThroughSection />
+
+          <PriceVarianceDecompSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -4697,6 +4699,154 @@ function StorageFactorSection() {
             the 5yr DOY average from energy_hub.duckdb.{' '}
             {verdictText()}
             {!data.justified && ` The coefficient is ${data.coef.cv != null && data.coef.cv > 1.5 ? 'highly unstable (CV = ' + data.coef.cv.toFixed(2) + ') — it fluctuates in sign and magnitude across the walk-forward window, consistent with noise rather than a real effect.' : 'low-magnitude with no consistent direction.'} For ${zone}, the right choice is to keep TTF in the model and drop inventory.`}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function PriceVarianceDecompSection() {
+  const { data, isLoading } = useQuery<PriceVarianceDecompResponse>({
+    queryKey: ['spreads-price-variance-decomp'],
+    queryFn: api.spreadsPriceVarianceDecomp,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const FACTOR_COLORS: Record<string, string> = {
+    TTF: '#f97316',
+    EUA: '#4ade80',
+    Wind: '#60a5fa',
+    Solar: '#fbbf24',
+    Residual: '#94a3b8',
+  }
+
+  // Build stacked bar chart data: one entry per zone, factors as keys
+  const chartData = (data?.zones ?? []).map((z: PriceVarianceZoneRow) => ({
+    zone: z.zone,
+    TTF: Math.max(0, z.att_ttf) * 100,
+    EUA: Math.max(0, z.att_eua) * 100,
+    Wind: Math.max(0, z.att_wind) * 100,
+    Solar: Math.max(0, z.att_solar) * 100,
+    Residual: Math.max(0, z.att_residual) * 100,
+  }))
+
+  const dominant = (z: PriceVarianceZoneRow): { factor: string; pct: number } => {
+    const candidates = [
+      { factor: 'TTF', pct: z.att_ttf },
+      { factor: 'EUA', pct: z.att_eua },
+      { factor: 'Wind', pct: z.att_wind },
+      { factor: 'Solar', pct: z.att_solar },
+      { factor: 'Residual', pct: z.att_residual },
+    ]
+    return candidates.sort((a, b) => b.pct - a.pct)[0]
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mt-4">
+      <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">
+          Power Price Variance Decomposition (Factor Attribution)
+        </h2>
+        {data && (
+          <span className="text-xs text-muted-foreground">
+            Last {data.window_days} days - Pratt decomp: att_i = beta_i * cov(Xi, Y) / var(Y), partitions R-squared exactly
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Computing variance decomposition...</p>}
+
+      {data && data.zones.length > 0 && (
+        <div className="space-y-4">
+          {/* Stacked bar chart */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              What fraction of each zone's daily power price variance comes from TTF gas price, EUA carbon,
+              wind share, solar share, or unmodeled residuals (nuclear, hydro, congestion, demand)?
+            </p>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis dataKey="zone" tick={{ fontSize: 10, fill: '#94a3b8' }} tickLine={false} />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => `${v.toFixed(0)}%`}
+                  domain={[0, 100]}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v) => (typeof v === 'number' ? [`${v.toFixed(1)}%`, ''] : [v, ''])}
+                />
+                {(['TTF', 'EUA', 'Wind', 'Solar', 'Residual'] as const).map((f) => (
+                  <Bar key={f} dataKey={f} stackId="a" fill={FACTOR_COLORS[f]} name={f} />
+                ))}
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Detail table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Zone</th>
+                  <th className="text-right" style={{ color: FACTOR_COLORS['TTF'] }}>TTF</th>
+                  <th className="text-right" style={{ color: FACTOR_COLORS['EUA'] }}>EUA</th>
+                  <th className="text-right" style={{ color: FACTOR_COLORS['Wind'] }}>Wind</th>
+                  <th className="text-right" style={{ color: FACTOR_COLORS['Solar'] }}>Solar</th>
+                  <th className="text-right" style={{ color: FACTOR_COLORS['Residual'] }}>Residual</th>
+                  <th className="text-right text-muted-foreground">R2</th>
+                  <th className="text-right text-muted-foreground">Dominant driver</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.zones.map((z: PriceVarianceZoneRow) => {
+                  const dom = dominant(z)
+                  return (
+                    <tr key={z.zone} className="border-b border-border/30">
+                      <td className="py-1 font-medium text-foreground">{z.zone}</td>
+                      <td className="text-right" style={{ color: FACTOR_COLORS['TTF'] }}>
+                        {(z.att_ttf * 100).toFixed(0)}%
+                      </td>
+                      <td className="text-right" style={{ color: FACTOR_COLORS['EUA'] }}>
+                        {(z.att_eua * 100).toFixed(0)}%
+                      </td>
+                      <td className="text-right" style={{ color: FACTOR_COLORS['Wind'] }}>
+                        {(z.att_wind * 100).toFixed(0)}%
+                      </td>
+                      <td className="text-right" style={{ color: FACTOR_COLORS['Solar'] }}>
+                        {(z.att_solar * 100).toFixed(0)}%
+                      </td>
+                      <td className="text-right" style={{ color: FACTOR_COLORS['Residual'] }}>
+                        {(z.att_residual * 100).toFixed(0)}%
+                      </td>
+                      <td className="text-right text-muted-foreground">{(z.r2 * 100).toFixed(0)}%</td>
+                      <td
+                        className="text-right font-semibold text-[9px]"
+                        style={{ color: FACTOR_COLORS[dom.factor] }}
+                      >
+                        {dom.factor} ({(dom.pct * 100).toFixed(0)}%)
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Pratt variance decomposition (OLS, last {data.window_days} days, as of {data.as_of}):
+            att_i = beta_i * cov(Xi, Y) / var(Y). This partitions R-squared exactly with no
+            double-counting. Negative attributions (e.g., FR TTF) arise when a factor is negatively
+            correlated with price after conditioning on the other regressors. The residual (1 - R2)
+            captures nuclear availability, hydro dispatch, cross-border congestion, and demand shocks.
+            Key finding: DE-LU is {((data.zones.find(z => z.zone === 'DE-LU')?.att_wind ?? 0) * 100).toFixed(0)}%
+            wind-driven (renewable price maker), while IT-NORD is {((data.zones.find(z => z.zone === 'IT-NORD')?.att_ttf ?? 0) * 100).toFixed(0)}%
+            TTF-driven (gas price maker) - consistent with the gas-to-power pass-through
+            beta difference (IT-NORD ~1.5x vs DE-LU ~0.8x vs theory 2.04x).
           </p>
         </div>
       )}

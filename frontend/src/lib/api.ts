@@ -1217,12 +1217,31 @@ export const api = {
   spreadsZoneSignalCorrelations: () => get<ZoneSignalCorrelationResponse>('/spreads/zone-signal-correlations'),
   spreadsRegimeConditionalPnl: () => get<RegimeConditionalResponse>('/spreads/regime-conditional-pnl'),
   spreadsGasPowerPassthrough: () => get<GasPowerPassThroughResponse>('/spreads/gas-power-passthrough'),
+  spreadsPriceVarianceDecomp: () => get<PriceVarianceDecompResponse>('/spreads/price-variance-decomp'),
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
   pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
   pricesEuaSeasonality: () => get<EuaSeasonalityResponse>('/prices/eua-seasonality'),
   pricesUsGasStorage: () => get<UsStorageResponse>('/prices/us-gas-storage'),
   gasStorageAnalogs: () => get<StorageAnalogResponse>('/gas/storage-analogs'),
+}
+
+// Phase 77: EU power price variance decomposition
+export interface PriceVarianceZoneRow {
+  zone: string
+  n: number
+  att_ttf: number
+  att_eua: number
+  att_wind: number
+  att_solar: number
+  att_residual: number
+  r2: number
+}
+
+export interface PriceVarianceDecompResponse {
+  zones: PriceVarianceZoneRow[]
+  window_days: number
+  as_of: string
 }
 
 // Phase 76: EU gas storage analog year comparison

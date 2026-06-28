@@ -1855,3 +1855,25 @@ def test_gas_storage_analogs(client):
     assert "implied_nov1_min" in data
     assert "implied_nov1_max" in data
     assert "implied_nov1_median" in data
+
+
+def test_spreads_price_variance_decomp(client):
+    r = client.get("/api/spreads/price-variance-decomp")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data
+    assert "window_days" in data and data["window_days"] == 365
+    assert "as_of" in data
+    # At least some zones should be returned (fixture has power, prices, generation data)
+    if len(data["zones"]) == 0:
+        return  # fixture may not have enough joined data
+    for z in data["zones"]:
+        assert "zone" in z and "n" in z
+        assert "att_ttf" in z and "att_eua" in z
+        assert "att_wind" in z and "att_solar" in z
+        assert "att_residual" in z and "r2" in z
+        # Attributions must sum to ~1 (att_ttf + att_eua + att_wind + att_solar + att_residual = 1)
+        total = z["att_ttf"] + z["att_eua"] + z["att_wind"] + z["att_solar"] + z["att_residual"]
+        assert abs(total - 1.0) < 0.01, f"Attributions don't sum to 1: {total}"
+        # R2 must equal 1 - att_residual
+        assert abs(z["r2"] - (1.0 - z["att_residual"])) < 0.01

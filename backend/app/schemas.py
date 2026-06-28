@@ -2044,6 +2044,24 @@ class StorageTtfFundamentalResponse(BaseModel):
     corr_window: int
 
 
+# Phase 77: EU power price variance decomposition (factor attribution)
+class PriceVarianceZoneRow(BaseModel):
+    zone: str
+    n: int
+    att_ttf: float
+    att_eua: float
+    att_wind: float
+    att_solar: float
+    att_residual: float
+    r2: float
+
+
+class PriceVarianceDecompResponse(BaseModel):
+    zones: list[PriceVarianceZoneRow]
+    window_days: int
+    as_of: str
+
+
 # Phase 76: EU gas storage historical analog year comparison
 class AnalogTrajectoryPoint(BaseModel):
     gas_day: str
