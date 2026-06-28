@@ -26,8 +26,9 @@ import {
   type DowPoint,
   type MonthPoint,
   type ZoneCorrelationRow,
+  type HydroCountryResponse,
 } from '@/lib/api'
-import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS } from '@/lib/scales'
+import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS, ZONE_TO_HYDRO_COUNTRY } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 
 type TrendWindow = '3M' | '1Y' | 'ALL'
@@ -88,6 +89,15 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
     queryKey: ['power-correlations'],
     queryFn: api.powerCorrelations,
     staleTime: 60 * 60 * 1000,
+  })
+
+  const hydroCountry = ZONE_TO_HYDRO_COUNTRY[zone] ?? null
+
+  const { data: hydroData } = useQuery<HydroCountryResponse>({
+    queryKey: ['hydro-country', hydroCountry],
+    queryFn: () => api.hydroCountry(hydroCountry!),
+    staleTime: 60 * 60 * 1000,
+    enabled: hydroCountry != null,
   })
 
   const priceColor = powerPriceColor(powerLatest?.base_eur)
@@ -611,6 +621,13 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
 
         </> /* end price tab continued */}
       </div>
+
+      {/* Hydro reservoir section - visible in both tabs for hydro-reporting zones */}
+      {hydroCountry && hydroData && (
+        <div className="px-3 pb-3">
+          <HydroReservoirSection data={hydroData} country={hydroCountry} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1155,6 +1172,111 @@ function DuckCurveChart({ daily }: { daily: { price_date: string; peak_eur: numb
         </BarChart>
       </ResponsiveContainer>
       <p className="text-[10px] text-muted-foreground">Amber = peak &gt; off-peak (traditional). Purple = solar duck curve (peak &lt; off-peak).</p>
+    </div>
+  )
+}
+
+const HYDRO_COUNTRY_NAMES: Record<string, string> = {
+  NO: 'Norway', SE: 'Sweden', FR: 'France', AT: 'Austria', CH: 'Switzerland',
+  IT: 'Italy', PT: 'Portugal', ES: 'Spain', FI: 'Finland', RO: 'Romania',
+  GR: 'Greece', HR: 'Croatia', RS: 'Serbia', ME: 'Montenegro',
+}
+
+const HYDRO_MONTH_TICKS = [1, 5, 9, 14, 18, 22, 27, 31, 35, 40, 44, 48]
+const HYDRO_MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+function HydroReservoirSection({ data, country }: { data: HydroCountryResponse; country: string }) {
+  const latest = data.latest
+  if (!latest) return null
+
+  const currentYear = new Date().getFullYear()
+
+  const getWoy = (weekDate: string): number => {
+    const d = new Date(weekDate + 'T12:00:00Z')
+    const jan4 = new Date(d.getFullYear(), 0, 4)
+    const diff = (d.getTime() - jan4.getTime()) / 86400000
+    return Math.max(1, Math.ceil((diff + jan4.getDay() + 1) / 7))
+  }
+
+  const currentMap = new Map<number, number | null>()
+  const priorMap = new Map<number, number | null>()
+  for (const h of data.history) {
+    const yr = parseInt(h.week_date.slice(0, 4))
+    const woy = getWoy(h.week_date)
+    if (yr === currentYear) currentMap.set(woy, h.stored_twh)
+    else if (yr === currentYear - 1) priorMap.set(woy, h.stored_twh)
+  }
+
+  const chartData = data.seasonal.map((s) => ({
+    woy: s.week_of_year,
+    band_base: s.min5_twh,
+    band_height: s.max5_twh != null && s.min5_twh != null ? s.max5_twh - s.min5_twh : null,
+    avg5: s.avg5_twh,
+    prior: priorMap.get(s.week_of_year) ?? null,
+    current: currentMap.get(s.week_of_year) ?? null,
+  }))
+
+  const pct = latest.vs_avg5_pct
+  const pctColor = pct == null ? '#9ca3af' : pct < -10 ? '#ef4444' : pct > 10 ? '#60a5fa' : '#9ca3af'
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center gap-2 mb-2">
+        <h3 className="text-xs font-semibold text-foreground">
+          Hydro Reservoirs - {HYDRO_COUNTRY_NAMES[country] ?? country}
+        </h3>
+        <span className="text-xs font-mono bg-secondary px-1.5 py-0.5 rounded text-foreground">
+          {latest.stored_twh != null ? `${latest.stored_twh.toFixed(1)} TWh` : '--'}
+        </span>
+        {pct != null && (
+          <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ color: pctColor, background: '#1e293b' }}>
+            {pct > 0 ? '+' : ''}{pct.toFixed(1)}% vs 5yr avg
+          </span>
+        )}
+        {latest.yoy_pct != null && (
+          <span className="text-xs text-muted-foreground">
+            {latest.yoy_pct > 0 ? '+' : ''}{latest.yoy_pct.toFixed(1)}% YoY
+          </span>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground mb-2">
+        Weekly stored energy (TWh). Shaded band = 5yr min-max, dashed = 5yr avg, grey = prior year.
+      </p>
+      <ResponsiveContainer width="100%" height={160}>
+        <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis
+            dataKey="woy"
+            ticks={HYDRO_MONTH_TICKS}
+            tickFormatter={(v: number) => HYDRO_MONTH_LABELS[HYDRO_MONTH_TICKS.indexOf(v)] ?? ''}
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+          />
+          <YAxis
+            tick={{ fontSize: 9, fill: '#64748b' }}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) => `${(v as number).toFixed(0)}`}
+            width={28}
+          />
+          <Tooltip
+            contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+            labelFormatter={(v) => `Week ${v}`}
+            formatter={(v, name) => {
+              if (name === 'band_base' || name === 'band_height') return null
+              const val = typeof v === 'number' ? `${(v as number).toFixed(1)} TWh` : '--'
+              const label = name === 'avg5' ? '5yr avg' : name === 'prior' ? 'Prior year' : 'Current year'
+              return [val, label]
+            }}
+          />
+          {/* Stacked band: transparent base (min5) + colored height (max5-min5) */}
+          <Area type="monotone" dataKey="band_base" stackId="band" stroke="none" fill="transparent" isAnimationActive={false} />
+          <Area type="monotone" dataKey="band_height" stackId="band" stroke="none" fill="#1e3a5f" fillOpacity={0.5} isAnimationActive={false} />
+          <Line type="monotone" dataKey="avg5" stroke="#6b7280" strokeWidth={1} strokeDasharray="4 2" dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="prior" stroke="#475569" strokeWidth={1} dot={false} isAnimationActive={false} />
+          <Line type="monotone" dataKey="current" stroke="#e2e8f0" strokeWidth={2} dot={false} isAnimationActive={false} />
+        </ComposedChart>
+      </ResponsiveContainer>
     </div>
   )
 }
