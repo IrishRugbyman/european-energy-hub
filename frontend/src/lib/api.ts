@@ -1229,6 +1229,7 @@ export const api = {
   spreadsReMeritOrder: () => get<ReMeritOrderResponse>('/spreads/re-merit-order'),
   spreadsNegPriceAnnual: () => get<NegPriceAnnualResponse>('/spreads/neg-price-annual'),
   spreadsZoneDispersion: () => get<ZoneDispersionResponse>('/spreads/zone-dispersion'),
+  spreadsPeakOffpeakTrend: () => get<PeakOffpeakResponse>('/spreads/peak-offpeak-trend'),
 }
 
 // Phase 78: Interconnection congestion premium
@@ -2303,5 +2304,22 @@ export interface ZoneDispersionResponse {
   avg_std_2026_ytd: number | null
   peak_month: string | null
   peak_std: number | null
+  as_of: string
+}
+
+// Phase 83: Peak-offpeak spread trend (EU duck curve)
+export interface PeakOffpeakPoint {
+  month: string
+  zone: string
+  peak_eur: number
+  offpeak_eur: number
+  spread_eur: number
+}
+
+export interface PeakOffpeakResponse {
+  data: PeakOffpeakPoint[]
+  zones: string[]
+  inversion_onset: Record<string, string | null>
+  current_spread: Record<string, number | null>
   as_of: string
 }

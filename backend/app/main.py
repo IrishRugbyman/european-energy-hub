@@ -291,6 +291,8 @@ from .schemas import (
     NegPriceAnnualResponse,
     ZoneDispersionMonth,
     ZoneDispersionResponse,
+    PeakOffpeakPoint,
+    PeakOffpeakResponse,
 )
 
 
@@ -2370,6 +2372,65 @@ def spreads_zone_dispersion():
         avg_std_2026_ytd=avg_std_2026_ytd,
         peak_month=peak_month,
         peak_std=peak_std,
+        as_of=date.today().isoformat(),
+    )
+
+
+@app.get("/api/spreads/peak-offpeak-trend", response_model=PeakOffpeakResponse)
+def spreads_peak_offpeak_trend():
+    """Monthly peak vs off-peak DA price spread per zone: the EU duck curve.
+
+    peak = 08:00-20:00 daily average; offpeak = 20:00-08:00 daily average,
+    per ENTSO-E convention stored in power_daily. A negative spread (peak < offpeak)
+    indicates solar inversion: midday is cheaper than overnight.
+    Zones: DE-LU, FR, NL, IT-NORD.
+    """
+    ZONES = ["DE-LU", "FR", "NL", "IT-NORD"]
+
+    df = db.query(
+        f"""
+        SELECT
+            STRFTIME(price_date, '%Y-%m')     AS month,
+            zone,
+            ROUND(AVG(peak_eur), 2)           AS peak_eur,
+            ROUND(AVG(offpeak_eur), 2)        AS offpeak_eur,
+            ROUND(AVG(peak_eur - offpeak_eur), 2) AS spread_eur,
+            COUNT(*)                          AS n_days
+        FROM power_daily
+        WHERE zone IN ({', '.join(f"'{z}'" for z in ZONES)})
+          AND peak_eur IS NOT NULL AND offpeak_eur IS NOT NULL
+        GROUP BY month, zone
+        ORDER BY month, zone
+        """
+    )
+    if df.empty:
+        return PeakOffpeakResponse(data=[], zones=ZONES, inversion_onset={}, current_spread={}, as_of=date.today().isoformat())
+
+    points = [
+        PeakOffpeakPoint(
+            month=str(row["month"]),
+            zone=str(row["zone"]),
+            peak_eur=float(row["peak_eur"]),
+            offpeak_eur=float(row["offpeak_eur"]),
+            spread_eur=float(row["spread_eur"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+    # First month where spread < 0 per zone (duck curve inversion onset)
+    inversion_onset: dict[str, str | None] = {}
+    current_spread: dict[str, float | None] = {}
+    for zone in ZONES:
+        zdf = df[df["zone"] == zone].sort_values("month")
+        inverted = zdf[zdf["spread_eur"] < 0]
+        inversion_onset[zone] = str(inverted.iloc[0]["month"]) if not inverted.empty else None
+        current_spread[zone] = float(zdf.iloc[-1]["spread_eur"]) if not zdf.empty else None
+
+    return PeakOffpeakResponse(
+        data=points,
+        zones=ZONES,
+        inversion_onset=inversion_onset,
+        current_spread=current_spread,
         as_of=date.today().isoformat(),
     )
 

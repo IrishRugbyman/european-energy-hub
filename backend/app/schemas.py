@@ -2232,3 +2232,20 @@ class ZoneDispersionResponse(BaseModel):
     peak_month: str | None  # month with highest std
     peak_std: float | None
     as_of: str
+
+
+# Phase 83: Monthly peak-offpeak spread trend (EU duck curve)
+class PeakOffpeakPoint(BaseModel):
+    month: str
+    zone: str
+    peak_eur: float
+    offpeak_eur: float
+    spread_eur: float  # peak minus offpeak; negative = duck curve inversion
+
+
+class PeakOffpeakResponse(BaseModel):
+    data: list[PeakOffpeakPoint]
+    zones: list[str]
+    inversion_onset: dict  # zone -> first month with spread < 0 (str | None)
+    current_spread: dict  # zone -> latest month spread
+    as_of: str

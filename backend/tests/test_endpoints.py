@@ -1983,3 +1983,21 @@ def test_spreads_zone_dispersion(client):
         assert "range_eur" in m and m["range_eur"] >= 0
         assert "n_days" in m and m["n_days"] > 0
         assert m["range_eur"] >= m["std_eur"] - 1  # range >= std for normal distributions
+
+
+def test_spreads_peak_offpeak_trend(client):
+    r = client.get("/api/spreads/peak-offpeak-trend")
+    assert r.status_code == 200
+    data = r.json()
+    assert "data" in data
+    assert "zones" in data
+    assert "inversion_onset" in data
+    assert "current_spread" in data
+    for p in data["data"]:
+        assert "month" in p and len(p["month"]) == 7
+        assert "zone" in p
+        assert "peak_eur" in p and "offpeak_eur" in p
+        assert "spread_eur" in p
+        assert abs(p["spread_eur"] - (p["peak_eur"] - p["offpeak_eur"])) < 0.5
+    for zone in data["zones"]:
+        assert zone in data["current_spread"]

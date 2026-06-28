@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, type CongestionPremiumResponse, type CongestionPremiumRow, type ReMeritOrderResponse, type ReMeritOrderZone, type ReMeritOrderBin, type NegPriceAnnualZone, type NegPriceAnnualYear, type ZoneDispersionMonth } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, type CongestionPremiumResponse, type CongestionPremiumRow, type ReMeritOrderResponse, type ReMeritOrderZone, type ReMeritOrderBin, type NegPriceAnnualZone, type NegPriceAnnualYear, type ZoneDispersionMonth, type PeakOffpeakPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1280,6 +1280,8 @@ function SpreadsDashboard() {
           <NegPriceAnnualSection />
 
           <ZoneDispersionSection />
+
+          <PeakOffpeakSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -5542,6 +5544,148 @@ function ZoneDispersionSection() {
         with post-maintenance nuclear returns in France: both effects simultaneously widen the spread.
         This metric is the aggregate hourly expression of the congestion premium (Phase 78): the
         FR-IT border stays saturated, converting price arbitrage into congestion rent.
+      </p>
+    </div>
+  )
+}
+
+function PeakOffpeakSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['spreads-peak-offpeak-trend'],
+    queryFn: api.spreadsPeakOffpeakTrend,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  if (isLoading || !data) return null
+
+  const zones = data.zones
+  const allMonths = Array.from(new Set(data.data.map((p: PeakOffpeakPoint) => p.month))).sort() as string[]
+
+  // Build recharts-compatible rows: one entry per month
+  type ChartRow = Record<string, number | string | null>
+  const chartData: ChartRow[] = allMonths.map((month) => {
+    const row: ChartRow = { month: month.slice(2) }
+    for (const z of zones) {
+      const pt = data.data.find((p: PeakOffpeakPoint) => p.month === month && p.zone === z)
+      row[z] = pt ? pt.spread_eur : null
+    }
+    return row
+  })
+
+  const ZONE_LINE_COLORS: Record<string, string> = {
+    'DE-LU': '#60a5fa',
+    'FR': '#f59e0b',
+    'NL': '#a78bfa',
+    'IT-NORD': '#f87171',
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold">Peak vs Off-Peak Spread: The EU Duck Curve</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Monthly average of (peak price - off-peak price) per zone. Negative = duck curve inversion:
+          solar has made the 08:00-20:00 window cheaper than overnight.
+        </p>
+      </div>
+
+      {/* Stat cards: one per zone */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {zones.map((z) => {
+          const spread = data.current_spread[z]
+          const onset = data.inversion_onset[z]
+          return (
+            <div key={z} className="bg-background border border-border rounded p-3">
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wide">{z} current</div>
+              <div className={`text-xl font-bold mt-1 ${spread != null && spread < -30 ? 'text-red-400' : spread != null && spread < 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                {spread != null ? `${spread > 0 ? '+' : ''}${spread.toFixed(0)}` : '--'}
+              </div>
+              <div className="text-[10px] text-muted-foreground">
+                EUR/MWh {onset ? `(inv. ${onset})` : '(no inversion)'}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Multi-line chart */}
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+            <XAxis dataKey="month" tick={{ fill: '#94a3b8', fontSize: 10 }} />
+            <YAxis
+              tick={{ fill: '#94a3b8', fontSize: 10 }}
+              tickFormatter={(v: number) => `${v.toFixed(0)}`}
+              label={{ value: 'EUR/MWh', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10, dy: 30 }}
+            />
+            <Tooltip
+              contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, fontSize: 11 }}
+              formatter={(v) => [`${Number(v).toFixed(1)} EUR/MWh`, '']}
+              labelFormatter={(l) => `Month: ${l}`}
+            />
+            <ReferenceLine y={0} stroke="#94a3b8" strokeDasharray="3 3" strokeWidth={1} label={{ value: 'inversion', fill: '#64748b', fontSize: 9, position: 'insideTopRight' }} />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {zones.map((z) => (
+              <Line
+                key={z}
+                type="monotone"
+                dataKey={z}
+                stroke={ZONE_LINE_COLORS[z] ?? '#94a3b8'}
+                strokeWidth={2}
+                dot={false}
+                connectNulls={false}
+                name={z}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Monthly detail table (last 12 months) */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted-foreground border-b border-border/50">
+              <th className="text-left pb-1">Month</th>
+              {zones.map((z) => (
+                <th key={z} className="text-right pb-1" style={{ color: ZONE_LINE_COLORS[z] ?? '#94a3b8' }}>{z}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[...allMonths].reverse().slice(0, 12).map((month) => {
+              return (
+                <tr key={month} className="border-b border-border/30">
+                  <td className="py-1 font-medium text-foreground">{month}</td>
+                  {zones.map((z) => {
+                    const pt = data.data.find((p: PeakOffpeakPoint) => p.month === month && p.zone === z)
+                    const s = pt?.spread_eur
+                    return (
+                      <td key={z} className={`text-right font-semibold ${s != null && s < -30 ? 'text-red-400' : s != null && s < 0 ? 'text-amber-400' : s != null ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                        {s != null ? `${s > 0 ? '+' : ''}${s.toFixed(0)}` : '--'}
+                      </td>
+                    )
+                  })}
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+        The duck curve: in 2024, peak (08:00-20:00) was reliably 15-25 EUR/MWh above off-peak
+        across all zones -- the traditional power market premium for daytime demand. By spring 2026,
+        the spread had inverted dramatically: DE-LU reached -47 EUR/MWh in April 2026 (peak window
+        is CHEAPER than overnight by 47 EUR/MWh), driven by solar saturation at midday. The 08:00-20:00
+        window now includes the cheapest hours of the day (11:00-15:00 solar peak) rather than the
+        most expensive. This destroys the economics of flexible gas peakers, which used to earn a
+        reliable premium by running at midday -- they now compete with near-zero-cost solar. It creates
+        structural battery storage demand: charge at noon solar trough (-47 EUR/MWh), discharge at
+        evening ramp (+30 EUR/MWh) = 77 EUR/MWh gross spread. IT-NORD shows a muted but consistent
+        pattern (-13 to -29 EUR/MWh inversion) -- congestion prevents it from fully absorbing FR solar,
+        but Italy's own growing solar fleet produces the same effect at reduced magnitude.
       </p>
     </div>
   )
