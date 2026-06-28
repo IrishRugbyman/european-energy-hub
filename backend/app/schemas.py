@@ -1872,3 +1872,37 @@ class LoadErrorFactorTestResponse(BaseModel):
     current_load_err: float | None
     current_residual: float | None
     corr_window: int
+
+
+# Phase 68: Zone signal correlation heatmap
+class ZoneSignalCorrPoint(BaseModel):
+    date: str
+    concentration: float
+
+
+class ZoneSignalPairSeries(BaseModel):
+    date: str
+    corr: float
+
+
+class ZoneSignalPair(BaseModel):
+    zone_a: str
+    zone_b: str
+    full_pearson: float
+    current_30d: float
+    series: list[ZoneSignalPairSeries]
+
+
+class ZoneSignalCorrelationResponse(BaseModel):
+    zones: list[str]
+    n_oos: int
+    as_of: str
+    corr_full: dict[str, dict[str, float]]
+    corr_30d: dict[str, dict[str, float]]
+    concentration_full: float
+    concentration_30d: float
+    concentration_alert: bool
+    concentration_threshold: float
+    rolling_concentration: list[ZoneSignalCorrPoint]
+    pairs: list[ZoneSignalPair]
+    current_zscores: dict[str, float]

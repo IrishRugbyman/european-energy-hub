@@ -1634,6 +1634,33 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_spreads_zone_signal_correlations(client):
+    r = client.get("/api/spreads/zone-signal-correlations")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data and len(data["zones"]) >= 2
+    assert "n_oos" in data and data["n_oos"] > 0
+    assert "corr_full" in data and "corr_30d" in data
+    # Each matrix should have same zones as row and column keys
+    for z in data["zones"]:
+        assert z in data["corr_full"]
+        assert z in data["corr_30d"]
+        # Diagonal should be 1.0
+        assert abs(data["corr_full"][z][z] - 1.0) < 0.01
+    assert isinstance(data["concentration_full"], float)
+    assert isinstance(data["concentration_30d"], float)
+    assert isinstance(data["concentration_alert"], bool)
+    assert len(data["rolling_concentration"]) > 0
+    rc = data["rolling_concentration"][0]
+    assert "date" in rc and "concentration" in rc
+    assert -1.0 <= rc["concentration"] <= 1.0
+    assert "pairs" in data and len(data["pairs"]) >= 1
+    p = data["pairs"][0]
+    assert "zone_a" in p and "zone_b" in p and "full_pearson" in p and "current_30d" in p
+    assert "series" in p
+    assert "current_zscores" in data
+
+
 def test_spreads_signal_posture(client):
     r = client.get("/api/spreads/signal-posture")
     assert r.status_code == 200

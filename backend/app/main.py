@@ -250,6 +250,10 @@ from .schemas import (
     LoadErrorScatterPoint,
     LoadErrorRollingPoint,
     LoadErrorFactorTestResponse,
+    ZoneSignalCorrPoint,
+    ZoneSignalPairSeries,
+    ZoneSignalPair,
+    ZoneSignalCorrelationResponse,
 )
 
 
@@ -4407,4 +4411,52 @@ def spreads_load_error_factor_test(zone: str = "DE-LU"):
         current_load_err=result.get("current_load_err"),
         current_residual=result.get("current_residual"),
         corr_window=result["corr_window"],
+    )
+
+
+@app.get("/api/spreads/zone-signal-correlations", response_model=ZoneSignalCorrelationResponse)
+def spreads_zone_signal_correlations():
+    """Pairwise signal correlations across the 5 fundamental zones.
+
+    Computes the OOS nonlinear z-score for each zone and measures their pairwise
+    Pearson correlations over the full OOS window and the last 30 days. The average
+    pairwise 30d correlation is the portfolio concentration metric: when high (>0.65)
+    the 5-zone portfolio is effectively one directional trade, not 5 independent positions.
+
+    Returns the full correlation matrix, rolling concentration time series, and the top
+    pairs ranked by largest full-sample vs current-30d divergence.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_zone_signal_correlations
+
+    result = _cached_compute(
+        "zone_signal_correlations",
+        lambda: compute_zone_signal_correlations(db.query),
+        ttl=3600,
+    )
+    if not result or result.get("n_oos", 0) < 30:
+        raise HTTPException(status_code=503, detail="Insufficient data for zone signal correlations")
+
+    return ZoneSignalCorrelationResponse(
+        zones=result["zones"],
+        n_oos=result["n_oos"],
+        as_of=result["as_of"],
+        corr_full=result["corr_full"],
+        corr_30d=result["corr_30d"],
+        concentration_full=result["concentration_full"],
+        concentration_30d=result["concentration_30d"],
+        concentration_alert=result["concentration_alert"],
+        concentration_threshold=result["concentration_threshold"],
+        rolling_concentration=[ZoneSignalCorrPoint(**p) for p in result["rolling_concentration"]],
+        pairs=[
+            ZoneSignalPair(
+                zone_a=p["zone_a"],
+                zone_b=p["zone_b"],
+                full_pearson=p["full_pearson"],
+                current_30d=p["current_30d"],
+                series=[ZoneSignalPairSeries(**s) for s in p["series"]],
+            )
+            for p in result["pairs"]
+        ],
+        current_zscores=result["current_zscores"],
     )

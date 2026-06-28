@@ -3130,3 +3130,149 @@ def compute_load_error_factor_test(
         "current_residual": current_residual,
         "corr_window": _LOAD_ERR_CORR_WINDOW,
     }
+
+
+_SIGNAL_CORR_WINDOW = 30      # days for rolling pairwise Pearson between zone z-scores
+_SIGNAL_CONC_ALERT = 0.65     # average pairwise correlation threshold: portfolio ~= 1 bet
+
+
+def compute_zone_signal_correlations(query_fn: Callable) -> dict:
+    """Pairwise signal correlations across the 5 fundamental zones.
+
+    The nonlinear OLS walk-forward signal (z-score of the OOS residual) is computed
+    for each of the FUNDAMENTAL_ZONES. Their pairwise Pearson correlations measure how
+    diversified the portfolio is in practice:
+
+    - Low correlations across the full sample confirm genuine cross-zone diversification.
+    - High rolling-30d correlations indicate a common-factor event (heat wave, cold snap,
+      EU-wide gas supply shock) where all zones are driven by the same underlying signal.
+      In that regime the 'portfolio' is effectively a single directional bet, not 5
+      independent positions, and position sizing should be reduced proportionally.
+
+    The average pairwise 30d correlation is the portfolio concentration metric:
+      conc = mean of all unique off-diagonal pairs (10 pairs for 5 zones)
+    When conc > 0.65 the portfolio is more than 1 effective independent bet.
+
+    Returns:
+        {
+          "zones": list[str],
+          "n_oos": int,
+          "as_of": str,
+          "corr_full": {zonei: {zonej: float}},       # full-sample Pearson
+          "corr_30d":  {zonei: {zonej: float}},       # last 30 days Pearson
+          "concentration_full": float,                 # avg off-diagonal full-sample
+          "concentration_30d": float,                  # avg off-diagonal last 30d
+          "concentration_alert": bool,                 # 30d > _SIGNAL_CONC_ALERT
+          "rolling_concentration": [{"date": str, "concentration": float}],
+          "pairs": [
+            {
+              "zone_a": str, "zone_b": str,
+              "full_pearson": float, "rolling_30d": float,
+              "series": [{"date": str, "corr": float}],  # rolling 60d for this pair
+            }
+          ],
+        }
+    """
+    zone_zscores = {}
+    for zone in FUNDAMENTAL_ZONES:
+        sig = _nonlinear_signal_pnl(query_fn, zone)
+        if sig is None:
+            logger.warning(f"zone signal correlations: no OOS data for {zone}")
+            continue
+        res = pd.Series(sig["res_nl"], index=pd.to_datetime(sig["res_dates"]))
+        rm = res.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = res.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((res - rm) / rs.replace(0, np.nan)).fillna(0.0)
+        zone_zscores[zone] = z
+
+    if len(zone_zscores) < 2:
+        return {}
+
+    df = pd.DataFrame(zone_zscores).dropna()
+    if len(df) < _SIGNAL_CORR_WINDOW + 5:
+        return {}
+
+    zones = list(df.columns)
+    n = len(df)
+
+    # Full-sample Pearson matrix
+    corr_full_df = df.corr()
+
+    def corr_matrix_to_dict(cm):
+        return {z: {z2: round(float(cm.loc[z, z2]), 3) for z2 in zones} for z in zones}
+
+    corr_full = corr_matrix_to_dict(corr_full_df)
+
+    # Last-30d Pearson matrix
+    corr_30d_df = df.tail(_SIGNAL_CORR_WINDOW).corr()
+    corr_30d = corr_matrix_to_dict(corr_30d_df)
+
+    # Off-diagonal pairs
+    pairs_idx = [(i, j) for i in range(len(zones)) for j in range(i + 1, len(zones))]
+
+    def avg_offdiag(cm):
+        vals = [cm.iloc[i, j] for i, j in pairs_idx]
+        return float(round(np.mean(vals), 3))
+
+    concentration_full = avg_offdiag(corr_full_df)
+    concentration_30d = avg_offdiag(corr_30d_df)
+    concentration_alert = bool(concentration_30d > _SIGNAL_CONC_ALERT)
+
+    # Rolling concentration (30d average pairwise Pearson)
+    # Efficient computation: rolling cov / rolling var for each pair, average
+    rolling_conc_vals = {}
+    for i, j in pairs_idx:
+        za = df.iloc[:, i]
+        zb = df.iloc[:, j]
+        r = za.rolling(_SIGNAL_CORR_WINDOW, min_periods=10).corr(zb)
+        rolling_conc_vals[f"{zones[i]}_{zones[j]}"] = r
+
+    rolling_conc_df = pd.DataFrame(rolling_conc_vals)
+    rolling_conc_mean = rolling_conc_df.mean(axis=1).dropna()
+    rolling_concentration = [
+        {"date": d.strftime("%Y-%m-%d"), "concentration": round(float(v), 3)}
+        for d, v in rolling_conc_mean.items()
+    ]
+
+    # Top-5 most informative pairs (highest full-sample correlation spread vs 30d)
+    ROLLING_PAIR_WINDOW = 60  # longer window for pair time series readability
+    top_pairs = []
+    # Sort pairs by change in correlation (full vs 30d) - most dramatic are most informative
+    pair_change = sorted(
+        pairs_idx,
+        key=lambda p: abs(corr_30d_df.iloc[p[0], p[1]] - corr_full_df.iloc[p[0], p[1]]),
+        reverse=True,
+    )[:6]  # top 6 pairs by change
+    for i, j in pair_change:
+        za = df.iloc[:, i]
+        zb = df.iloc[:, j]
+        roll = za.rolling(ROLLING_PAIR_WINDOW, min_periods=15).corr(zb).dropna()
+        series = [
+            {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
+            for d, v in roll.items()
+        ]
+        top_pairs.append({
+            "zone_a": zones[i],
+            "zone_b": zones[j],
+            "full_pearson": round(float(corr_full_df.iloc[i, j]), 3),
+            "current_30d": round(float(corr_30d_df.iloc[i, j]), 3),
+            "series": series,
+        })
+
+    # Current z-scores for each zone
+    current_zscores = {z: round(float(df[z].iloc[-1]), 3) for z in zones}
+
+    return {
+        "zones": zones,
+        "n_oos": n,
+        "as_of": df.index[-1].strftime("%Y-%m-%d"),
+        "corr_full": corr_full,
+        "corr_30d": corr_30d,
+        "concentration_full": concentration_full,
+        "concentration_30d": concentration_30d,
+        "concentration_alert": concentration_alert,
+        "concentration_threshold": _SIGNAL_CONC_ALERT,
+        "rolling_concentration": rolling_concentration,
+        "pairs": top_pairs,
+        "current_zscores": current_zscores,
+    }

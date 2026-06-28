@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1264,6 +1264,8 @@ function SpreadsDashboard() {
           <SignalPostureSection />
 
           <PortfolioSection />
+
+          <ZoneSignalCorrelationSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -3715,6 +3717,197 @@ function SpreadExplainer() {
         Constants: gas eff 49%, gas EF 0.364 tCO2/MWh; coal eff 36%, coal EF 0.96 tCO2/MWh.
         Power = DE-LU day-ahead base. TTF = front-month EUR/MWh. EUA = ETS front-year.
       </p>
+    </div>
+  )
+}
+
+
+// Color scale for correlation values: red (negative) -> grey (zero) -> green (positive)
+function corrCellColor(v: number): string {
+  if (v >= 0.8) return '#16a34a'
+  if (v >= 0.65) return '#22c55e'
+  if (v >= 0.5) return '#4ade80'
+  if (v >= 0.3) return '#86efac'
+  if (v >= 0.1) return '#d1fae5'
+  if (v >= -0.1) return '#64748b'
+  if (v >= -0.3) return '#fca5a5'
+  return '#ef4444'
+}
+
+function ZoneSignalCorrelationSection() {
+  const { data, isLoading } = useQuery<ZoneSignalCorrelationResponse>({
+    queryKey: ['zone-signal-correlations'],
+    queryFn: api.spreadsZoneSignalCorrelations,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const rollingConc = data?.rolling_concentration?.slice(-300) ?? []
+  const zones = data?.zones ?? []
+
+  const concColor = (v: number) =>
+    v > 0.65 ? '#f87171' : v > 0.5 ? '#facc15' : '#4ade80'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Zone Signal Correlation: Portfolio Concentration Risk
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 68 — when do the 5 zones become one trade?
+        </span>
+        {data?.concentration_alert && (
+          <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded border border-red-500/40 bg-red-500/10 text-red-400">
+            Concentration alert: {data.concentration_30d.toFixed(2)} &gt; {data.concentration_threshold.toFixed(2)}
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Computing zone signal correlations...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Headline stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Full-sample concentration</p>
+              <p className="text-sm font-semibold" style={{ color: concColor(data.concentration_full) }}>
+                {data.concentration_full.toFixed(3)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">30d concentration</p>
+              <p className="text-sm font-semibold" style={{ color: concColor(data.concentration_30d) }}>
+                {data.concentration_30d.toFixed(3)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Concentration change</p>
+              <p className="text-sm font-semibold" style={{ color: concColor(data.concentration_30d) }}>
+                {(data.concentration_30d - data.concentration_full >= 0 ? '+' : '')}
+                {(data.concentration_30d - data.concentration_full).toFixed(3)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">n OOS</p>
+              <p className="text-sm font-semibold text-foreground">{data.n_oos}d</p>
+            </div>
+          </div>
+
+          {/* Dual correlation heatmaps */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {(['corr_full', 'corr_30d'] as const).map((matKey) => {
+              const mat = data[matKey]
+              const label = matKey === 'corr_full' ? 'Full-sample Pearson' : 'Last 30d Pearson'
+              return (
+                <div key={matKey}>
+                  <p className="text-[10px] text-muted-foreground mb-1">{label}</p>
+                  <div className="inline-block">
+                    {/* Header row */}
+                    <div className="flex">
+                      <div className="w-14" />
+                      {zones.map((z) => (
+                        <div key={z} className="w-12 text-center text-[9px] text-muted-foreground pb-0.5">{z}</div>
+                      ))}
+                    </div>
+                    {zones.map((za) => (
+                      <div key={za} className="flex items-center">
+                        <div className="w-14 text-[9px] text-muted-foreground pr-1 text-right">{za}</div>
+                        {zones.map((zb) => {
+                          const v = mat[za]?.[zb] ?? 0
+                          const isDiag = za === zb
+                          return (
+                            <div
+                              key={zb}
+                              className="w-12 h-8 flex items-center justify-center text-[9px] font-medium rounded-sm m-0.5"
+                              style={{
+                                background: isDiag ? '#1e293b' : `${corrCellColor(v)}22`,
+                                color: isDiag ? '#475569' : corrCellColor(v),
+                                border: `1px solid ${isDiag ? '#334155' : corrCellColor(v)}44`,
+                              }}
+                              title={`${za} vs ${zb}: ${v.toFixed(3)}`}
+                            >
+                              {isDiag ? '--' : v.toFixed(2)}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Rolling concentration time series */}
+          {rollingConc.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                Rolling 30d average pairwise signal correlation (portfolio concentration) — alert threshold: {data.concentration_threshold}
+              </p>
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart data={rollingConc} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    interval={Math.floor(rollingConc.length / 4)} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} domain={[0, 1]}
+                    tickFormatter={(v) => v.toFixed(1)} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v) => [typeof v === 'number' ? v.toFixed(3) : '--', 'Avg pairwise corr']}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <ReferenceLine y={data.concentration_threshold} stroke="#f87171" strokeDasharray="3 3"
+                    label={{ value: 'alert', position: 'right', fontSize: 9, fill: '#f87171' }} />
+                  <Line type="monotone" dataKey="concentration" stroke="#38bdf8" dot={false} strokeWidth={1.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Top pairs table */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Pairs ranked by largest full-sample → 30d change (biggest regime shift)
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {data.pairs.map((p) => {
+                const change = p.current_30d - p.full_pearson
+                return (
+                  <div key={`${p.zone_a}-${p.zone_b}`} className="bg-muted/10 rounded-lg px-2 py-1.5 text-[10px]">
+                    <p className="font-medium text-foreground">{p.zone_a} / {p.zone_b}</p>
+                    <div className="grid grid-cols-2 gap-x-2 text-muted-foreground mt-0.5">
+                      <span>Full</span>
+                      <span style={{ color: corrCellColor(p.full_pearson) }}>{p.full_pearson.toFixed(2)}</span>
+                      <span>30d</span>
+                      <span style={{ color: corrCellColor(p.current_30d) }}>{p.current_30d.toFixed(2)}</span>
+                      <span>Change</span>
+                      <span style={{ color: change > 0 ? '#f87171' : '#4ade80' }}>
+                        {change >= 0 ? '+' : ''}{change.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The portfolio (P50-P52) combines 5 independent nonlinear fade signals, with ensemble
+            Sharpe derived under the assumption of partial decorrelation. The average pairwise
+            signal correlation measures how much of that diversification actually holds on any
+            given 30-day window. A high concentration (today: {data.concentration_30d.toFixed(2)}) means
+            all zones are moving in the same direction simultaneously — a common-factor event
+            (heat wave, cold snap, EU-wide gas supply shock) is driving prices above or below fair
+            value in every market at once. In that regime the &lsquo;portfolio&rsquo; is effectively one
+            directional bet, not 5 independent positions, and appropriate position sizing should
+            reflect the lower effective number of independent trades.{' '}
+            {data.concentration_alert
+              ? `Current alert: 30d concentration of ${data.concentration_30d.toFixed(2)} exceeds the ${data.concentration_threshold} threshold. The five z-scores all sit between ${Math.min(...Object.values(data.current_zscores)).toFixed(2)} and ${Math.max(...Object.values(data.current_zscores)).toFixed(2)} — all positive, consistent with a common driver (heat wave / FR nuclear curtailment) inflating prices above fundamental fair value across zones. Effective number of independent trades ≈ ${(1 / data.concentration_30d).toFixed(1)}.`
+              : `Current concentration of ${data.concentration_30d.toFixed(2)} is below the ${data.concentration_threshold} threshold — genuine diversification across the 5 zones is in force.`}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

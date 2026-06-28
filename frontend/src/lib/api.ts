@@ -1214,6 +1214,7 @@ export const api = {
   spreadsSignalPosture: () => get<SignalPostureResponse>('/spreads/signal-posture'),
   spreadsStorageFactorTest: (zone?: string) => get<StorageFactorTestResponse>(`/spreads/storage-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsLoadErrorFactorTest: (zone?: string) => get<LoadErrorFactorTestResponse>(`/spreads/load-error-factor-test${zone ? `?zone=${zone}` : ''}`),
+  spreadsZoneSignalCorrelations: () => get<ZoneSignalCorrelationResponse>('/spreads/zone-signal-correlations'),
 }
 
 // US power generation
@@ -1852,6 +1853,41 @@ export interface LoadErrorFactorTestResponse {
   current_load_err: number | null
   current_residual: number | null
   corr_window: number
+}
+
+// --- Zone signal correlation heatmap (Phase 68) ---
+
+export interface ZoneSignalCorrPoint {
+  date: string
+  concentration: number
+}
+
+export interface ZoneSignalPairSeries {
+  date: string
+  corr: number
+}
+
+export interface ZoneSignalPair {
+  zone_a: string
+  zone_b: string
+  full_pearson: number
+  current_30d: number
+  series: ZoneSignalPairSeries[]
+}
+
+export interface ZoneSignalCorrelationResponse {
+  zones: string[]
+  n_oos: number
+  as_of: string
+  corr_full: Record<string, Record<string, number>>
+  corr_30d: Record<string, Record<string, number>>
+  concentration_full: number
+  concentration_30d: number
+  concentration_alert: boolean
+  concentration_threshold: number
+  rolling_concentration: ZoneSignalCorrPoint[]
+  pairs: ZoneSignalPair[]
+  current_zscores: Record<string, number>
 }
 
 // --- Signal posture ---
