@@ -1225,6 +1225,7 @@ export const api = {
   pricesEuaSeasonality: () => get<EuaSeasonalityResponse>('/prices/eua-seasonality'),
   pricesUsGasStorage: () => get<UsStorageResponse>('/prices/us-gas-storage'),
   gasStorageAnalogs: () => get<StorageAnalogResponse>('/gas/storage-analogs'),
+  pricesTtfWinterPremium: () => get<TtfWinterPremiumResponse>('/prices/ttf-winter-premium'),
 }
 
 // Phase 78: Interconnection congestion premium
@@ -2225,4 +2226,21 @@ export interface MarketPulseResponse {
   spreads: MarketPulseSpread[]
   rebap_today_mean: number | null
   signal: MarketPulseSignal[]
+}
+
+export interface TtfWinterPremiumYear {
+  gas_year: number
+  winter_avg: number | null
+  summer_avg: number | null
+  premium: number | null
+  winter_n: number
+  summer_n: number
+  is_partial: boolean
+}
+
+export interface TtfWinterPremiumResponse {
+  years: TtfWinterPremiumYear[]
+  avg_premium_pre_crisis: number | null
+  current_gas_year: number
+  as_of: string
 }

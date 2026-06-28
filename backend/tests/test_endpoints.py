@@ -1904,3 +1904,27 @@ def test_spreads_congestion_premium(client):
         assert "month" in m
         assert "avg_spread" in m and m["avg_spread"] >= 0
         assert "avg_util" in m
+
+
+def test_prices_ttf_winter_premium(client):
+    r = client.get("/api/prices/ttf-winter-premium")
+    assert r.status_code == 200
+    data = r.json()
+    assert "years" in data
+    assert "avg_premium_pre_crisis" in data
+    assert "current_gas_year" in data and isinstance(data["current_gas_year"], int)
+    assert "as_of" in data
+    # Must have at least one year (fixture has limited data window)
+    assert len(data["years"]) >= 1
+    for yr in data["years"]:
+        assert "gas_year" in yr and isinstance(yr["gas_year"], int)
+        assert "is_partial" in yr and isinstance(yr["is_partial"], bool)
+        assert "winter_n" in yr and yr["winter_n"] >= 0
+        assert "summer_n" in yr and yr["summer_n"] >= 0
+        # premium = winter_avg - summer_avg when both are present
+        if yr["winter_avg"] is not None and yr["summer_avg"] is not None:
+            assert yr["premium"] is not None
+            assert abs(yr["premium"] - (yr["winter_avg"] - yr["summer_avg"])) < 0.1
+    # Pre-crisis baseline should be positive (winter historically pricier than summer)
+    if data["avg_premium_pre_crisis"] is not None:
+        assert data["avg_premium_pre_crisis"] > 0

@@ -19,7 +19,7 @@ import {
   Cell,
   Area,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint, type EuaSeasonalityResponse, type EuaMonthlySeasonalPoint, type UsStorageResponse, type UsStorageRegionPoint } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint, type EuaSeasonalityResponse, type EuaMonthlySeasonalPoint, type UsStorageResponse, type UsStorageRegionPoint, type TtfWinterPremiumResponse, type TtfWinterPremiumYear } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1888,6 +1888,7 @@ function PricesDashboard() {
           <TtfSeasonality months={seasonalityData?.months ?? []} />
           {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
           <EuaSeasonalitySection />
+          <TtfWinterPremiumSection />
           <UsGasStorageSection />
           <LngArbSection />
           <FuelSwitchingEuaSection />
@@ -1898,6 +1899,222 @@ function PricesDashboard() {
       {rows.length === 0 && !isLoading && !error && (
         <div className="flex items-center justify-center h-40 text-muted-foreground text-sm">
           No price data available yet.
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function TtfWinterPremiumSection() {
+  const { data, isLoading } = useQuery<TtfWinterPremiumResponse>({
+    queryKey: ['prices-ttf-winter-premium'],
+    queryFn: api.pricesTtfWinterPremium,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const years = data?.years ?? []
+
+  // Colour: green = positive premium, red = negative, amber = partial
+  const barColor = (yr: TtfWinterPremiumYear) => {
+    if (yr.is_partial) return '#fbbf24'
+    return (yr.premium ?? 0) >= 0 ? '#4ade80' : '#f87171'
+  }
+
+  type ChartRow = { label: string; premium: number; fill: string; is_partial: boolean }
+  const chartData: ChartRow[] = years.map((yr) => ({
+    label: `${yr.gas_year}${yr.is_partial ? '*' : ''}`,
+    premium: yr.premium ?? 0,
+    fill: barColor(yr),
+    is_partial: yr.is_partial,
+  }))
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mt-4">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <h2 className="text-sm font-semibold text-foreground">
+          TTF Winter Premium (Gas-Year Seasonal Spread)
+        </h2>
+        {data && (
+          <span className="text-xs text-muted-foreground">
+            Winter (Nov-Mar) avg minus Summer (Apr-Oct) avg TTF front-month price, by gas year.
+            Positive = winter dearer than summer (normal); negative = inverted structure.
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading...</p>}
+
+      {data && years.length > 0 && (
+        <div className="space-y-3">
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Pre-crisis baseline</p>
+              <p className="text-sm font-semibold text-green-400">
+                {data.avg_premium_pre_crisis != null
+                  ? `+${data.avg_premium_pre_crisis.toFixed(1)} EUR/MWh`
+                  : '--'}
+              </p>
+              <p className="text-[10px] text-muted-foreground">avg gas years 2019-2020</p>
+            </div>
+            {(() => {
+              const curYr = years.find((y) => y.gas_year === data.current_gas_year)
+              return (
+                <div className="bg-muted/20 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">
+                    Current gas year {data.current_gas_year}
+                    {curYr?.is_partial ? ' (partial)' : ''}
+                  </p>
+                  <p
+                    className={`text-sm font-semibold ${
+                      (curYr?.premium ?? 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}
+                  >
+                    {curYr?.premium != null
+                      ? `${curYr.premium >= 0 ? '+' : ''}${curYr.premium.toFixed(1)} EUR/MWh`
+                      : '--'}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    W: {curYr?.winter_avg?.toFixed(1) ?? '--'} / S:{' '}
+                    {curYr?.summer_avg?.toFixed(1) ?? '--'}
+                  </p>
+                </div>
+              )
+            })()}
+            {(() => {
+              const yr2022 = years.find((y) => y.gas_year === 2022)
+              const yr2023 = years.find((y) => y.gas_year === 2023)
+              return (
+                <div className="bg-muted/20 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground mb-0.5">Crisis range</p>
+                  <p className="text-sm font-semibold text-amber-400">
+                    {yr2022?.premium != null && yr2023?.premium != null
+                      ? `${yr2022.premium.toFixed(0)} to +${yr2023.premium.toFixed(0)}`
+                      : '--'}{' '}
+                    EUR/MWh
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">2022 inversion / 2023 fear premium</p>
+                </div>
+              )
+            })()}
+          </div>
+
+          {/* Bar chart */}
+          <div>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tick={{ fontSize: 10, fill: '#94a3b8' }}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => `${v > 0 ? '+' : ''}${v}`}
+                />
+                <ReferenceLine y={0} stroke="#64748b" strokeWidth={1} />
+                {data.avg_premium_pre_crisis != null && (
+                  <ReferenceLine
+                    y={data.avg_premium_pre_crisis}
+                    stroke="#22d3ee"
+                    strokeDasharray="4 2"
+                    strokeWidth={1}
+                    label={{ value: 'baseline', position: 'insideTopRight', fontSize: 9, fill: '#22d3ee' }}
+                  />
+                )}
+                <Tooltip
+                  contentStyle={{
+                    background: '#1e293b',
+                    border: '1px solid #334155',
+                    fontSize: 10,
+                  }}
+                  formatter={(v) => { const n = Number(v); return [`${n >= 0 ? '+' : ''}${n.toFixed(1)} EUR/MWh`, 'W-S premium'] }}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Bar dataKey="premium" radius={[2, 2, 0, 0]} name="Winter premium">
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} fillOpacity={entry.is_partial ? 0.6 : 0.9} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+            <p className="text-[10px] text-muted-foreground/60 text-right">
+              * partial gas year (season not yet complete) -- dashed cyan line = pre-crisis baseline (+{data.avg_premium_pre_crisis?.toFixed(1)} EUR/MWh)
+            </p>
+          </div>
+
+          {/* Year detail table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Gas year</th>
+                  <th className="text-right">Winter avg</th>
+                  <th className="text-right">Summer avg</th>
+                  <th className="text-right font-semibold">W-S premium</th>
+                  <th className="text-left pl-2 text-muted-foreground">Narrative</th>
+                </tr>
+              </thead>
+              <tbody>
+                {years.map((yr) => {
+                  const prem = yr.premium ?? 0
+                  const narrative: Record<number, string> = {
+                    2019: 'normal seasonal structure',
+                    2020: 'pandemic demand collapse',
+                    2021: 'summer spot surged ahead of supply crunch',
+                    2022: 'crisis peak: summer 2022 at 151 EUR/MWh (Russian supply cut)',
+                    2023: 'fear premium: markets scared of repeat crisis winter',
+                    2024: 'normalization - balanced market',
+                    2025: 'positive premium restored by cold winter 2025-26',
+                    2026: 'summer 2026 elevated; winter expected lower (partial)',
+                  }
+                  return (
+                    <tr key={yr.gas_year} className="border-b border-border/30">
+                      <td className="py-1 font-medium text-foreground">
+                        {yr.gas_year}{yr.is_partial ? '*' : ''}
+                      </td>
+                      <td className="text-right text-muted-foreground">
+                        {yr.winter_avg?.toFixed(1) ?? '--'}
+                      </td>
+                      <td className="text-right text-muted-foreground">
+                        {yr.summer_avg?.toFixed(1) ?? '--'}
+                      </td>
+                      <td
+                        className={`text-right font-semibold ${
+                          prem >= 5 ? 'text-green-400'
+                          : prem < -10 ? 'text-red-400'
+                          : prem < 0 ? 'text-amber-400'
+                          : 'text-foreground'
+                        }`}
+                      >
+                        {yr.premium != null
+                          ? `${yr.premium >= 0 ? '+' : ''}${yr.premium.toFixed(1)}`
+                          : '--'}
+                      </td>
+                      <td className="text-muted-foreground/70 pl-2">
+                        {narrative[yr.gas_year] ?? ''}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Storage injection economics depend on the seasonal spread: when winter prices exceed
+            summer prices (positive premium), operators inject gas in summer at the lower spot price
+            and withdraw in winter at a premium, earning the spread minus storage costs (typically
+            2-5 EUR/MWh). Gas year 2023 shows the opposite of 2022: markets over-compensated for
+            the crisis by pricing an extreme +43 EUR/MWh winter premium, representing an unusually
+            attractive injection opportunity. Gas year 2026 shows a negative premium
+            ({years.find((y) => y.gas_year === data.current_gas_year)?.premium?.toFixed(1) ?? '--'} EUR/MWh YTD):
+            current summer spot is elevated above winter forward prices, reflecting LNG structural
+            oversupply expectations for 2027 onward and a temporary summer demand spike.
+          </p>
         </div>
       )}
     </div>

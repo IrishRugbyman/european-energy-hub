@@ -2157,3 +2157,20 @@ class ZoneSignalCorrelationResponse(BaseModel):
     rolling_concentration: list[ZoneSignalCorrPoint]
     pairs: list[ZoneSignalPair]
     current_zscores: dict[str, float]
+
+
+class TtfWinterPremiumYear(BaseModel):
+    gas_year: int
+    winter_avg: float | None
+    summer_avg: float | None
+    premium: float | None  # winter_avg - summer_avg
+    winter_n: int
+    summer_n: int
+    is_partial: bool  # True if the gas year is not yet complete
+
+
+class TtfWinterPremiumResponse(BaseModel):
+    years: list[TtfWinterPremiumYear]
+    avg_premium_pre_crisis: float | None  # mean of 2019-2020 gas years (baseline)
+    current_gas_year: int
+    as_of: str

@@ -103,6 +103,8 @@ from .schemas import (
     TtfCurveResponse,
     TtfSeasonalMonth,
     TtfSeasonalityResponse,
+    TtfWinterPremiumYear,
+    TtfWinterPremiumResponse,
     CapacityFactorPoint,
     GenCapacityResponse,
     GasPacePoint,
@@ -2053,6 +2055,93 @@ def prices_seasonality():
         current_month=current_month or 0,
         months=months,
     )
+
+
+@app.get("/api/prices/ttf-winter-premium", response_model=TtfWinterPremiumResponse)
+def prices_ttf_winter_premium():
+    """TTF winter premium history: year-by-year seasonal spread on a gas-year basis.
+
+    Gas year Y: winter = Nov(Y-1) through Mar(Y); summer = Apr(Y) through Oct(Y).
+    A positive premium means winter gas is more expensive than summer (normal).
+    A negative premium (2022, 2026 YTD) means summer spot is elevated above winter.
+    """
+
+    def _compute():
+        WINDOW_DAYS = 365 * 10  # pull full history
+        df = db.query(
+            f"""
+            WITH tagged AS (
+                SELECT
+                    price_date,
+                    ttf_eur_mwh,
+                    MONTH(price_date) AS m,
+                    CASE WHEN MONTH(price_date) >= 11
+                         THEN YEAR(price_date) + 1
+                         ELSE YEAR(price_date) END AS gas_year,
+                    CASE WHEN MONTH(price_date) IN (11, 12, 1, 2, 3)
+                         THEN 'winter' ELSE 'summer' END AS season
+                FROM prices_daily
+                WHERE ttf_eur_mwh IS NOT NULL
+                  AND price_date >= CURRENT_DATE - INTERVAL {WINDOW_DAYS} DAY
+            ),
+            agg AS (
+                SELECT gas_year,
+                       AVG(CASE WHEN season = 'winter' THEN ttf_eur_mwh END) AS winter_avg,
+                       AVG(CASE WHEN season = 'summer' THEN ttf_eur_mwh END) AS summer_avg,
+                       COUNT(CASE WHEN season = 'winter' THEN 1 END) AS winter_n,
+                       COUNT(CASE WHEN season = 'summer' THEN 1 END) AS summer_n
+                FROM tagged
+                GROUP BY gas_year
+            )
+            SELECT * FROM agg
+            ORDER BY gas_year
+            """,
+        )
+
+        today = date.today()
+        # Current gas year: Nov(Y-1)-Oct(Y), so if month >= 11 it's next year
+        current_gas_year = today.year + 1 if today.month >= 11 else today.year
+        # A gas year is complete only if Oct of that year has passed
+        # (i.e., today is Nov 1+ of that gas year or later)
+        def is_complete(gas_year: int) -> bool:
+            # Gas year Y is complete when we are past Oct 31 of year Y
+            return (today.year > gas_year) or (
+                today.year == gas_year and today.month > 10
+            )
+
+        years = []
+        for _, row in df.iterrows():
+            gy = int(row["gas_year"])
+            w = float(row["winter_avg"]) if row["winter_avg"] is not None else None
+            s = float(row["summer_avg"]) if row["summer_avg"] is not None else None
+            prem = (w - s) if (w is not None and s is not None) else None
+            years.append(
+                TtfWinterPremiumYear(
+                    gas_year=gy,
+                    winter_avg=round(w, 2) if w is not None else None,
+                    summer_avg=round(s, 2) if s is not None else None,
+                    premium=round(prem, 2) if prem is not None else None,
+                    winter_n=int(row["winter_n"]),
+                    summer_n=int(row["summer_n"]),
+                    is_partial=not is_complete(gy),
+                )
+            )
+
+        # Pre-crisis baseline (gas years 2019-2020, full and calm)
+        pre_crisis = [
+            y.premium for y in years
+            if y.gas_year in (2019, 2020) and y.premium is not None
+        ]
+        avg_pre_crisis = round(sum(pre_crisis) / len(pre_crisis), 2) if pre_crisis else None
+
+        return TtfWinterPremiumResponse(
+            years=years,
+            avg_premium_pre_crisis=avg_pre_crisis,
+            current_gas_year=current_gas_year,
+            as_of=today.isoformat(),
+        )
+
+    return _cached_compute("ttf_winter_premium", _compute, ttl=3600)
 
 
 @app.get("/api/prices/regime", response_model=PriceRegimeResponse)
