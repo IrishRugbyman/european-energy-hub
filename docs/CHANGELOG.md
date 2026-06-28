@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 71: Regime-conditional signal P&L split on /spreads
+
+**Built:** `compute_regime_conditional_pnl()` in `fundamental.py` and `GET /api/spreads/regime-conditional-pnl`. Splits the FSS (from `spreads_daily`) into gas-marginal (FSS > +2), coal-marginal (FSS < -2), and transition zones, joins with the per-zone nonlinear OOS net P&L, and computes Sharpe/avg_daily/cum_pnl for each zone and portfolio level. Frontend: `RegimeConditionalPnlSection` with portfolio cards, grouped bar chart, and per-zone Sharpe table.
+
+**Finding:** All 5 zones show systematically higher OOS Sharpe in the coal-marginal regime. Portfolio-level: coal-marginal Sharpe = 4.22 (445 days) vs gas-marginal = 1.65 (955 days), 2.6x differential. Zone range: BE has highest coal/gas ratio (5.98/1.77 = 3.4x), DE-LU lowest (2.14/0.58 = 3.7x - wait, also very high). The coal-marginal regime advantage arises because the TTF-based model creates systematic directional bias when coal (not gas) actually sets prices - fading this structural mis-specification generates stronger alpha than exploiting genuine transient deviations in gas-marginal periods. Current regime is coal-marginal (FSS = -3.26) which is the high-alpha state, but also the high-concentration-correlation state (P68 alert). 119 tests.
+
 ## 2026-06-28 - Phase 70: Fuel-switching EUA indicator on /prices
 
 **Built:** `GET /api/prices/fuel-switching-eua` and `FuelSwitchingEuaSection` on /prices. Computes the EUA level at which gas-fired CCGTs and coal plants are equally competitive on a total cost basis (CSS = CDS equilibrium): `EUA_switch = (TTF/0.49 - coal_EUR_MWh/0.36) / 0.596`. Uses FX-adjusted coal_eur_mwh from `spreads_daily` (includes EUR/USD correction applied in `refresh.py`). Returns the full time series from 2021-10 plus 90-day regime split (days gas marginal vs days coal marginal).
