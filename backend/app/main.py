@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import math
 import statistics
+import threading
+import time as _time
 from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any, Callable
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -238,6 +241,35 @@ from .schemas import (
 def _rate_limited():
     from fastapi.responses import JSONResponse
     return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
+
+
+# ---------------------------------------------------------------------------
+# In-process TTL cache for expensive OLS-based endpoints.
+# Spreads analytics refit walk-forward models on every request by default;
+# caching eliminates repeat computation between data refreshes (12h cycle).
+# TTL=600s means a cold result stays live for 10 minutes; TanStack Query
+# staleTime on the frontend is 1h, so the first visitor warms each key and
+# all subsequent visitors within that hour get instant responses.
+# ---------------------------------------------------------------------------
+
+_API_CACHE: dict[str, tuple[float, Any]] = {}
+_API_CACHE_LOCK = threading.Lock()
+_API_CACHE_TTL = 600  # seconds
+
+
+def _cached_compute(key: str, fn: Callable[[], Any], ttl: int = _API_CACHE_TTL) -> Any:
+    """Return cached result if fresh, else compute, store, and return."""
+    now = _time.monotonic()
+    with _API_CACHE_LOCK:
+        entry = _API_CACHE.get(key)
+        if entry is not None:
+            ts, val = entry
+            if now - ts < ttl:
+                return val
+    result = fn()
+    with _API_CACHE_LOCK:
+        _API_CACHE[key] = (now, result)
+    return result
 
 
 limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
@@ -3537,29 +3569,32 @@ def spreads_signal_snapshot():
     _rate_limited()
     from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
 
-    rows = []
-    as_of = None
-    for z in FUNDAMENTAL_ZONES:
-        result = compute_fundamental_model(db.query, z)
-        if not result:
-            continue
-        cur = result["current"]
-        coef = result["coefficients"]
-        rows.append(SignalSnapshotRow(
-            zone=z,
-            actual=cur["actual"],
-            fitted=cur["fitted"],
-            residual=cur["residual"],
-            zscore=cur["zscore"],
-            pct_rank_1yr=cur["pct_rank_1yr"],
-            r2=coef["r2"],
-        ))
-        if not as_of and result["series"]:
-            as_of = result["series"][-1]["price_date"]
+    def _build_snapshot():
+        _rows = []
+        _as_of = None
+        for z in FUNDAMENTAL_ZONES:
+            result = compute_fundamental_model(db.query, z)
+            if not result:
+                continue
+            cur = result["current"]
+            coef = result["coefficients"]
+            _rows.append({
+                "zone": z,
+                "actual": cur["actual"],
+                "fitted": cur["fitted"],
+                "residual": cur["residual"],
+                "zscore": cur["zscore"],
+                "pct_rank_1yr": cur["pct_rank_1yr"],
+                "r2": coef["r2"],
+            })
+            if not _as_of and result["series"]:
+                _as_of = result["series"][-1]["price_date"]
+        _rows.sort(key=lambda r: abs(r["zscore"]), reverse=True)
+        return {"as_of": _as_of, "rows": _rows}
 
-    # Sort by absolute z-score descending (most extreme signal first)
-    rows.sort(key=lambda r: abs(r.zscore), reverse=True)
-    return SignalSnapshotResponse(as_of=as_of, rows=rows)
+    cached = _cached_compute("signal_snapshot", _build_snapshot, ttl=300)
+    rows = [SignalSnapshotRow(**r) for r in cached["rows"]]
+    return SignalSnapshotResponse(as_of=cached["as_of"], rows=rows)
 
 
 @app.get("/api/spreads/fundamental-backtest", response_model=FundamentalBacktestResponse)
@@ -3694,7 +3729,7 @@ def spreads_nonlinear_backtest(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_nonlinear_backtest(db.query, zone)
+    result = _cached_compute(f"nl_backtest_{zone}", lambda: compute_nonlinear_backtest(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for nonlinear backtest")
 
@@ -3730,7 +3765,7 @@ def spreads_nonlinear_cost_robustness(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_nonlinear_cost_robustness(db.query, zone)
+    result = _cached_compute(f"cost_robust_{zone}", lambda: compute_nonlinear_cost_robustness(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for cost robustness")
 
@@ -3760,7 +3795,7 @@ def spreads_nonlinear_edge_by_zone():
     _rate_limited()
     from analytics.fundamental import compute_nonlinear_edge_by_zone
 
-    result = compute_nonlinear_edge_by_zone(db.query)
+    result = _cached_compute("edge_by_zone", lambda: compute_nonlinear_edge_by_zone(db.query), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for edge-by-zone")
 
@@ -3794,7 +3829,7 @@ def spreads_regime_aware_backtest(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_regime_aware_backtest(db.query, zone)
+    result = _cached_compute(f"regime_aware_{zone}", lambda: compute_regime_aware_backtest(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for regime-aware backtest")
 
@@ -3945,7 +3980,7 @@ def spreads_portfolio_backtest():
     _rate_limited()
     from analytics.fundamental import compute_portfolio_backtest
 
-    result = compute_portfolio_backtest(db.query)
+    result = _cached_compute("portfolio_backtest", lambda: compute_portfolio_backtest(db.query), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for portfolio backtest")
 
@@ -3989,7 +4024,7 @@ def spreads_residual_mean_reversion():
     _rate_limited()
     from analytics.fundamental import compute_residual_mean_reversion
 
-    result = compute_residual_mean_reversion(db.query)
+    result = _cached_compute("residual_mean_reversion", lambda: compute_residual_mean_reversion(db.query), ttl=3600)
     if not result or not result.get("zones"):
         raise HTTPException(status_code=503, detail="Insufficient data for residual diagnostic")
 
@@ -4111,25 +4146,28 @@ def market_pulse():
     im = db.query("SELECT today_mean FROM imbalance_latest LIMIT 1")
     rebap_today_mean = _float(im.iloc[0]["today_mean"]) if im is not None and not im.empty else None
 
-    # Fair-value z-score signal for each zone (OLS run; ~400ms total, cached 5min)
+    # Fair-value z-score signal for each zone - reuse the signal_snapshot cache (TTL 5min)
     from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
 
-    signal: list[MarketPulseSignal] = []
-    for _z in FUNDAMENTAL_ZONES:
-        try:
-            _res = compute_fundamental_model(db.query, _z)
-            if not _res:
-                continue
-            _cur = _res["current"]
-            signal.append(
-                MarketPulseSignal(
-                    zone=_z,
-                    zscore=round(float(_cur["zscore"]), 2) if _cur.get("zscore") is not None else None,
-                    pct_rank_1yr=int(_cur["pct_rank_1yr"]) if _cur.get("pct_rank_1yr") is not None else None,
-                )
-            )
-        except Exception:
-            pass
+    def _build_signal_for_pulse():
+        _out = []
+        for _z in FUNDAMENTAL_ZONES:
+            try:
+                _res = compute_fundamental_model(db.query, _z)
+                if not _res:
+                    continue
+                _cur = _res["current"]
+                _out.append({
+                    "zone": _z,
+                    "zscore": round(float(_cur["zscore"]), 2) if _cur.get("zscore") is not None else None,
+                    "pct_rank_1yr": int(_cur["pct_rank_1yr"]) if _cur.get("pct_rank_1yr") is not None else None,
+                })
+            except Exception:
+                pass
+        return _out
+
+    _sig_raw = _cached_compute("signal_snapshot_pulse", _build_signal_for_pulse, ttl=300)
+    signal: list[MarketPulseSignal] = [MarketPulseSignal(**s) for s in _sig_raw]
 
     return MarketPulseResponse(
         as_of=as_of,
@@ -4163,7 +4201,7 @@ def spreads_holding_period(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_holding_period_sensitivity(db.query, zone)
+    result = _cached_compute(f"holding_period_{zone}", lambda: compute_holding_period_sensitivity(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for holding period analysis")
 
