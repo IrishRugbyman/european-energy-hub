@@ -332,6 +332,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 66 - EU gas storage deviation as a fundamental factor on /spreads [COMPLETE 2026-06-28]
 
+### Phase 67 - D-1 load forecast error as a demand-side fundamental factor on /spreads [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,
