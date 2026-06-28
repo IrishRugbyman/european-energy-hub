@@ -5325,7 +5325,9 @@ function HydroBalanceSection() {
             <div className="bg-muted/20 rounded-lg px-3 py-2">
               <p className="text-[10px] text-muted-foreground">corr(balance, price)</p>
               <p className={`text-lg font-semibold ${corrColor(sel.corr)}`}>{sel.corr.toFixed(2)}</p>
-              <p className="text-[10px] text-muted-foreground/70">R² {sel.r2.toFixed(2)} · {sel.n_weeks} wks</p>
+              <p className="text-[10px] text-muted-foreground/70">
+                detrended {sel.corr_diff != null ? sel.corr_diff.toFixed(2) : '--'} · {sel.n_weeks} wks
+              </p>
             </div>
             <div className="bg-muted/20 rounded-lg px-3 py-2">
               <p className="text-[10px] text-muted-foreground">current balance</p>
@@ -5404,6 +5406,7 @@ function HydroBalanceSection() {
                 <tr className="border-b border-border">
                   <th className="text-left text-muted-foreground py-1">Country</th>
                   <th className="text-right font-semibold">Corr</th>
+                  <th className="text-right">Δw corr</th>
                   <th className="text-right">R²</th>
                   <th className="text-right">Balance now</th>
                   <th className="text-right">Price</th>
@@ -5422,6 +5425,9 @@ function HydroBalanceSection() {
                       {c.country} <span className="text-muted-foreground/60">{HYDRO_COUNTRY_NAMES[c.country] ?? ''}</span>
                     </td>
                     <td className={`text-right font-semibold ${corrColor(c.corr)}`}>{c.corr.toFixed(2)}</td>
+                    <td className={`text-right ${c.corr_diff != null && c.corr_diff <= -0.2 ? 'text-sky-400' : 'text-muted-foreground'}`}>
+                      {c.corr_diff != null ? c.corr_diff.toFixed(2) : '--'}
+                    </td>
                     <td className="text-right text-muted-foreground">{c.r2.toFixed(2)}</td>
                     <td className={`text-right ${c.current_balance_pct < 0 ? 'text-amber-300' : 'text-cyan-300'}`}>
                       {c.current_balance_pct > 0 ? '+' : ''}{c.current_balance_pct.toFixed(0)}%
@@ -5445,7 +5451,12 @@ function HydroBalanceSection() {
             sets the margin, near zero where gas, nuclear, or congestion dominate. The residual
             (price minus the hydro-fitted level) flags weeks where price is rich or cheap relative to
             what reservoirs alone imply, i.e. a non-hydro driver (cold snap, outage, fuel shock) is
-            doing the work. Country price is the cross-zone mean of that country&apos;s day-ahead
+            doing the work. The Δw corr column is the week-over-week differenced correlation: it
+            strips out the shared slow trend (post-crisis reservoir refill alongside falling prices),
+            so it isolates the genuine short-term hydro response and is the more honest read. Several
+            markets with a strong levels correlation (e.g. Italy) collapse toward zero once differenced
+            - their apparent link was mostly the common trend - while Iberia and France retain a real
+            week-to-week signal. Country price is the cross-zone mean of that country&apos;s day-ahead
             bidding zones; balance is storage vs the 5-year same-week average from ENTSO-E weekly
             reservoir filling (A72).
           </p>

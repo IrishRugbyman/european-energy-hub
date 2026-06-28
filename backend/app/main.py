@@ -5960,7 +5960,7 @@ def hydro_price_balance():
     """
     summary_df = db.query(
         """
-        SELECT country, n_weeks, corr, r2, slope_eur_per_pct, latest_week,
+        SELECT country, n_weeks, corr, corr_diff, r2, slope_eur_per_pct, latest_week,
                current_balance_pct, current_price_eur, fitted_price_eur, residual_eur
         FROM hydro_price_balance_summary
         ORDER BY corr
@@ -5971,6 +5971,7 @@ def hydro_price_balance():
             country=r.country,
             n_weeks=int(r.n_weeks),
             corr=_float(r.corr),
+            corr_diff=_float(r.corr_diff),
             r2=_float(r.r2),
             slope_eur_per_pct=_float(r.slope_eur_per_pct),
             latest_week=str(r.latest_week),

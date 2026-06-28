@@ -997,7 +997,7 @@ def _write_hydro_balance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
     conn.execute("""
         CREATE OR REPLACE TABLE hydro_price_balance_summary (
-            country VARCHAR, n_weeks INTEGER, corr REAL, r2 REAL,
+            country VARCHAR, n_weeks INTEGER, corr REAL, corr_diff REAL, r2 REAL,
             slope_eur_per_pct REAL, latest_week VARCHAR,
             current_balance_pct REAL, current_price_eur REAL,
             fitted_price_eur REAL, residual_eur REAL

@@ -2275,6 +2275,7 @@ class HydroBalanceCountry(BaseModel):
     country: str
     n_weeks: int
     corr: float
+    corr_diff: float | None
     r2: float
     slope_eur_per_pct: float
     latest_week: str

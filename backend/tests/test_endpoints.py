@@ -2045,6 +2045,7 @@ def test_hydro_price_balance(client):
     assert corrs == sorted(corrs)
     no_row = next(c for c in data["countries"] if c["country"] == "NO")
     assert no_row["corr"] == pytest.approx(-0.47)
+    assert no_row["corr_diff"] == pytest.approx(-0.188, abs=0.01)
     assert no_row["r2"] == pytest.approx(0.221, abs=0.01)
     assert no_row["current_price_eur"] == pytest.approx(58.8)
     assert no_row["n_weeks"] == 387

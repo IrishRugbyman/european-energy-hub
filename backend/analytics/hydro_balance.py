@@ -170,6 +170,21 @@ def _build_summary(joined: pd.DataFrame) -> pd.DataFrame:
         slope, intercept = np.polyfit(x, y, 1)
         r2 = corr * corr
 
+        # Week-over-week differenced correlation: removes the shared slow trend
+        # (post-crisis reservoir refill alongside falling prices) so this
+        # isolates the genuine contemporaneous hydro -> price response. Only on
+        # consecutive weeks (gap == 1) so non-adjacent weeks do not leak in.
+        gd = g.copy()
+        gd["wk"] = pd.to_datetime(gd["week_date"]).dt.to_period("W")
+        dx = gd["balance_pct"].diff()
+        dy = gd["price_eur"].diff()
+        adj = (gd["wk"] - gd["wk"].shift(1)).apply(lambda p: getattr(p, "n", None) == 1)
+        mask = adj & dx.notna() & dy.notna()
+        if mask.sum() >= 30 and dx[mask].std() > 0 and dy[mask].std() > 0:
+            corr_diff = round(float(np.corrcoef(dx[mask], dy[mask])[0, 1]), 3)
+        else:
+            corr_diff = None
+
         latest = g.iloc[-1]
         cur_bal = float(latest["balance_pct"])
         cur_price = float(latest["price_eur"])
@@ -181,6 +196,7 @@ def _build_summary(joined: pd.DataFrame) -> pd.DataFrame:
                 "country": country,
                 "n_weeks": int(len(g)),
                 "corr": round(corr, 3),
+                "corr_diff": corr_diff,
                 "r2": round(r2, 3),
                 "slope_eur_per_pct": round(float(slope), 3),
                 "latest_week": latest["week_date"].date().isoformat(),

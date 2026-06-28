@@ -749,7 +749,7 @@ def _seed_db(path: str) -> None:
     # Hydro balance vs price tables
     conn.execute("""
         CREATE TABLE hydro_price_balance_summary (
-            country VARCHAR, n_weeks INTEGER, corr REAL, r2 REAL,
+            country VARCHAR, n_weeks INTEGER, corr REAL, corr_diff REAL, r2 REAL,
             slope_eur_per_pct REAL, latest_week VARCHAR,
             current_balance_pct REAL, current_price_eur REAL,
             fitted_price_eur REAL, residual_eur REAL
@@ -762,8 +762,8 @@ def _seed_db(path: str) -> None:
     """)
     for _cc, _corr, _bal, _price in [("NO", -0.47, -2.6, 58.8), ("SE", -0.20, -8.1, 58.4)]:
         conn.execute(
-            "INSERT INTO hydro_price_balance_summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [_cc, 387, _corr, round(_corr * _corr, 3), -1.4, str(_week), _bal, _price, _price + 3, -3.0],
+            "INSERT INTO hydro_price_balance_summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            [_cc, 387, _corr, round(_corr * 0.4, 3), round(_corr * _corr, 3), -1.4, str(_week), _bal, _price, _price + 3, -3.0],
         )
         for _wi in range(156):
             _wd = _week - _td(weeks=_wi)

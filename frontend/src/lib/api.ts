@@ -391,6 +391,7 @@ export interface HydroBalanceCountry {
   country: string
   n_weeks: number
   corr: number
+  corr_diff: number | null
   r2: number
   slope_eur_per_pct: number
   latest_week: string
