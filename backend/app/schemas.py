@@ -2194,3 +2194,23 @@ class ReMeritOrderZone(BaseModel):
 class ReMeritOrderResponse(BaseModel):
     zones: list[ReMeritOrderZone]
     as_of: str
+
+
+# Phase 81: Annual negative-price hours trend by zone
+class NegPriceAnnualYear(BaseModel):
+    year: int
+    total_neg_hours: int
+    days_observed: int
+    is_partial: bool
+    projected_full_year: int | None  # annualized for partial years
+
+
+class NegPriceAnnualZone(BaseModel):
+    zone: str
+    years: list[NegPriceAnnualYear]
+
+
+class NegPriceAnnualResponse(BaseModel):
+    zones: list[NegPriceAnnualZone]
+    current_year: int
+    as_of: str

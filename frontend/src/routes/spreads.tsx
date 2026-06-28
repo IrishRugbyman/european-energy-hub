@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, type CongestionPremiumResponse, type CongestionPremiumRow, type ReMeritOrderResponse, type ReMeritOrderZone, type ReMeritOrderBin, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, type PriceVarianceDecompResponse, type PriceVarianceZoneRow, type CongestionPremiumResponse, type CongestionPremiumRow, type ReMeritOrderResponse, type ReMeritOrderZone, type ReMeritOrderBin, type NegPriceAnnualZone, type NegPriceAnnualYear } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1276,6 +1276,8 @@ function SpreadsDashboard() {
           <CongestionPremiumSection />
 
           <ReMeritOrderSection />
+
+          <NegPriceAnnualSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -5198,6 +5200,206 @@ function ReMeritOrderSection() {
           </p>
         </div>
       )}
+    </div>
+  )
+}
+
+function NegPriceAnnualSection() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['spreads-neg-price-annual'],
+    queryFn: api.spreadsNegPriceAnnual,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  if (isLoading || !data) return null
+
+  const zones = data.zones
+  const currentYear = data.current_year
+
+  // Build chart rows: one entry per zone, with year columns
+  const years = Array.from(
+    new Set(zones.flatMap((z: NegPriceAnnualZone) => z.years.map((y: NegPriceAnnualYear) => y.year)))
+  ).sort() as number[]
+
+  // Grouped bar chart: x = zone, bars = one per year
+  type ChartRow = Record<string, number | string | null>
+  const chartData: ChartRow[] = zones.map((z: NegPriceAnnualZone) => {
+    const row: ChartRow = { zone: z.zone }
+    for (const yr of years) {
+      const entry = z.years.find((y: NegPriceAnnualYear) => y.year === yr)
+      if (entry) {
+        if (entry.is_partial && entry.projected_full_year != null) {
+          row[`${yr}`] = entry.projected_full_year
+          row[`${yr}_actual`] = entry.total_neg_hours
+        } else {
+          row[`${yr}`] = entry.total_neg_hours
+        }
+      } else {
+        row[`${yr}`] = null
+      }
+    }
+    return row
+  })
+
+  // Find FR and DE-LU for stat cards
+  const frZone = zones.find((z: NegPriceAnnualZone) => z.zone === 'FR')
+  const deluZone = zones.find((z: NegPriceAnnualZone) => z.zone === 'DE-LU')
+  const itZone = zones.find((z: NegPriceAnnualZone) => z.zone === 'IT-NORD')
+
+  const frCurrent = frZone?.years.find((y: NegPriceAnnualYear) => y.year === currentYear)
+  const frPrior = frZone?.years.find((y: NegPriceAnnualYear) => y.year === currentYear - 1)
+  const deluCurrent = deluZone?.years.find((y: NegPriceAnnualYear) => y.year === currentYear)
+  const deluPrior = deluZone?.years.find((y: NegPriceAnnualYear) => y.year === currentYear - 1)
+  const itAllZero = itZone?.years.every((y: NegPriceAnnualYear) => y.total_neg_hours === 0)
+
+  const frPace = frCurrent?.projected_full_year ?? frCurrent?.total_neg_hours ?? null
+  const deluPace = deluCurrent?.projected_full_year ?? deluCurrent?.total_neg_hours ?? null
+  const frYoY = frPace != null && frPrior ? ((frPace - frPrior.total_neg_hours) / frPrior.total_neg_hours) * 100 : null
+  const deluYoY = deluPace != null && deluPrior ? ((deluPace - deluPrior.total_neg_hours) / deluPrior.total_neg_hours) * 100 : null
+
+  const YEAR_COLORS: Record<string, string> = {
+    '2024': '#64748b',
+    '2025': '#f59e0b',
+    '2026': '#ef4444',
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 space-y-4">
+      <div>
+        <h2 className="text-base font-semibold">Annual Negative-Price Hours by Zone</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">
+          Hours per calendar year where day-ahead price was negative - fundamental zones only.
+          Current year ({currentYear}) shown as annualized projection.
+        </p>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="bg-background border border-border rounded p-3">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">FR {currentYear} pace</div>
+          <div className="text-xl font-bold text-red-400 mt-1">
+            {frPace != null ? frPace.toLocaleString() : '--'}
+          </div>
+          <div className="text-[10px] text-muted-foreground">hrs/yr (annualized)</div>
+        </div>
+        <div className="bg-background border border-border rounded p-3">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">FR YoY change</div>
+          <div className={`text-xl font-bold mt-1 ${frYoY != null && frYoY > 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+            {frYoY != null ? `${frYoY > 0 ? '+' : ''}${frYoY.toFixed(0)}%` : '--'}
+          </div>
+          <div className="text-[10px] text-muted-foreground">vs {currentYear - 1} full year</div>
+        </div>
+        <div className="bg-background border border-border rounded p-3">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">DE-LU {currentYear} pace</div>
+          <div className="text-xl font-bold text-amber-400 mt-1">
+            {deluPace != null ? deluPace.toLocaleString() : '--'}
+          </div>
+          <div className="text-[10px] text-muted-foreground">
+            {deluYoY != null ? `${deluYoY > 0 ? '+' : ''}${deluYoY.toFixed(0)}% YoY` : 'hrs/yr annualized'}
+          </div>
+        </div>
+        <div className="bg-background border border-border rounded p-3">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wide">IT-NORD {currentYear}</div>
+          <div className="text-xl font-bold text-sky-400 mt-1">
+            {itAllZero ? '0' : (itZone?.years.find((y: NegPriceAnnualYear) => y.year === currentYear)?.total_neg_hours ?? '--').toLocaleString()}
+          </div>
+          <div className="text-[10px] text-muted-foreground">hours (structural zero)</div>
+        </div>
+      </div>
+
+      {/* Grouped bar chart: zone on x-axis, one bar per year */}
+      <div className="h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 4, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+            <XAxis dataKey="zone" tick={{ fill: '#94a3b8', fontSize: 11 }} />
+            <YAxis
+              tick={{ fill: '#94a3b8', fontSize: 10 }}
+              tickFormatter={(v: number) => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : `${v}`}
+              label={{ value: 'hours/yr', angle: -90, position: 'insideLeft', fill: '#64748b', fontSize: 10, dy: 35 }}
+            />
+            <Tooltip
+              contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 6, fontSize: 11 }}
+              formatter={(v, name) => {
+                const n = Number(v)
+                const label = String(name).includes(String(currentYear)) ? `${name} (annualized)` : String(name)
+                return [`${n.toLocaleString()} hrs`, label]
+              }}
+            />
+            <Legend wrapperStyle={{ fontSize: 11 }} />
+            {years.map((yr) => (
+              <Bar
+                key={yr}
+                dataKey={String(yr)}
+                name={String(yr) === String(currentYear) ? `${yr} (proj)` : String(yr)}
+                fill={YEAR_COLORS[String(yr)] ?? '#94a3b8'}
+                radius={[2, 2, 0, 0]}
+                opacity={String(yr) === String(currentYear) ? 0.85 : 1}
+              />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Zone detail table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-muted-foreground border-b border-border/50">
+              <th className="text-left pb-1">Zone</th>
+              {years.filter((yr) => yr < currentYear).map((yr) => (
+                <th key={yr} className="text-right pb-1">{yr}</th>
+              ))}
+              <th className="text-right pb-1">{currentYear} YTD</th>
+              <th className="text-right pb-1">{currentYear} proj.</th>
+              <th className="text-right pb-1">YoY</th>
+            </tr>
+          </thead>
+          <tbody>
+            {zones.map((z: NegPriceAnnualZone) => {
+              const currEntry = z.years.find((y: NegPriceAnnualYear) => y.year === currentYear)
+              const priorEntry = z.years.find((y: NegPriceAnnualYear) => y.year === currentYear - 1)
+              const proj = currEntry?.projected_full_year ?? currEntry?.total_neg_hours ?? null
+              const yoy = proj != null && priorEntry ? ((proj - priorEntry.total_neg_hours) / Math.max(1, priorEntry.total_neg_hours)) * 100 : null
+              return (
+                <tr key={z.zone} className="border-b border-border/30">
+                  <td className="py-1 font-medium" style={{ color: ZONE_COLORS[z.zone] ?? '#94a3b8' }}>{z.zone}</td>
+                  {years.filter((yr) => yr < currentYear).map((yr) => {
+                    const entry = z.years.find((y: NegPriceAnnualYear) => y.year === yr)
+                    return (
+                      <td key={yr} className="text-right text-muted-foreground">
+                        {entry != null ? entry.total_neg_hours.toLocaleString() : '--'}
+                      </td>
+                    )
+                  })}
+                  <td className="text-right text-muted-foreground">
+                    {currEntry != null ? `${currEntry.total_neg_hours.toLocaleString()} (${currEntry.days_observed}d)` : '--'}
+                  </td>
+                  <td className="text-right font-medium">
+                    {proj != null ? proj.toLocaleString() : '--'}
+                  </td>
+                  <td className={`text-right font-semibold ${yoy != null && yoy > 20 ? 'text-red-400' : yoy != null && yoy < -10 ? 'text-emerald-400' : 'text-muted-foreground'}`}>
+                    {yoy != null ? `${yoy > 0 ? '+' : ''}${yoy.toFixed(0)}%` : '--'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+        Negative-price hours quantify how often renewable + nuclear surplus exceeds transmission
+        capacity and storage, forcing prices below zero to clear the market. FR leads in {currentYear}
+        because high nuclear baseload (40-60 GW) plus growing solar saturation in the afternoon hours
+        pushes supply above demand faster than interconnectors can export. DE-LU's strong
+        negative-price acceleration follows wind build-out. The structural insight: IT-NORD shows
+        zero negative-price hours in every year -- Italy never has excess supply because it cannot
+        absorb cheap French and German power (the FR-IT NTC interconnector is saturated 83% of
+        days, per the congestion premium analysis). This asymmetry is market-integration failure
+        in hourly form: FR pays grid operators to consume power while Italian consumers pay 80+
+        EUR/MWh simultaneously.
+      </p>
     </div>
   )
 }

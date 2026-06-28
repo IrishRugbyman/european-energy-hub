@@ -286,6 +286,9 @@ from .schemas import (
     CongestionScatterPoint,
     CongestionMonthlyPoint,
     CongestionPremiumResponse,
+    NegPriceAnnualYear,
+    NegPriceAnnualZone,
+    NegPriceAnnualResponse,
 )
 
 
@@ -2241,6 +2244,64 @@ def spreads_re_merit_order():
         )
 
     return _cached_compute("re_merit_order", _compute, ttl=3600)
+
+
+@app.get("/api/spreads/neg-price-annual", response_model=NegPriceAnnualResponse)
+def spreads_neg_price_annual():
+    """Year-by-year total negative-price hours per fundamental zone.
+
+    Sums neg_hours from power_daily across each calendar year. The current
+    (partial) year is annualized: projected = total * 365 / days_observed.
+    Zones: DE-LU, FR, NL, IT-NORD, BE.
+    """
+    ZONES = ["DE-LU", "FR", "NL", "IT-NORD", "BE"]
+
+    df = db.query(
+        f"""
+        SELECT
+            zone,
+            YEAR(price_date)    AS yr,
+            SUM(neg_hours)      AS total_neg_hours,
+            COUNT(*)            AS days_observed
+        FROM power_daily
+        WHERE zone IN ({', '.join(f"'{z}'" for z in ZONES)})
+          AND neg_hours IS NOT NULL
+        GROUP BY zone, yr
+        ORDER BY zone, yr
+        """
+    )
+    if df.empty:
+        return NegPriceAnnualResponse(zones=[], current_year=date.today().year, as_of=date.today().isoformat())
+
+    current_year = date.today().year
+    zones_out: list[NegPriceAnnualZone] = []
+    for zone in ZONES:
+        zdf = df[df["zone"] == zone].sort_values("yr")
+        years_out: list[NegPriceAnnualYear] = []
+        for _, row in zdf.iterrows():
+            yr = int(row["yr"])
+            total = int(row["total_neg_hours"])
+            days = int(row["days_observed"])
+            is_partial = yr == current_year
+            projected: int | None = None
+            if is_partial and days > 0:
+                projected = round(total * 365 / days)
+            years_out.append(
+                NegPriceAnnualYear(
+                    year=yr,
+                    total_neg_hours=total,
+                    days_observed=days,
+                    is_partial=is_partial,
+                    projected_full_year=projected,
+                )
+            )
+        zones_out.append(NegPriceAnnualZone(zone=zone, years=years_out))
+
+    return NegPriceAnnualResponse(
+        zones=zones_out,
+        current_year=current_year,
+        as_of=date.today().isoformat(),
+    )
 
 
 @app.get("/api/prices/regime", response_model=PriceRegimeResponse)

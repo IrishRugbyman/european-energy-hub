@@ -1947,3 +1947,25 @@ def test_spreads_re_merit_order(client):
                 assert b["p25_price"] is not None
                 assert b["p75_price"] is not None
                 assert b["p25_price"] <= b["mean_price"] <= b["p75_price"] + 50
+
+
+def test_spreads_neg_price_annual(client):
+    r = client.get("/api/spreads/neg-price-annual")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data
+    assert "current_year" in data
+    assert "as_of" in data
+    assert isinstance(data["current_year"], int)
+    for z in data["zones"]:
+        assert "zone" in z
+        assert "years" in z
+        for yr in z["years"]:
+            assert "year" in yr and isinstance(yr["year"], int)
+            assert "total_neg_hours" in yr and isinstance(yr["total_neg_hours"], int)
+            assert "days_observed" in yr and yr["days_observed"] > 0
+            assert "is_partial" in yr and isinstance(yr["is_partial"], bool)
+            assert yr["total_neg_hours"] >= 0
+            if yr["is_partial"] and yr["total_neg_hours"] > 0:
+                assert yr["projected_full_year"] is not None
+                assert yr["projected_full_year"] >= yr["total_neg_hours"]

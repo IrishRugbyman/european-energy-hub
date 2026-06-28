@@ -1227,6 +1227,7 @@ export const api = {
   gasStorageAnalogs: () => get<StorageAnalogResponse>('/gas/storage-analogs'),
   pricesTtfWinterPremium: () => get<TtfWinterPremiumResponse>('/prices/ttf-winter-premium'),
   spreadsReMeritOrder: () => get<ReMeritOrderResponse>('/spreads/re-merit-order'),
+  spreadsNegPriceAnnual: () => get<NegPriceAnnualResponse>('/spreads/neg-price-annual'),
 }
 
 // Phase 78: Interconnection congestion premium
@@ -2263,5 +2264,25 @@ export interface ReMeritOrderZone {
 
 export interface ReMeritOrderResponse {
   zones: ReMeritOrderZone[]
+  as_of: string
+}
+
+// Phase 81: Annual negative-price hours trend by zone
+export interface NegPriceAnnualYear {
+  year: number
+  total_neg_hours: number
+  days_observed: number
+  is_partial: boolean
+  projected_full_year: number | null
+}
+
+export interface NegPriceAnnualZone {
+  zone: string
+  years: NegPriceAnnualYear[]
+}
+
+export interface NegPriceAnnualResponse {
+  zones: NegPriceAnnualZone[]
+  current_year: number
   as_of: string
 }
