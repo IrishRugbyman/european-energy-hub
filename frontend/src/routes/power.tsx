@@ -2,13 +2,13 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow, type EuCfLatestResponse, type NuclearHeatRiskResponse } from '@/lib/api'
+import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow, type EuCfLatestResponse, type NuclearHeatRiskResponse, type HydroMapResponse } from '@/lib/api'
 import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
 import { InterconnectionLayer, type BorderKey, type InterconnMode } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
-import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity, zoneName } from '@/lib/scales'
+import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity, zoneName, ZONE_TO_HYDRO_COUNTRY } from '@/lib/scales'
 
 export const Route = createFileRoute('/power')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -170,10 +170,22 @@ const METRIC_CONFIG: Record<MapMetric, MetricConfig> = {
       { label: 'no data',        color: '#374151' },
     ],
   },
+  hydro_fill: {
+    label: 'Hydro',
+    title: 'Reservoir fill vs 5yr avg',
+    items: [
+      { label: '>+30%',          color: '#1e3a8a' },
+      { label: '+10 to +30%',    color: '#3b82f6' },
+      { label: '±10% (avg)',     color: '#6b7280' },
+      { label: '-10 to -30%',    color: '#ef4444' },
+      { label: '<-30%',          color: '#7f1d1d' },
+      { label: 'no data',        color: '#374151' },
+    ],
+  },
 }
 
 const PRICE_METRICS: MapMetric[] = ['price', 'range', 'neg_hours', 'pct_rank']
-const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel', 'carbon_intensity', 'wind_cf', 'solar_cf']
+const GEN_METRICS: MapMetric[] = ['renewable', 'dominant_fuel', 'carbon_intensity', 'wind_cf', 'solar_cf', 'hydro_fill']
 
 function cfRankColor(rank: number | null, type: 'wind' | 'solar'): string {
   if (rank == null) return '#64748b'
@@ -282,6 +294,13 @@ function MapDashboard() {
     refetchOnWindowFocus: false,
   })
 
+  const { data: hydroData } = useQuery<HydroMapResponse>({
+    queryKey: ['hydro-map'],
+    queryFn: api.hydroMap,
+    staleTime: 60 * 60 * 1000,
+    enabled: metric === 'hydro_fill',
+  })
+
   const powerByZone: Record<string, PowerLatestRow> = {}
   for (const r of powerData?.rows ?? []) powerByZone[r.zone] = r
 
@@ -307,6 +326,16 @@ function MapDashboard() {
         genByZone[r.zone].solar_installed_mw = r.solar_installed_mw
       }
     }
+  }
+
+  // Expand country-level hydro data to zone level using ZONE_TO_HYDRO_COUNTRY
+  const hydroByCountry: Record<string, number | null> = {}
+  for (const c of hydroData?.countries ?? []) {
+    hydroByCountry[c.country] = c.vs_avg5_pct ?? null
+  }
+  const hydroByZone: Record<string, number | null> = {}
+  for (const [zone, country] of Object.entries(ZONE_TO_HYDRO_COUNTRY)) {
+    hydroByZone[zone] = hydroByCountry[country] ?? null
   }
 
   const prices = (powerData?.rows ?? [])
@@ -516,6 +545,36 @@ function MapDashboard() {
             {metric === 'carbon_intensity' && weightedCI != null && (
               <StatChip label="EU carbon intensity" value={`${weightedCI} gCO₂/kWh`} />
             )}
+            {metric === 'hydro_fill' && hydroData && (
+              <>
+                <span className="font-semibold text-foreground text-xs">Hydro vs 5yr avg</span>
+                {['NO', 'SE', 'ES', 'FR'].map((cc) => {
+                  const row = hydroData.countries.find((c) => c.country === cc)
+                  if (!row || row.vs_avg5_pct == null) return null
+                  const pct = row.vs_avg5_pct
+                  const color = pct < -10 ? '#ef4444' : pct > 10 ? '#60a5fa' : '#9ca3af'
+                  return (
+                    <span key={cc} className="font-mono text-xs" style={{ color }}>
+                      {cc}: {pct > 0 ? '+' : ''}{pct.toFixed(1)}%
+                    </span>
+                  )
+                })}
+                {(() => {
+                  const total = hydroData.countries.reduce((s, c) => s + (c.stored_twh ?? 0), 0)
+                  if (total === 0) return null
+                  const wtd = hydroData.countries.reduce((s, c) => {
+                    if (c.vs_avg5_pct == null || c.stored_twh == null) return s
+                    return s + c.vs_avg5_pct * c.stored_twh
+                  }, 0) / total
+                  const color = wtd < -10 ? '#ef4444' : wtd > 10 ? '#60a5fa' : '#9ca3af'
+                  return (
+                    <span className="font-mono text-xs" style={{ color }}>
+                      EU wtd: {wtd > 0 ? '+' : ''}{wtd.toFixed(1)}%
+                    </span>
+                  )
+                })()}
+              </>
+            )}
             {priceDate && !isHistorical && (
               <span className="text-muted-foreground text-xs">{priceDate}</span>
             )}
@@ -564,6 +623,7 @@ function MapDashboard() {
         <EuroMap
           powerByZone={powerByZone}
           genByZone={genByZone}
+          hydroByZone={hydroByZone}
           selected={selectedZone}
           onSelect={handleSelectZone}
           metric={metric}
