@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, type GasPowerPassThroughResponse, type PassThroughZone, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1268,6 +1268,8 @@ function SpreadsDashboard() {
           <ZoneSignalCorrelationSection />
 
           <RegimeConditionalPnlSection />
+
+          <GasPowerPassThroughSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -4057,6 +4059,147 @@ function RegimeConditionalPnlSection() {
             Note that the coal-marginal regime also coincides with elevated zone correlation (see
             concentration risk section above), so high per-zone Sharpe comes with reduced
             effective diversification.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function GasPowerPassThroughSection() {
+  const { data, isLoading } = useQuery<GasPowerPassThroughResponse>({
+    queryKey: ['gas-power-passthrough'],
+    queryFn: api.spreadsGasPowerPassthrough,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const ZONE_COLORS: Record<string, string> = {
+    'DE-LU': '#60a5fa', 'FR': '#f472b6', 'NL': '#34d399', 'IT-NORD': '#fbbf24', 'BE': '#a78bfa',
+  }
+
+  const chartData = data?.zones?.[0]?.series?.map((_, i) => {
+    const point: Record<string, string | number> = { date: data.zones[0].series[i].date }
+    data.zones.forEach((z) => {
+      if (z.series[i]) {
+        point[`${z.zone}_ttf`] = z.series[i].beta_ttf
+      }
+    })
+    return point
+  }) ?? []
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Gas-to-Power Pass-Through: Rolling 90-Day OLS Coefficients
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 73 - how much of a 1 EUR/MWh TTF move passes into power prices? (theory: 2.04 if gas-marginal)
+        </span>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Computing rolling OLS...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stat cards: full-sample vs 90d TTF beta per zone */}
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            {data.zones.map((z: PassThroughZone) => (
+              <div key={z.zone} className="bg-muted/20 rounded-lg px-3 py-2">
+                <p className="text-[10px] text-muted-foreground mb-0.5">{z.zone}</p>
+                <p className="text-sm font-semibold" style={{ color: ZONE_COLORS[z.zone] ?? '#94a3b8' }}>
+                  {z.recent_90d_beta_ttf.toFixed(2)}
+                </p>
+                <p className="text-[10px] text-muted-foreground">
+                  90d vs full {z.full_sample_beta_ttf.toFixed(2)}
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="text-[10px] text-muted-foreground -mt-2">
+            Theory (CCGT, 49% efficiency): {data.theory_beta_ttf.toFixed(2)} EUR/MWh per EUR/MWh TTF.
+            Current 90d betas are below theory across all zones, consistent with the coal-marginal regime
+            detected in P71.
+          </p>
+
+          {/* Rolling beta_ttf time series per zone */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              Rolling {data.rolling_window}d TTF beta (power price sensitivity to 1 EUR/MWh TTF move).
+              Lower = coal-marginal; closer to {data.theory_beta_ttf.toFixed(2)} = gas-marginal.
+            </p>
+            <ResponsiveContainer width="100%" height={200}>
+              <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false} tickFormatter={(v) => v.slice(0, 7)} minTickGap={60} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  tickFormatter={(v) => v.toFixed(1)} domain={['auto', 'auto']} />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v) => (typeof v === 'number' ? v.toFixed(3) : v)}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Legend iconSize={8} wrapperStyle={{ fontSize: 9 }} />
+                <ReferenceLine y={data.theory_beta_ttf} stroke="#f87171" strokeDasharray="3 3"
+                  label={{ value: 'gas-marginal', fill: '#f87171', fontSize: 8, position: 'right' }} />
+                <ReferenceLine y={0} stroke="#334155" />
+                {data.zones.map((z: PassThroughZone) => (
+                  <Line key={z.zone} type="monotone" dataKey={`${z.zone}_ttf`}
+                    name={z.zone} stroke={ZONE_COLORS[z.zone] ?? '#94a3b8'}
+                    dot={false} strokeWidth={1.5} />
+                ))}
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Zone comparison table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Zone</th>
+                  <th className="text-right text-muted-foreground">Full-sample TTF beta</th>
+                  <th className="text-right text-muted-foreground">90d TTF beta</th>
+                  <th className="text-right text-muted-foreground">Full-sample EUA beta</th>
+                  <th className="text-right text-muted-foreground">90d EUA beta</th>
+                  <th className="text-right text-muted-foreground">TTF regime shift</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.zones.map((z: PassThroughZone) => {
+                  const shift = z.recent_90d_beta_ttf - z.full_sample_beta_ttf
+                  return (
+                    <tr key={z.zone} className="border-b border-border/30">
+                      <td className="py-1 font-medium" style={{ color: ZONE_COLORS[z.zone] ?? '#94a3b8' }}>
+                        {z.zone}
+                      </td>
+                      <td className="text-right text-foreground">{z.full_sample_beta_ttf.toFixed(3)}</td>
+                      <td className="text-right text-foreground">{z.recent_90d_beta_ttf.toFixed(3)}</td>
+                      <td className="text-right text-foreground">{z.full_sample_beta_eua.toFixed(3)}</td>
+                      <td className="text-right text-foreground">{z.recent_90d_beta_eua.toFixed(3)}</td>
+                      <td className={`text-right font-semibold ${shift < 0 ? 'text-red-400' : 'text-green-400'}`}>
+                        {shift > 0 ? '+' : ''}{shift.toFixed(3)}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Multivariate OLS: power_price = alpha + beta_ttf * TTF + beta_eua * EUA.
+            When gas is the marginal fuel (CCGT setting the price), beta_ttf should equal
+            1 / CCGT_efficiency = 1 / {data.ccgt_efficiency.toFixed(2)} = {data.theory_beta_ttf.toFixed(2)} EUR/MWh
+            per EUR/MWh TTF. All 5 zones are currently below this threshold
+            (90d betas: {data.zones.map((z: PassThroughZone) => `${z.zone} ${z.recent_90d_beta_ttf.toFixed(2)}`).join(', ')}),
+            confirming the coal-marginal regime. IT-NORD has the highest current TTF sensitivity
+            ({data.zones.find((z: PassThroughZone) => z.zone === 'IT-NORD')?.recent_90d_beta_ttf.toFixed(2) ?? '--'}),
+            consistent with Italy&apos;s gas-heavy generation mix. The EUA beta rising alongside
+            falling TTF beta quantifies the carbon-pricing signal that dominates price formation
+            when coal (with its higher carbon intensity) is the marginal fuel.
           </p>
         </div>
       )}

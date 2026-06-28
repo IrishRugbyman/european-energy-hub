@@ -264,6 +264,9 @@ from .schemas import (
     RegimeConditionalResponse,
     LngArbPoint,
     LngArbResponse,
+    PassThroughPoint,
+    PassThroughZone,
+    GasPowerPassThroughResponse,
 )
 
 
@@ -2037,6 +2040,95 @@ def prices_storage_ttf():
         current_residual=round(cur_resid, 2),
         corr_window=CORR_WINDOW,
     )
+
+
+@app.get("/api/spreads/gas-power-passthrough", response_model=GasPowerPassThroughResponse)
+def spreads_gas_power_passthrough():
+    """Rolling 90-day multivariate OLS: power = alpha + beta_ttf * TTF + beta_eua * EUA.
+
+    Measures how much a 1 EUR/MWh change in TTF (or EUA) translates into power prices
+    across FUNDAMENTAL_ZONES. When beta_ttf approaches 1/CCGT_efficiency (2.04), the zone
+    is pricing as gas-marginal. When beta_ttf drops and beta_eua rises, the zone has
+    shifted to a coal-marginal or carbon-dominated pricing regime. This quantifies the
+    FSS regime transition detected in Phase 71.
+    """
+    _rate_limited()
+
+    def _compute():
+        import numpy as np
+
+        CCGT_EFFICIENCY = 0.49
+        THEORY_BETA = 1.0 / CCGT_EFFICIENCY
+        ROLLING_WINDOW = 90
+        FUNDAMENTAL_ZONES_LOCAL = ["DE-LU", "FR", "NL", "IT-NORD", "BE"]
+
+        def ols_two(x1, x2, y):
+            A = np.column_stack([np.ones(len(y)), x1, x2])
+            coefs, _, _, _ = np.linalg.lstsq(A, y, rcond=None)
+            return float(coefs[1]), float(coefs[2])
+
+        result_zones = []
+        latest_date = None
+
+        for zone in FUNDAMENTAL_ZONES_LOCAL:
+            df = db.query("""
+                SELECT p.price_date, p.base_eur AS power,
+                       pr.ttf_eur_mwh AS ttf, pr.eua_eur_t AS eua
+                FROM power_daily p
+                JOIN prices_daily pr ON p.price_date = pr.price_date
+                WHERE p.zone = ?
+                  AND p.base_eur IS NOT NULL
+                  AND pr.ttf_eur_mwh IS NOT NULL
+                  AND pr.eua_eur_t IS NOT NULL
+                ORDER BY p.price_date
+            """, [zone])
+
+            if df is None or len(df) < ROLLING_WINDOW + 30:
+                continue
+
+            dates = df["price_date"].values
+            ttf = df["ttf"].values
+            eua = df["eua"].values
+            power = df["power"].values
+
+            series = []
+            for i in range(ROLLING_WINDOW, len(df)):
+                sl = slice(i - ROLLING_WINDOW, i)
+                bt, be = ols_two(ttf[sl], eua[sl], power[sl])
+                series.append(PassThroughPoint(
+                    date=str(dates[i]),
+                    beta_ttf=round(bt, 4),
+                    beta_eua=round(be, 4),
+                ))
+
+            if not series:
+                continue
+
+            fs_ttf, fs_eua = ols_two(ttf, eua, power)
+            r90_ttf, r90_eua = ols_two(ttf[-90:], eua[-90:], power[-90:])
+
+            result_zones.append(PassThroughZone(
+                zone=zone,
+                series=series,
+                full_sample_beta_ttf=round(fs_ttf, 4),
+                full_sample_beta_eua=round(fs_eua, 4),
+                recent_90d_beta_ttf=round(r90_ttf, 4),
+                recent_90d_beta_eua=round(r90_eua, 4),
+                theory_beta_ttf=round(THEORY_BETA, 4),
+            ))
+
+            if latest_date is None:
+                latest_date = str(dates[-1])
+
+        return GasPowerPassThroughResponse(
+            zones=result_zones,
+            theory_beta_ttf=round(THEORY_BETA, 4),
+            ccgt_efficiency=CCGT_EFFICIENCY,
+            rolling_window=ROLLING_WINDOW,
+            as_of=latest_date or "",
+        )
+
+    return _cached_compute("gas_power_passthrough", _compute, ttl=3600)
 
 
 @app.get("/api/prices/lng-arb", response_model=LngArbResponse)

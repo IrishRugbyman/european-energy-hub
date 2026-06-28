@@ -1634,6 +1634,22 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_spreads_gas_power_passthrough(client):
+    r = client.get("/api/spreads/gas-power-passthrough")
+    assert r.status_code == 200
+    data = r.json()
+    # Fixture seeds DE-LU, FR, IT-NORD; production has all 5 fundamental zones
+    assert 1 <= len(data["zones"]) <= 5
+    assert data["rolling_window"] == 90
+    assert abs(data["theory_beta_ttf"] - 2.04) < 0.01
+    for z in data["zones"]:
+        assert "zone" in z and "series" in z
+        assert len(z["series"]) > 10
+        assert abs(z["full_sample_beta_ttf"]) > 0.0
+        pt = z["series"][0]
+        assert "date" in pt and "beta_ttf" in pt and "beta_eua" in pt
+
+
 def test_prices_lng_arb(client):
     r = client.get("/api/prices/lng-arb")
     assert r.status_code == 200

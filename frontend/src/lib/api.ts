@@ -1216,9 +1216,35 @@ export const api = {
   spreadsLoadErrorFactorTest: (zone?: string) => get<LoadErrorFactorTestResponse>(`/spreads/load-error-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsZoneSignalCorrelations: () => get<ZoneSignalCorrelationResponse>('/spreads/zone-signal-correlations'),
   spreadsRegimeConditionalPnl: () => get<RegimeConditionalResponse>('/spreads/regime-conditional-pnl'),
+  spreadsGasPowerPassthrough: () => get<GasPowerPassThroughResponse>('/spreads/gas-power-passthrough'),
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
   pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
+}
+
+// Phase 73: Rolling gas-to-power pass-through coefficients
+export interface PassThroughPoint {
+  date: string
+  beta_ttf: number
+  beta_eua: number
+}
+
+export interface PassThroughZone {
+  zone: string
+  series: PassThroughPoint[]
+  full_sample_beta_ttf: number
+  full_sample_beta_eua: number
+  recent_90d_beta_ttf: number
+  recent_90d_beta_eua: number
+  theory_beta_ttf: number
+}
+
+export interface GasPowerPassThroughResponse {
+  zones: PassThroughZone[]
+  theory_beta_ttf: number
+  ccgt_efficiency: number
+  rolling_window: number
+  as_of: string
 }
 
 // Phase 72: LNG arb spread

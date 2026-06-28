@@ -1874,6 +1874,31 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 73: Rolling gas-to-power pass-through coefficients
+class PassThroughPoint(BaseModel):
+    date: str
+    beta_ttf: float
+    beta_eua: float
+
+
+class PassThroughZone(BaseModel):
+    zone: str
+    series: list[PassThroughPoint]
+    full_sample_beta_ttf: float
+    full_sample_beta_eua: float
+    recent_90d_beta_ttf: float
+    recent_90d_beta_eua: float
+    theory_beta_ttf: float
+
+
+class GasPowerPassThroughResponse(BaseModel):
+    zones: list[PassThroughZone]
+    theory_beta_ttf: float
+    ccgt_efficiency: float
+    rolling_window: int
+    as_of: str
+
+
 # Phase 72: LNG arbitrage spread (TTF vs Henry Hub)
 class LngArbPoint(BaseModel):
     date: str
