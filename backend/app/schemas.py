@@ -2214,3 +2214,21 @@ class NegPriceAnnualResponse(BaseModel):
     zones: list[NegPriceAnnualZone]
     current_year: int
     as_of: str
+
+
+# Phase 82: Monthly cross-zone price dispersion (market integration metric)
+class ZoneDispersionMonth(BaseModel):
+    month: str  # YYYY-MM
+    std_eur: float  # cross-zone std of daily avg base price
+    range_eur: float  # max minus min across zones
+    avg_eur: float  # simple average across zones
+    n_days: int
+
+
+class ZoneDispersionResponse(BaseModel):
+    months: list[ZoneDispersionMonth]
+    avg_std_2025: float | None  # calendar year 2025 average std for YoY context
+    avg_std_2026_ytd: float | None  # 2026 YTD average std
+    peak_month: str | None  # month with highest std
+    peak_std: float | None
+    as_of: str

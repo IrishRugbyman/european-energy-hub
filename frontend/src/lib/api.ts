@@ -1228,6 +1228,7 @@ export const api = {
   pricesTtfWinterPremium: () => get<TtfWinterPremiumResponse>('/prices/ttf-winter-premium'),
   spreadsReMeritOrder: () => get<ReMeritOrderResponse>('/spreads/re-merit-order'),
   spreadsNegPriceAnnual: () => get<NegPriceAnnualResponse>('/spreads/neg-price-annual'),
+  spreadsZoneDispersion: () => get<ZoneDispersionResponse>('/spreads/zone-dispersion'),
 }
 
 // Phase 78: Interconnection congestion premium
@@ -2284,5 +2285,23 @@ export interface NegPriceAnnualZone {
 export interface NegPriceAnnualResponse {
   zones: NegPriceAnnualZone[]
   current_year: number
+  as_of: string
+}
+
+// Phase 82: Monthly cross-zone price dispersion
+export interface ZoneDispersionMonth {
+  month: string
+  std_eur: number
+  range_eur: number
+  avg_eur: number
+  n_days: number
+}
+
+export interface ZoneDispersionResponse {
+  months: ZoneDispersionMonth[]
+  avg_std_2025: number | null
+  avg_std_2026_ytd: number | null
+  peak_month: string | null
+  peak_std: number | null
   as_of: string
 }

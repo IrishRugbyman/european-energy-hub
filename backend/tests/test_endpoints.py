@@ -1969,3 +1969,17 @@ def test_spreads_neg_price_annual(client):
             if yr["is_partial"] and yr["total_neg_hours"] > 0:
                 assert yr["projected_full_year"] is not None
                 assert yr["projected_full_year"] >= yr["total_neg_hours"]
+
+
+def test_spreads_zone_dispersion(client):
+    r = client.get("/api/spreads/zone-dispersion")
+    assert r.status_code == 200
+    data = r.json()
+    assert "months" in data
+    assert "as_of" in data
+    for m in data["months"]:
+        assert "month" in m and len(m["month"]) == 7  # YYYY-MM
+        assert "std_eur" in m and m["std_eur"] >= 0
+        assert "range_eur" in m and m["range_eur"] >= 0
+        assert "n_days" in m and m["n_days"] > 0
+        assert m["range_eur"] >= m["std_eur"] - 1  # range >= std for normal distributions

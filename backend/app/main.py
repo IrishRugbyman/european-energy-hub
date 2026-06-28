@@ -289,6 +289,8 @@ from .schemas import (
     NegPriceAnnualYear,
     NegPriceAnnualZone,
     NegPriceAnnualResponse,
+    ZoneDispersionMonth,
+    ZoneDispersionResponse,
 )
 
 
@@ -2300,6 +2302,74 @@ def spreads_neg_price_annual():
     return NegPriceAnnualResponse(
         zones=zones_out,
         current_year=current_year,
+        as_of=date.today().isoformat(),
+    )
+
+
+@app.get("/api/spreads/zone-dispersion", response_model=ZoneDispersionResponse)
+def spreads_zone_dispersion():
+    """Monthly cross-zone price dispersion across DE-LU, FR, NL, IT-NORD, BE.
+
+    Each month: standard deviation and range of daily base prices across the 5
+    fundamental zones. Rising std = market fragmentation (congestion); falling
+    std = market integration. Full history available in power_daily.
+    """
+    ZONES = ["DE-LU", "FR", "NL", "IT-NORD", "BE"]
+
+    df = db.query(
+        f"""
+        WITH daily_stats AS (
+            SELECT price_date,
+                   STDDEV(base_eur)           AS std_eur,
+                   MAX(base_eur) - MIN(base_eur) AS range_eur,
+                   AVG(base_eur)              AS avg_eur
+            FROM power_daily
+            WHERE zone IN ({', '.join(f"'{z}'" for z in ZONES)})
+              AND base_eur IS NOT NULL
+            GROUP BY price_date
+            HAVING COUNT(*) = {len(ZONES)}
+        )
+        SELECT
+            STRFTIME(price_date, '%Y-%m')     AS month,
+            ROUND(AVG(std_eur), 2)            AS std_eur,
+            ROUND(AVG(range_eur), 2)          AS range_eur,
+            ROUND(AVG(avg_eur), 2)            AS avg_eur,
+            COUNT(*)                          AS n_days
+        FROM daily_stats
+        GROUP BY month
+        ORDER BY month
+        """
+    )
+    if df.empty:
+        return ZoneDispersionResponse(months=[], avg_std_2025=None, avg_std_2026_ytd=None, peak_month=None, peak_std=None, as_of=date.today().isoformat())
+
+    months_out = [
+        ZoneDispersionMonth(
+            month=str(row["month"]),
+            std_eur=float(row["std_eur"]),
+            range_eur=float(row["range_eur"]),
+            avg_eur=float(row["avg_eur"]),
+            n_days=int(row["n_days"]),
+        )
+        for _, row in df.iterrows()
+    ]
+
+    std_2025 = df[df["month"].str.startswith("2025")]["std_eur"]
+    avg_std_2025 = float(std_2025.mean()) if not std_2025.empty else None
+
+    std_2026 = df[df["month"].str.startswith("2026")]["std_eur"]
+    avg_std_2026_ytd = float(std_2026.mean()) if not std_2026.empty else None
+
+    peak_row = df.loc[df["std_eur"].idxmax()] if not df.empty else None
+    peak_month = str(peak_row["month"]) if peak_row is not None else None
+    peak_std = float(peak_row["std_eur"]) if peak_row is not None else None
+
+    return ZoneDispersionResponse(
+        months=months_out,
+        avg_std_2025=avg_std_2025,
+        avg_std_2026_ytd=avg_std_2026_ytd,
+        peak_month=peak_month,
+        peak_std=peak_std,
         as_of=date.today().isoformat(),
     )
 
