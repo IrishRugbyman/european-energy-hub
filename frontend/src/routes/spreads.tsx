@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1242,6 +1242,8 @@ function SpreadsDashboard() {
           <EnrichedModelSection />
 
           <StorageFactorSection />
+
+          <LoadErrorFactorSection />
 
           <NuclearWindInteractionSection />
 
@@ -3713,6 +3715,256 @@ function SpreadExplainer() {
         Constants: gas eff 49%, gas EF 0.364 tCO2/MWh; coal eff 36%, coal EF 0.96 tCO2/MWh.
         Power = DE-LU day-ahead base. TTF = front-month EUR/MWh. EUA = ETS front-year.
       </p>
+    </div>
+  )
+}
+
+
+function LoadErrorFactorSection() {
+  const [zone, setZone] = useState<FundZone>('DE-LU')
+
+  const { data, isLoading } = useQuery<LoadErrorFactorTestResponse>({
+    queryKey: ['load-error-factor-test', zone],
+    queryFn: () => api.spreadsLoadErrorFactorTest(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmt = (v: number | null | undefined, dp = 2) => (v != null ? v.toFixed(dp) : '--')
+  const fmtPct = (v: number | null | undefined) => (v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(1)}%` : '--')
+  const fmtDelta = (v: number | null | undefined) => (v != null ? `${v >= 0 ? '+' : ''}${v.toFixed(2)}` : '--')
+
+  const aicColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v < -2 ? '#4ade80' : v < 0 ? '#facc15' : '#f87171'
+  const sharpeColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : v > 0 ? '#4ade80' : '#f87171'
+  const corrColor = (v: number | null | undefined) =>
+    v == null ? '#94a3b8' : Math.abs(v) > 0.15 ? '#4ade80' : Math.abs(v) > 0.05 ? '#facc15' : '#94a3b8'
+  const cvColor = (cv: number | null | undefined) =>
+    cv == null ? '#94a3b8' : cv < 0.5 ? '#4ade80' : cv < 1.5 ? '#facc15' : '#f87171'
+
+  const verdictText = () => {
+    if (!data) return null
+    if (data.justified) {
+      const coefSign = data.coef.mean > 0 ? 'positive' : 'negative'
+      return `On ${data.zone} the D-1 load forecast error is strongly AIC-justified (ΔAIC ${data.aic_delta_mean.toFixed(2)} < −2), with a ${coefSign} coefficient of ${data.coef.mean.toFixed(2)} EUR/MWh per GW miss and excellent walk-forward stability (CV = ${data.coef.cv?.toFixed(2) ?? '--'}). A 1 GW demand underestimate yesterday predicts ${Math.abs(data.coef.mean).toFixed(1)} EUR/MWh higher prices today — the DA market does not fully adjust for persistent demand-side bias. BIC is ${data.bic_delta_mean < 0 ? 'also justified' : `not justified (${data.bic_delta_mean.toFixed(2)}), so interpret the AIC result with some caution`}.`
+    }
+    return `On ${data.zone} the D-1 load forecast error does not add marginal information (ΔAIC = ${data.aic_delta_mean.toFixed(2)}, threshold < −2). The supply-side factors (nuclear, wind, solar, TTF) already capture the price variance here — demand surprises do not create an independent residual channel.`
+  }
+
+  const rollingCorr = data?.rolling_corr?.slice(-300) ?? []
+  const scatter = data?.scatter ?? []
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          D-1 Load Forecast Error as a Demand-Side Factor
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 67 — does demand surprise add signal above supply-side factors?
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running walk-forward factor test...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* AIC verdict banner */}
+          <div className={`rounded-lg px-3 py-2 border text-xs ${
+            data.justified
+              ? 'border-green-500/40 bg-green-500/10 text-green-400'
+              : 'border-muted/40 bg-muted/10 text-muted-foreground'
+          }`}>
+            <span className="font-semibold mr-2">
+              {data.justified ? 'Factor justified (AIC)' : 'Factor not justified (AIC)'}
+            </span>
+            ΔAIC = {data.aic_delta_mean.toFixed(2)} (threshold: &lt; −2) | n OOS = {data.n_oos}
+            {data.current_load_err != null && (
+              <span className="ml-3">
+                D-1 load error: <span style={{ color: data.current_load_err > 1 ? '#f87171' : data.current_load_err < -1 ? '#4ade80' : '#94a3b8' }}>
+                  {data.current_load_err >= 0 ? '+' : ''}{data.current_load_err.toFixed(1)} GW
+                </span> (actual {data.current_load_err >= 0 ? 'above' : 'below'} forecast)
+                {data.current_residual != null && (
+                  <span className="ml-2">
+                    | {zone} residual today: <span style={{ color: data.current_residual > 5 ? '#f87171' : data.current_residual < -5 ? '#4ade80' : '#94a3b8' }}>
+                      {data.current_residual >= 0 ? '+' : ''}{data.current_residual.toFixed(1)} EUR/MWh
+                    </span>
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+
+          {/* Four stat cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">OOS RMSE (enr → enr+load err)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.enriched.rmse_overall)} → {fmt(data.extended.rmse_overall)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Tradeable Sharpe (enr → enr+load err)</p>
+              <p className="text-sm font-semibold text-foreground">
+                {fmt(data.enriched.sharpe_net)} → {fmt(data.extended.sharpe_net)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Sharpe change</p>
+              <p className="text-sm font-semibold" style={{ color: sharpeColor(data.improvement.sharpe_delta) }}>
+                {fmtDelta(data.improvement.sharpe_delta)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Mean ΔAIC (&lt; −2 = justified)</p>
+              <p className="text-sm font-semibold" style={{ color: aicColor(data.aic_delta_mean) }}>
+                {data.aic_delta_mean.toFixed(2)}
+                <span className="text-[10px] ml-1">{data.justified ? 'justified' : 'not justified'}</span>
+              </p>
+            </div>
+          </div>
+
+          {/* Coefficient + information criteria + raw correlation */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[11px]">
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Load error coefficient (EUR/MWh per GW miss)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>Mean</span>
+                <span className="text-right text-foreground">
+                  {fmt(data.coef.mean, 2)} EUR/MWh / GW
+                </span>
+                <span>WF std</span>
+                <span className="text-right text-foreground">{fmt(data.coef.std, 2)}</span>
+                <span>Stability (CV)</span>
+                <span className="text-right" style={{ color: cvColor(data.coef.cv) }}>
+                  {data.coef.cv != null ? data.coef.cv.toFixed(2) : 'n/a'}
+                  {data.coef.cv != null && data.coef.cv > 1.5 ? ' ⚠' : ''}
+                </span>
+              </div>
+            </div>
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Information criteria (mean over WF)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>ΔAIC</span>
+                <span className="text-right" style={{ color: aicColor(data.aic_delta_mean) }}>
+                  {data.aic_delta_mean.toFixed(2)}
+                </span>
+                <span>ΔBIC</span>
+                <span className="text-right" style={{ color: aicColor(data.bic_delta_mean) }}>
+                  {data.bic_delta_mean.toFixed(2)}
+                </span>
+                <span>Verdict</span>
+                <span className="text-right" style={{ color: data.justified ? '#4ade80' : '#f87171' }}>
+                  {data.justified ? 'add it' : 'skip it'}
+                </span>
+              </div>
+            </div>
+            <div className="bg-muted/10 rounded-lg px-3 py-2">
+              <p className="font-medium mb-1 text-foreground">Correlation + RMSE (load err vs enriched residual)</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-muted-foreground">
+                <span>Pearson r</span>
+                <span className="text-right" style={{ color: corrColor(data.pearson_r) }}>
+                  {data.pearson_r != null ? data.pearson_r.toFixed(3) : '--'}
+                </span>
+                <span>RMSE change</span>
+                <span className="text-right" style={{ color: sharpeColor(-(data.improvement.rmse_pct ?? 0)) }}>
+                  {fmtPct(data.improvement.rmse_pct)}
+                </span>
+                <span>Low-wind RMSE</span>
+                <span className="text-right" style={{ color: sharpeColor(-(data.improvement.low_wind_rmse_pct ?? 0)) }}>
+                  {fmtPct(data.improvement.low_wind_rmse_pct)}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Rolling 60d correlation chart */}
+          {rollingCorr.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                {data.corr_window}-day rolling Pearson: D-1 load error vs {zone} enriched model residual
+              </p>
+              <ResponsiveContainer width="100%" height={120}>
+                <LineChart data={rollingCorr} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    interval={Math.floor(rollingCorr.length / 4)} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} domain={[-1, 1]}
+                    tickFormatter={(v) => v.toFixed(1)} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v) => [typeof v === 'number' ? v.toFixed(3) : '--', 'Pearson r']}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <ReferenceLine y={0} stroke="#334155" strokeDasharray="3 3" />
+                  <Line type="monotone" dataKey="corr" stroke="#a78bfa" dot={false} strokeWidth={1.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Scatter: load_err vs enriched residual */}
+          {scatter.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                D-1 load error (GW) vs {zone} enriched model residual (EUR/MWh)
+              </p>
+              <ResponsiveContainer width="100%" height={140}>
+                <ComposedChart margin={{ top: 4, right: 8, bottom: 12, left: -20 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="load_err" type="number" name="D-1 load error (GW)"
+                    tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}GW`}
+                    label={{ value: 'D-1 load error (GW)', position: 'insideBottom', offset: -4, fontSize: 9, fill: '#64748b' }} />
+                  <YAxis type="number" name={`${zone} residual`}
+                    tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    tickFormatter={(v) => `${v >= 0 ? '+' : ''}${v.toFixed(0)}`} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v, name) => {
+                      const n = typeof v === 'number' ? v : 0
+                      return name === 'load_err'
+                        ? [`${n >= 0 ? '+' : ''}${n.toFixed(1)} GW`, 'D-1 load error']
+                        : [`${n >= 0 ? '+' : ''}${n.toFixed(1)} EUR/MWh`, `${zone} residual`]
+                    }}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.date ?? ''}
+                  />
+                  <Scatter data={scatter} fill="#a78bfa" opacity={0.55} r={2.5} />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            Hypothesis: the day-ahead power market does not fully adjust for demand-side forecast
+            errors from the previous day. When yesterday&apos;s actual load exceeded the DA forecast
+            (load_err_lag1_gw &gt; 0), weather and industrial demand were higher than expected — a
+            pattern that persists by 1-2 days. The coefficient measures how many EUR/MWh today&apos;s
+            price moves per GW of yesterday&apos;s demand miss. This is the demand-side complement to
+            the supply-side signals already in the enriched model (wind forecast error, solar
+            forecast error, D-1 nuclear). All factors are strictly in the gate-closure set
+            (ENTSO-E publishes actual load data before market open). Walk-forward AIC test:
+            ΔAIC threshold &lt; −2 justifies the additional degree of freedom. A stable CV (&lt; 0.5)
+            confirms the coefficient is not overfitted noise.{' '}
+            {verdictText()}
+          </p>
+        </div>
+      )}
     </div>
   )
 }

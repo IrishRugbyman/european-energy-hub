@@ -247,6 +247,9 @@ from .schemas import (
     StorageFactorRollingPoint,
     StorageFactorScatterPoint,
     StorageFactorTestResponse,
+    LoadErrorScatterPoint,
+    LoadErrorRollingPoint,
+    LoadErrorFactorTestResponse,
 )
 
 
@@ -4359,6 +4362,49 @@ def spreads_storage_factor_test(zone: str = "DE-LU"):
         rolling_corr=[StorageFactorRollingPoint(**r) for r in result["rolling_corr"]],
         scatter=[StorageFactorScatterPoint(**r) for r in result["scatter"]],
         current_storage_dev=result.get("current_storage_dev"),
+        current_residual=result.get("current_residual"),
+        corr_window=result["corr_window"],
+    )
+
+
+@app.get("/api/spreads/load-error-factor-test", response_model=LoadErrorFactorTestResponse)
+def spreads_load_error_factor_test(zone: str = "DE-LU"):
+    """D-1 load forecast error as a demand-side fundamental factor: does it add info beyond supply factors?
+
+    Walk-forward test of whether D-1 load forecast error (actual load[t-1] - forecast load[t-1])
+    improves the enriched nonlinear OLS fair-value model (P48+P54, 12 terms). Tests the
+    demand-side channel: does yesterday's demand surprise predict today's DA price residual?
+
+    Returns AIC verdict, coefficient stability, rolling correlation, and scatter.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_load_error_factor_test
+
+    cache_key = f"load_error_factor_{zone}"
+    result = _cached_compute(
+        cache_key,
+        lambda: compute_load_error_factor_test(db.query, zone=zone),
+        ttl=3600,
+    )
+    if not result or result.get("n_oos", 0) < 30:
+        raise HTTPException(status_code=503, detail=f"Insufficient data for load error factor test ({zone})")
+
+    return LoadErrorFactorTestResponse(
+        zone=result["zone"],
+        as_of=result["as_of"],
+        n_oos=result["n_oos"],
+        source=result["source"],
+        aic_delta_mean=result["aic_delta_mean"],
+        bic_delta_mean=result["bic_delta_mean"],
+        justified=result["justified"],
+        pearson_r=result.get("pearson_r"),
+        enriched=StorageFactorStats(**result["enriched"]),
+        extended=StorageFactorStats(**result["extended"]),
+        improvement=StorageFactorImprovementStats(**result["improvement"]),
+        coef=StorageFactorCoef(**result["coef"]),
+        rolling_corr=[LoadErrorRollingPoint(**r) for r in result["rolling_corr"]],
+        scatter=[LoadErrorScatterPoint(**r) for r in result["scatter"]],
+        current_load_err=result.get("current_load_err"),
         current_residual=result.get("current_residual"),
         corr_window=result["corr_window"],
     )

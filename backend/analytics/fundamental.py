@@ -2844,3 +2844,289 @@ def compute_storage_factor_test(
         "current_residual": current_residual,
         "corr_window": _STORAGE_CORR_WINDOW,
     }
+
+
+_LOAD_ERR_CORR_WINDOW = 60  # days for rolling Pearson between load_err_lag1 and residual
+
+
+def _fetch_fundamental_features_with_load_err(
+    query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE
+):
+    """Like _fetch_fundamental_features but also computes D-1 load forecast error.
+
+    Adds load_err_lag1_gw = (actual_load[t-1] - forecast_load[t-1]) / 1000 in GW.
+    A positive value means yesterday's demand was higher than forecast (demand surprise).
+    Uses a LAG window function over the generation_forecast_daily table.
+    Returns None on failure; NaN rows are handled by the caller.
+    """
+    if source == "forecast":
+        wind_col, solar_col, load_col = "wind_pct", "solar_pct", "load_fc_mw"
+    elif source == "actual":
+        wind_col, solar_col, load_col = "wind_pct_actual", "solar_pct_actual", "load_actual_mw"
+    else:
+        raise ValueError(f"unknown feature source {source!r}")
+    try:
+        return query_fn(f"""
+            WITH gf AS (
+                SELECT
+                    zone,
+                    gen_date,
+                    {wind_col} AS wind_pct,
+                    {solar_col} AS solar_pct,
+                    {load_col} AS load_mw,
+                    COALESCE(nuclear_lag1_gw, 0.0) AS nuclear_lag1_gw,
+                    LAG(load_actual_mw - load_fc_mw)
+                        OVER (PARTITION BY zone ORDER BY gen_date) / 1000.0
+                        AS load_err_lag1_gw
+                FROM generation_forecast_daily
+                WHERE zone = ?
+            )
+            SELECT
+                p.price_date,
+                p.base_eur,
+                pr.ttf_eur_mwh,
+                pr.eua_eur_t,
+                g.wind_pct,
+                g.solar_pct,
+                g.load_mw,
+                g.nuclear_lag1_gw,
+                g.load_err_lag1_gw
+            FROM power_daily p
+            JOIN prices_daily pr ON p.price_date = pr.price_date
+            JOIN gf g ON p.price_date = g.gen_date AND g.zone = p.zone
+            WHERE p.zone = ?
+              AND p.base_eur IS NOT NULL
+              AND pr.ttf_eur_mwh IS NOT NULL
+              AND g.wind_pct IS NOT NULL
+              AND g.solar_pct IS NOT NULL
+            ORDER BY p.price_date
+        """, [zone, zone])
+    except Exception as exc:
+        logger.warning(f"fundamental feature fetch (with load err) failed for {zone} ({source}): {exc!r}")
+        return None
+
+
+def compute_load_error_factor_test(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
+    """Does D-1 load forecast error add information to the enriched nonlinear OLS model?
+
+    Hypothesis: the day-ahead power market discounts demand surprises. When yesterday's
+    actual load was higher than forecast (load_err_lag1_gw > 0), the system ran hotter
+    than expected, the thermal stack was deeper, and today's price may be bid up by a
+    similar demand pattern (weather persistence, industrial schedule). Conversely, load
+    overestimates create a surplus that suppresses prices. The D-1 load forecast error
+    is in the gate-closure information set (ENTSO-E publishes actual load daily).
+
+    TTF captures gas demand indirectly; EUA captures industrial demand via emission cost.
+    The load error tests whether there is a residual demand-side signal the fundamental
+    model does not already price via those channels.
+
+    Methodology: identical to compute_storage_factor_test (Phase 66). At each WF step,
+    the enriched 12-factor model and the extended 13-factor model (+load_err_lag1_gw) are
+    refit on [0..t-1] and compared on OOS RMSE, tradeable Sharpe, and AIC.
+
+    Returns: dict with same structure as compute_storage_factor_test.
+    """
+    rows = _fetch_fundamental_features_with_load_err(query_fn, zone, source)
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        logger.warning(f"load error factor test: insufficient data for {zone}")
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(
+        subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"]
+    )
+    df = df.reset_index(drop=True)
+    if len(df) < WF_MIN_TRAIN + 40:
+        logger.warning(f"load error factor test: insufficient data for {zone} after dropna")
+        return {}
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    load_mw = df["load_mw"].to_numpy(float)
+    nuclear_gw = (
+        df["nuclear_lag1_gw"].to_numpy(float)
+        if "nuclear_lag1_gw" in df.columns
+        else np.zeros(len(df))
+    )
+    # load_err_lag1_gw may be NaN for the first row (LAG over first record); fill with 0.
+    load_err = df["load_err_lag1_gw"].fillna(0.0).to_numpy(float)
+    has_load_err = df["load_err_lag1_gw"].notna().to_numpy(bool)
+
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    resid_gw = load_mw * (1.0 - (wind + solar) / 100.0) / 1000.0
+    dttf = np.diff(ttf, prepend=ttf[0])
+
+    Xenr = _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw)
+    Xext = np.column_stack([Xenr, load_err])
+
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+    idx, pred_enr, pred_ext, res_enr, res_ext = [], [], [], [], []
+    load_err_coefs, aic_deltas, bic_deltas = [], [], []
+
+    for t in range(start, n):
+        cenr, _, _, _ = np.linalg.lstsq(Xenr[:t], y[:t], rcond=None)
+        cext, _, _, _ = np.linalg.lstsq(Xext[:t], y[:t], rcond=None)
+
+        idx.append(t)
+        pe = float(Xenr[t] @ cenr)
+        px = float(Xext[t] @ cext)
+        pred_enr.append(pe)
+        pred_ext.append(px)
+        res_enr.append(y[t] - pe)
+        res_ext.append(y[t] - px)
+        load_err_coefs.append(float(cext[-1]))
+
+        k_enr = Xenr.shape[1]
+        k_ext = Xext.shape[1]
+        rss_enr = float(np.sum((y[:t] - Xenr[:t] @ cenr) ** 2))
+        rss_ext = float(np.sum((y[:t] - Xext[:t] @ cext) ** 2))
+        nt = t
+        aic_enr = nt * np.log(max(rss_enr / nt, 1e-12)) + 2 * k_enr
+        aic_ext = nt * np.log(max(rss_ext / nt, 1e-12)) + 2 * k_ext
+        bic_enr = nt * np.log(max(rss_enr / nt, 1e-12)) + k_enr * np.log(nt)
+        bic_ext = nt * np.log(max(rss_ext / nt, 1e-12)) + k_ext * np.log(nt)
+        aic_deltas.append(aic_ext - aic_enr)
+        bic_deltas.append(bic_ext - bic_enr)
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    y_oos = y[idx]
+    w_oos = wind[idx]
+    prices = y_oos
+    price_changes = np.diff(prices)
+    low = w_oos < LOW_WIND_KNOT_PCT
+
+    def rmse(actual, pred, mask=None):
+        a = actual if mask is None else actual[mask]
+        p = pred if mask is None else pred[mask]
+        if len(a) == 0:
+            return None
+        return float(round(np.sqrt(np.mean((a - p) ** 2)), 2))
+
+    pred_enr = np.array(pred_enr)
+    pred_ext = np.array(pred_ext)
+
+    def sharpe_net(residuals):
+        s = pd.Series(residuals)
+        rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+        rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+        z = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+        pos = np.clip(-z, -1.0, 1.0)
+        gross = pos[:-1] * price_changes
+        turnover = np.abs(np.diff(pos, prepend=0.0))[:-1]
+        pnl = gross - EDGE_NET_COST * turnover
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return float(round(pnl.mean() / pnl.std() * np.sqrt(252), 3))
+
+    enriched_stats = {
+        "rmse_overall": rmse(y_oos, pred_enr),
+        "rmse_low_wind": rmse(y_oos, pred_enr, low),
+        "sharpe_net": sharpe_net(res_enr),
+    }
+    extended_stats = {
+        "rmse_overall": rmse(y_oos, pred_ext),
+        "rmse_low_wind": rmse(y_oos, pred_ext, low),
+        "sharpe_net": sharpe_net(res_ext),
+    }
+
+    def pct_drop(a, b):
+        if a is None or b is None or a == 0:
+            return None
+        return float(round(100.0 * (a - b) / a, 1))
+
+    def delta(a, b):
+        return float(round(b - a, 3)) if a is not None and b is not None else None
+
+    improvement = {
+        "rmse_pct": pct_drop(enriched_stats["rmse_overall"], extended_stats["rmse_overall"]),
+        "low_wind_rmse_pct": pct_drop(enriched_stats["rmse_low_wind"], extended_stats["rmse_low_wind"]),
+        "sharpe_delta": delta(enriched_stats["sharpe_net"], extended_stats["sharpe_net"]),
+    }
+
+    le_arr = np.array(load_err_coefs)
+    m = float(np.mean(le_arr))
+    sd = float(np.std(le_arr))
+    cv = float(abs(sd / m)) if m != 0 else None
+
+    aic_delta_mean = float(round(np.mean(aic_deltas), 2))
+    bic_delta_mean = float(round(np.mean(bic_deltas), 2))
+    justified = bool(aic_delta_mean < -2.0)
+
+    # Rolling correlation between load_err_lag1 and the enriched baseline residual
+    oos_dates = dates.iloc[idx].reset_index(drop=True)
+    load_err_oos = load_err[idx]
+    res_enr_arr = np.array(res_enr)
+
+    has_load_err_oos = has_load_err[idx]
+    if has_load_err_oos.sum() >= 30:
+        s_le = pd.Series(load_err_oos, index=oos_dates)
+        s_res = pd.Series(res_enr_arr, index=oos_dates)
+        rolling_corr = (
+            s_le.rolling(_LOAD_ERR_CORR_WINDOW, min_periods=20)
+            .corr(s_res)
+            .dropna()
+        )
+        rolling = [
+            {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
+            for d, v in rolling_corr.items()
+        ]
+        pearson_r = float(round(s_le.corr(s_res), 3))
+    else:
+        rolling = []
+        pearson_r = None
+
+    # Scatter: load_err_lag1 vs enriched baseline residual (last 730 days)
+    cutoff = oos_dates.iloc[-1] - pd.Timedelta(days=730)
+    mask_cut = oos_dates >= cutoff
+    scatter = [
+        {
+            "date": d.strftime("%Y-%m-%d"),
+            "load_err": round(float(le_v), 2),
+            "residual": round(float(rv), 1),
+        }
+        for d, le_v, rv, ok in zip(
+            oos_dates[mask_cut], load_err_oos[mask_cut],
+            res_enr_arr[mask_cut], has_load_err_oos[mask_cut]
+        )
+        if ok
+    ]
+
+    # Current snapshot
+    last_idx_pos = len(idx) - 1
+    current_load_err = round(float(load_err_oos[-1]), 2) if has_load_err_oos[-1] else None
+    current_residual = round(float(res_enr_arr[-1]), 1)
+
+    return {
+        "zone": zone,
+        "as_of": dates.iloc[-1].strftime("%Y-%m-%d"),
+        "n_oos": int(len(idx)),
+        "source": source,
+        "aic_delta_mean": aic_delta_mean,
+        "bic_delta_mean": bic_delta_mean,
+        "justified": justified,
+        "pearson_r": pearson_r,
+        "enriched": enriched_stats,
+        "extended": extended_stats,
+        "improvement": improvement,
+        "coef": {
+            "mean": round(m, 4),
+            "std": round(sd, 4),
+            "cv": round(cv, 3) if cv is not None else None,
+        },
+        "rolling_corr": rolling,
+        "scatter": scatter,
+        "current_load_err": current_load_err,
+        "current_residual": current_residual,
+        "corr_window": _LOAD_ERR_CORR_WINDOW,
+    }

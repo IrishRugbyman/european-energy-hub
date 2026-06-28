@@ -1840,3 +1840,35 @@ class StorageFactorTestResponse(BaseModel):
     current_storage_dev: float | None
     current_residual: float | None
     corr_window: int
+
+
+# Phase 67: D-1 load forecast error as a demand-side fundamental factor
+class LoadErrorScatterPoint(BaseModel):
+    date: str
+    load_err: float
+    residual: float
+
+
+class LoadErrorRollingPoint(BaseModel):
+    date: str
+    corr: float
+
+
+class LoadErrorFactorTestResponse(BaseModel):
+    zone: str
+    as_of: str
+    n_oos: int
+    source: str
+    aic_delta_mean: float
+    bic_delta_mean: float
+    justified: bool
+    pearson_r: float | None
+    enriched: StorageFactorStats
+    extended: StorageFactorStats
+    improvement: StorageFactorImprovementStats
+    coef: StorageFactorCoef
+    rolling_corr: list[LoadErrorRollingPoint]
+    scatter: list[LoadErrorScatterPoint]
+    current_load_err: float | None
+    current_residual: float | None
+    corr_window: int

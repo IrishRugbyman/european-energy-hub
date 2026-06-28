@@ -1213,6 +1213,7 @@ export const api = {
   spreadsHoldingPeriod: (zone?: string) => get<HoldingPeriodResponse>(`/spreads/holding-period${zone ? `?zone=${zone}` : ''}`),
   spreadsSignalPosture: () => get<SignalPostureResponse>('/spreads/signal-posture'),
   spreadsStorageFactorTest: (zone?: string) => get<StorageFactorTestResponse>(`/spreads/storage-factor-test${zone ? `?zone=${zone}` : ''}`),
+  spreadsLoadErrorFactorTest: (zone?: string) => get<LoadErrorFactorTestResponse>(`/spreads/load-error-factor-test${zone ? `?zone=${zone}` : ''}`),
 }
 
 // US power generation
@@ -1816,6 +1817,39 @@ export interface StorageFactorTestResponse {
   rolling_corr: StorageFactorRollingPoint[]
   scatter: StorageFactorScatterPoint[]
   current_storage_dev: number | null
+  current_residual: number | null
+  corr_window: number
+}
+
+// --- Load forecast error factor test (Phase 67) ---
+
+export interface LoadErrorRollingPoint {
+  date: string
+  corr: number
+}
+
+export interface LoadErrorScatterPoint {
+  date: string
+  load_err: number
+  residual: number
+}
+
+export interface LoadErrorFactorTestResponse {
+  zone: string
+  as_of: string
+  n_oos: number
+  source: string
+  aic_delta_mean: number
+  bic_delta_mean: number
+  justified: boolean
+  pearson_r: number | null
+  enriched: StorageFactorStats
+  extended: StorageFactorStats
+  improvement: StorageFactorImprovementStats
+  coef: StorageFactorCoef
+  rolling_corr: LoadErrorRollingPoint[]
+  scatter: LoadErrorScatterPoint[]
+  current_load_err: number | null
   current_residual: number | null
   corr_window: number
 }

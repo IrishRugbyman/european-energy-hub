@@ -1580,6 +1580,30 @@ def test_imbalance_rebap_zscore_correlation(client):
     assert "n" in b and "mean_rebap" in b
 
 
+def test_spreads_load_error_factor_test(client):
+    r = client.get("/api/spreads/load-error-factor-test?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert data["n_oos"] > 0
+    assert data["source"] == "forecast"
+    assert isinstance(data["aic_delta_mean"], float)
+    assert isinstance(data["bic_delta_mean"], float)
+    assert isinstance(data["justified"], bool)
+    if data["pearson_r"] is not None:
+        assert -1.0 <= data["pearson_r"] <= 1.0
+    for key in ("enriched", "extended"):
+        m = data[key]
+        assert {"rmse_overall", "rmse_low_wind", "sharpe_net"} <= m.keys()
+    imp = data["improvement"]
+    assert {"rmse_pct", "low_wind_rmse_pct", "sharpe_delta"} <= imp.keys()
+    c = data["coef"]
+    assert {"mean", "std", "cv"} <= c.keys()
+    assert "rolling_corr" in data
+    assert "scatter" in data
+    assert data["corr_window"] == 60
+
+
 def test_spreads_storage_factor_test(client):
     r = client.get("/api/spreads/storage-factor-test?zone=DE-LU")
     assert r.status_code == 200
