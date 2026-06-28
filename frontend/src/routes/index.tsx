@@ -156,20 +156,20 @@ function PulseCard({
 }) {
   const inner = (
     <div className={[
-      'flex flex-col gap-1 px-3 py-2.5 rounded-md border min-w-[100px]',
+      'flex h-full flex-col gap-1 px-3 py-2.5 rounded-md border min-w-[100px]',
       dim
         ? 'bg-card/40 border-border/40'
         : 'bg-card border-border hover:border-border/80 transition-colors',
       to ? 'cursor-pointer' : '',
     ].filter(Boolean).join(' ')}>
-      <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/55 leading-none">
+      <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/80 leading-none">
         {label}
       </span>
       <div className="flex items-baseline gap-1.5">
         <span className="text-sm font-semibold tabular-nums text-foreground leading-tight">
           {value}
         </span>
-        <span className="text-[10px] text-muted-foreground/50">{unit}</span>
+        <span className="text-[10px] text-muted-foreground/60">{unit}</span>
       </div>
       {delta != null && (
         <DeltaChip v={delta} unit={deltaUnit} invert={deltaInvert} />
@@ -177,7 +177,7 @@ function PulseCard({
     </div>
   )
   if (to) {
-    return <Link to={to}>{inner}</Link>
+    return <Link to={to} className="flex">{inner}</Link>
   }
   return inner
 }
@@ -192,9 +192,9 @@ function SpreadMiniCard({ sp, zscore, pctRank }: { sp: MarketPulseSpread; zscore
     zscore != null && Math.abs(zscore) >= 0.75 ? (zscore > 0 ? '#fb923c' : '#86efac') :
     '#64748b'
   return (
-    <div className="flex flex-col gap-1 px-3 py-2.5 rounded-md border bg-card border-border min-w-[92px]">
+    <div className="flex h-full flex-col gap-1 px-3 py-2.5 rounded-md border bg-card border-border min-w-[92px]">
       <div className="flex items-center justify-between gap-1">
-        <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/55 leading-none">
+        <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/80 leading-none">
           {sp.zone}
         </span>
         {sp.regime && (
@@ -310,7 +310,7 @@ function MarketPulse() {
         {data.spreads.map((sp) => {
           const sig = data.signal.find((s) => s.zone === sp.zone)
           return (
-            <Link key={sp.zone} to="/spreads">
+            <Link key={sp.zone} to="/spreads" className="flex">
               <SpreadMiniCard sp={sp} zscore={sig?.zscore} pctRank={sig?.pct_rank_1yr} />
             </Link>
           )
@@ -336,9 +336,9 @@ function MarketPulse() {
           return (
             <>
               <div className="w-px bg-border/30 self-stretch mx-0.5" />
-              <Link to="/generation">
-                <div className={`rounded-lg px-3 py-1.5 border cursor-pointer transition-opacity hover:opacity-80 ${isCritical ? 'bg-red-950/70 border-red-600/50' : 'bg-amber-950/70 border-amber-600/50'}`}>
-                  <div className="text-[10px] text-muted-foreground leading-tight">FR Nuclear</div>
+              <Link to="/generation" className="flex">
+                <div className={`flex h-full flex-col justify-center gap-1 rounded-md px-3 py-2.5 border cursor-pointer transition-opacity hover:opacity-80 ${isCritical ? 'bg-red-950/70 border-red-600/50' : 'bg-amber-950/70 border-amber-600/50'}`}>
+                  <div className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/80 leading-none">FR Nuclear</div>
                   <div className={`text-xs font-semibold leading-tight ${isCritical ? 'text-red-300' : 'text-amber-300'}`}>
                     {totalGw} GW at risk
                   </div>

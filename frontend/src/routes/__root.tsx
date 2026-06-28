@@ -1,25 +1,29 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
-import { Flame, Zap, TrendingUp, DollarSign, Activity, Wind, Info, X, Globe, BarChart2, Factory } from 'lucide-react'
-import { useState } from 'react'
+import { Flame, Zap, TrendingUp, DollarSign, Activity, Wind, Info, X, Globe, BarChart2, Factory, Menu } from 'lucide-react'
+import { Fragment, useState } from 'react'
 
 export const Route = createRootRoute({
   component: Root,
+  notFoundComponent: NotFound,
 })
 
 const NAV = [
-  { to: '/gas',        label: 'EU Gas',     icon: Flame,      enabled: true },
-  { to: '/us-gas',     label: 'US Gas',     icon: Globe,      enabled: true },
-  { to: '/us-power',   label: 'US Power',   icon: BarChart2,  enabled: true },
-  { to: '/us-plants',  label: 'US Plants',  icon: Factory,    enabled: true },
-  { to: '/power',      label: 'EU Power',   icon: Zap,        enabled: true },
-  { to: '/generation', label: 'Generation', icon: Wind,       enabled: true },
-  { to: '/spreads',    label: 'Spreads',    icon: TrendingUp, enabled: true },
-  { to: '/prices',     label: 'Prices',     icon: DollarSign, enabled: true },
-  { to: '/imbalance',  label: 'Imbalance',  icon: Activity,   enabled: true },
+  // EU cluster
+  { to: '/gas',        label: 'EU Gas',     icon: Flame,      group: 'EU' as const },
+  { to: '/power',      label: 'EU Power',   icon: Zap,        group: 'EU' as const },
+  { to: '/generation', label: 'Generation', icon: Wind,       group: 'EU' as const },
+  { to: '/spreads',    label: 'Spreads',    icon: TrendingUp, group: 'EU' as const },
+  { to: '/prices',     label: 'Prices',     icon: DollarSign, group: 'EU' as const },
+  { to: '/imbalance',  label: 'Imbalance',  icon: Activity,   group: 'EU' as const },
+  // US cluster
+  { to: '/us-gas',     label: 'US Gas',     icon: Globe,      group: 'US' as const },
+  { to: '/us-power',   label: 'US Power',   icon: BarChart2,  group: 'US' as const },
+  { to: '/us-plants',  label: 'US Plants',  icon: Factory,    group: 'US' as const },
 ]
 
 function Root() {
   const [aboutOpen, setAboutOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div className="flex flex-col h-full">
@@ -27,29 +31,25 @@ function Root() {
         <Link to="/" className="font-semibold text-base text-foreground hover:text-primary transition-colors tracking-tight shrink-0">
           Energy Hub
         </Link>
-        <nav className="flex items-center gap-0.5 overflow-x-auto scrollbar-none">
-          {NAV.map(({ to, label, icon: Icon, enabled }) =>
-            enabled ? (
+
+        {/* Desktop nav - EU and US clusters separated by a divider */}
+        <nav className="hidden sm:flex items-center gap-0.5 overflow-x-auto scrollbar-none">
+          {NAV.map(({ to, label, icon: Icon, group }, i) => (
+            <Fragment key={to}>
+              {i > 0 && NAV[i - 1].group !== group && (
+                <span className="mx-1.5 h-4 w-px bg-border shrink-0" aria-hidden="true" />
+              )}
               <Link
-                key={to}
                 to={to}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors [&.active]:text-primary [&.active]:bg-primary/10 [&.active]:font-medium"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors [&.active]:text-primary [&.active]:bg-primary/10 [&.active]:font-medium"
               >
-                <Icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{label}</span>
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span>{label}</span>
               </Link>
-            ) : (
-              <span
-                key={to}
-                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded text-sm text-muted-foreground/40 cursor-not-allowed select-none"
-                title="Coming soon"
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">{label}</span>
-              </span>
-            )
-          )}
+            </Fragment>
+          ))}
         </nav>
+
         <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
           <button
             onClick={() => setAboutOpen(true)}
@@ -66,13 +66,69 @@ function Root() {
           <a href="https://quant.lbzgiu.xyz" className="hidden sm:block hover:text-foreground transition-colors">
             quant.lbzgiu.xyz
           </a>
+          {/* Mobile menu trigger */}
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            className="sm:hidden flex items-center justify-center p-1.5 -mr-1 rounded hover:bg-secondary/60 hover:text-foreground transition-colors"
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+          >
+            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
         </div>
       </header>
+
+      {/* Mobile nav sheet - full labels, grouped by region */}
+      {menuOpen && (
+        <nav className="sm:hidden border-b border-border bg-card shrink-0 z-40 px-2 py-2 space-y-2">
+          {(['EU', 'US'] as const).map((g) => (
+            <div key={g}>
+              <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
+                {g === 'EU' ? 'Europe' : 'United States'}
+              </p>
+              <div className="grid grid-cols-2 gap-1">
+                {NAV.filter((n) => n.group === g).map(({ to, label, icon: Icon }) => (
+                  <Link
+                    key={to}
+                    to={to}
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 rounded text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors [&.active]:text-primary [&.active]:bg-primary/10 [&.active]:font-medium"
+                  >
+                    <Icon className="w-4 h-4 shrink-0" />
+                    <span>{label}</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ))}
+        </nav>
+      )}
+
       <main className="flex-1 overflow-hidden">
         <Outlet />
       </main>
 
       {aboutOpen && <AboutModal onClose={() => setAboutOpen(false)} />}
+    </div>
+  )
+}
+
+function NotFound() {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-4 px-4 text-center">
+      <p className="text-5xl font-semibold text-muted-foreground/40 tracking-tight">404</p>
+      <div className="space-y-1">
+        <h1 className="text-base font-semibold text-foreground">Page not found</h1>
+        <p className="text-sm text-muted-foreground">
+          That dashboard does not exist. It may have moved or been renamed.
+        </p>
+      </div>
+      <Link
+        to="/"
+        className="mt-2 px-4 py-2 rounded bg-primary/10 text-primary text-sm font-medium hover:bg-primary/20 transition-colors"
+      >
+        Back to Energy Hub
+      </Link>
     </div>
   )
 }

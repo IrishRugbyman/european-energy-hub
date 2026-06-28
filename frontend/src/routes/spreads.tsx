@@ -1102,9 +1102,20 @@ function SpreadMonthlySeasonalityChart({ rows }: { rows: SpreadsDailyPoint[] }) 
   )
 }
 
+type SpreadTab = 'spreads' | 'model' | 'validation' | 'portfolio' | 'structure'
+
+const SPREAD_TABS: { id: SpreadTab; label: string }[] = [
+  { id: 'spreads', label: 'Spreads' },
+  { id: 'model', label: 'Fundamental Model' },
+  { id: 'validation', label: 'Validation' },
+  { id: 'portfolio', label: 'Portfolio & Signal' },
+  { id: 'structure', label: 'Market Structure' },
+]
+
 function SpreadsDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [showDisruption, setShowDisruption] = useState(false)
+  const [tab, setTab] = useState<SpreadTab>('spreads')
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['spreads'],
@@ -1196,96 +1207,110 @@ function SpreadsDashboard() {
 
       {rows.length > 0 && (
         <>
-          <div className="bg-card border border-border rounded-lg p-4 mb-4">
-            <div className="flex items-center gap-3 mb-3">
-              <h2 className="text-sm font-semibold text-foreground">
-                Spark / Dark / Fuel-Switch Spreads - DE-LU (€/MWh)
-              </h2>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-3 h-2 rounded-sm" style={{ background: '#1e3a5f', opacity: 0.8 }} />
-                  gas marginal
-                </span>
-                <span className="flex items-center gap-1">
-                  <span className="inline-block w-3 h-2 rounded-sm" style={{ background: '#3b1c0a', opacity: 0.8 }} />
-                  coal marginal
-                </span>
-              </div>
+          {/* Tab strip - groups ~30 analytics sections into 5 coherent views.
+              Conditional rendering (not CSS hiding) keeps off-screen charts
+              unmounted, so recharts never measures a zero-size container. */}
+          <nav className="flex flex-wrap gap-1 mb-4 border-b border-border pb-2">
+            {SPREAD_TABS.map((t) => (
               <button
-                onClick={() => setShowDisruption((v) => !v)}
-                className={`ml-auto px-2 py-0.5 rounded text-xs border transition-colors ${
-                  showDisruption
-                    ? 'bg-orange-900/50 border-orange-700 text-orange-300'
-                    : 'border-border text-muted-foreground hover:text-foreground'
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`px-3 py-1 rounded text-sm transition-colors ${
+                  tab === t.id
+                    ? 'bg-primary/10 text-primary font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-secondary/60'
                 }`}
               >
-                Disruption overlay
+                {t.label}
               </button>
-            </div>
-            <SpreadChart rows={rows} window={window} showDisruption={showDisruption} />
-          </div>
+            ))}
+          </nav>
 
-          <FuelCostDecompositionChart rows={rows} window={window} />
+          {tab === 'spreads' && (
+            <>
+              <div className="bg-card border border-border rounded-lg p-4 mb-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <h2 className="text-sm font-semibold text-foreground">
+                    Spark / Dark / Fuel-Switch Spreads - DE-LU (€/MWh)
+                  </h2>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-3 h-2 rounded-sm" style={{ background: '#1e3a5f', opacity: 0.8 }} />
+                      gas marginal
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="inline-block w-3 h-2 rounded-sm" style={{ background: '#3b1c0a', opacity: 0.8 }} />
+                      coal marginal
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setShowDisruption((v) => !v)}
+                    className={`ml-auto px-2 py-0.5 rounded text-xs border transition-colors ${
+                      showDisruption
+                        ? 'bg-orange-900/50 border-orange-700 text-orange-300'
+                        : 'border-border text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    Disruption overlay
+                  </button>
+                </div>
+                <SpreadChart rows={rows} window={window} showDisruption={showDisruption} />
+              </div>
 
-          <MultiZoneSection window={window} />
+              <FuelCostDecompositionChart rows={rows} window={window} />
+              <MultiZoneSection window={window} />
+              <ZoneDecouplingSection />
+              <CongestionRankingSection />
+              <SpreadMonthlySeasonalityChart rows={rows} />
+            </>
+          )}
 
-          <ZoneDecouplingSection />
+          {tab === 'model' && (
+            <>
+              <FundamentalModelSection window={window} />
+              <NonlinearModelSection />
+              <EnrichedModelSection />
+              <StorageFactorSection />
+              <LoadErrorFactorSection />
+              <NuclearWindInteractionSection />
+              <GbmModelSection />
+              <ResidualMeanReversionSection />
+            </>
+          )}
 
-          <CongestionRankingSection />
+          {tab === 'validation' && (
+            <>
+              <NonlinearBacktestSection />
+              <NonlinearCostRobustnessSection />
+              <NonlinearEdgeByZoneSection />
+              <RegimeAwareSection />
+              <HoldingPeriodSection />
+              <BacktestSection zone="DE-LU" />
+            </>
+          )}
 
-          <SpreadMonthlySeasonalityChart rows={rows} />
+          {tab === 'portfolio' && (
+            <>
+              <SignalPostureSection />
+              <PortfolioSection />
+              <ZoneSignalCorrelationSection />
+              <RegimeConditionalPnlSection />
+            </>
+          )}
 
-          <FundamentalModelSection window={window} />
+          {tab === 'structure' && (
+            <>
+              <GasPowerPassThroughSection />
+              <PriceVarianceDecompSection />
+              <CongestionPremiumSection />
+              <ReMeritOrderSection />
+              <NegPriceAnnualSection />
+              <ZoneDispersionSection />
+              <PeakOffpeakSection />
+            </>
+          )}
 
-          <NonlinearModelSection />
-
-          <EnrichedModelSection />
-
-          <StorageFactorSection />
-
-          <LoadErrorFactorSection />
-
-          <NuclearWindInteractionSection />
-
-          <GbmModelSection />
-
-          <ResidualMeanReversionSection />
-
-          <NonlinearBacktestSection />
-
-          <NonlinearCostRobustnessSection />
-
-          <NonlinearEdgeByZoneSection />
-
-          <RegimeAwareSection />
-
-          <HoldingPeriodSection />
-
-          <SignalPostureSection />
-
-          <PortfolioSection />
-
-          <ZoneSignalCorrelationSection />
-
-          <RegimeConditionalPnlSection />
-
-          <GasPowerPassThroughSection />
-
-          <PriceVarianceDecompSection />
-
-          <CongestionPremiumSection />
-
-          <ReMeritOrderSection />
-
-          <NegPriceAnnualSection />
-
-          <ZoneDispersionSection />
-
-          <PeakOffpeakSection />
-
-          <BacktestSection zone="DE-LU" />
-
-          <div className="bg-card border border-border rounded-lg p-4">
+          <div className="bg-card border border-border rounded-lg p-4 mt-4">
             <SpreadExplainer />
           </div>
         </>

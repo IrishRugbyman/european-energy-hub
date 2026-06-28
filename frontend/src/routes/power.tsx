@@ -660,7 +660,7 @@ function MapDashboard() {
         return (
           <a
             href="/generation"
-            className={`absolute top-2 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-sm text-xs cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap ${bgClass}`}
+            className={`absolute top-16 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-sm text-xs cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap ${bgClass}`}
           >
             <span className={`font-bold text-[11px] ${labelClass}`}>FR NUCLEAR {label}</span>
             <span className="text-muted-foreground hidden sm:inline">|</span>
