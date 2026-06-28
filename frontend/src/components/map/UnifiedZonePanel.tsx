@@ -1193,9 +1193,11 @@ function HydroReservoirSection({ data, country }: { data: HydroCountryResponse; 
 
   const getWoy = (weekDate: string): number => {
     const d = new Date(weekDate + 'T12:00:00Z')
-    const jan4 = new Date(d.getFullYear(), 0, 4)
-    const diff = (d.getTime() - jan4.getTime()) / 86400000
-    return Math.max(1, Math.ceil((diff + jan4.getDay() + 1) / 7))
+    const dayOfWeek = (d.getUTCDay() + 6) % 7
+    const thursday = new Date(d)
+    thursday.setUTCDate(d.getUTCDate() - dayOfWeek + 3)
+    const jan4 = new Date(thursday.getUTCFullYear(), 0, 4)
+    return 1 + Math.round((thursday.getTime() - jan4.getTime()) / 604800000)
   }
 
   const currentMap = new Map<number, number | null>()

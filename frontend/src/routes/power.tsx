@@ -175,9 +175,9 @@ const METRIC_CONFIG: Record<MapMetric, MetricConfig> = {
     title: 'Reservoir fill vs 5yr avg',
     items: [
       { label: '>+30%',          color: '#1e3a8a' },
-      { label: '+10 to +30%',    color: '#3b82f6' },
-      { label: '±10% (avg)',     color: '#6b7280' },
-      { label: '-10 to -30%',    color: '#ef4444' },
+      { label: '+5 to +30%',     color: '#3b82f6' },
+      { label: '±5% (avg)',      color: '#6b7280' },
+      { label: '-5 to -30%',     color: '#ef4444' },
       { label: '<-30%',          color: '#7f1d1d' },
       { label: 'no data',        color: '#374151' },
     ],

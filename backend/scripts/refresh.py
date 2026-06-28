@@ -957,7 +957,9 @@ def _write_hydro(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not history.empty:
-        conn.execute("INSERT INTO hydro_reservoir_history SELECT * FROM history")
+        conn.register("_hydro_history", history)
+        conn.execute("INSERT INTO hydro_reservoir_history SELECT * FROM _hydro_history")
+        conn.unregister("_hydro_history")
 
     conn.execute("""
         CREATE OR REPLACE TABLE hydro_reservoir_seasonal (
@@ -966,7 +968,9 @@ def _write_hydro(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not seasonal.empty:
-        conn.execute("INSERT INTO hydro_reservoir_seasonal SELECT * FROM seasonal")
+        conn.register("_hydro_seasonal", seasonal)
+        conn.execute("INSERT INTO hydro_reservoir_seasonal SELECT * FROM _hydro_seasonal")
+        conn.unregister("_hydro_seasonal")
 
     conn.execute("""
         CREATE OR REPLACE TABLE hydro_reservoir_latest (
@@ -975,7 +979,9 @@ def _write_hydro(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not latest.empty:
-        conn.execute("INSERT INTO hydro_reservoir_latest SELECT * FROM latest")
+        conn.register("_hydro_latest", latest)
+        conn.execute("INSERT INTO hydro_reservoir_latest SELECT * FROM _hydro_latest")
+        conn.unregister("_hydro_latest")
 
     logger.info("hydro tables written")
 
