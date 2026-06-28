@@ -1209,6 +1209,7 @@ export const api = {
   spreadsFundamentalModel: (zone?: string) => get<FundamentalModelResponse>(`/spreads/fundamental-model${zone ? `?zone=${zone}` : ''}`),
   spreadsSignalSnapshot: () => get<SignalSnapshotResponse>('/spreads/signal-snapshot'),
   marketPulse: () => get<MarketPulseResponse>('/market-pulse'),
+  spreadsHoldingPeriod: (zone?: string) => get<HoldingPeriodResponse>(`/spreads/holding-period${zone ? `?zone=${zone}` : ''}`),
 }
 
 // US power generation
@@ -1731,6 +1732,27 @@ export interface FundamentalBacktestResponse {
   zone: string
   equity: BacktestEquityPoint[]
   stats: BacktestStats
+}
+
+// --- Holding period sensitivity ---
+
+export interface HoldingPeriodRow {
+  k: number
+  n_periods: number
+  sharpe_gross: number | null
+  sharpe_net: number | null
+  avg_daily_gross: number | null
+  avg_daily_net: number | null
+  max_dd: number | null
+}
+
+export interface HoldingPeriodResponse {
+  zone: string
+  cost: number
+  signal_window: number
+  best_k: number
+  best_sharpe_net: number | null
+  periods: HoldingPeriodRow[]
 }
 
 // --- Market pulse ---

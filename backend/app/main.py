@@ -230,6 +230,8 @@ from .schemas import (
     MarketPulseResponse,
     MarketPulseSpread,
     MarketPulseSignal,
+    HoldingPeriodRow,
+    HoldingPeriodResponse,
 )
 
 
@@ -4122,4 +4124,45 @@ def market_pulse():
         spreads=spreads,
         rebap_today_mean=rebap_today_mean,
         signal=[],
+    )
+
+
+@app.get("/api/spreads/holding-period", response_model=HoldingPeriodResponse)
+def spreads_holding_period(zone: str = "DE-LU"):
+    """Nonlinear signal Sharpe vs holding period (1, 2, 3, 5, 7, 10 days).
+
+    Tests whether the daily-rebalanced signal (k=1) is optimal given the OU half-lives
+    from Phase 53, or whether amortising the transaction cost over a longer holding period
+    improves the net Sharpe. At k days, the cost per day is EDGE_NET_COST/k and the signal
+    has decayed toward the OU equilibrium by factor exp(-k*ln2/half_life).
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_holding_period_sensitivity, FUNDAMENTAL_ZONES
+
+    zone = zone.upper()
+    if zone not in FUNDAMENTAL_ZONES:
+        raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
+
+    result = compute_holding_period_sensitivity(db.query, zone)
+    if not result:
+        raise HTTPException(status_code=503, detail="Insufficient data for holding period analysis")
+
+    return HoldingPeriodResponse(
+        zone=result["zone"],
+        cost=result["cost"],
+        signal_window=result["signal_window"],
+        best_k=result["best_k"],
+        best_sharpe_net=result["best_sharpe_net"],
+        periods=[
+            HoldingPeriodRow(
+                k=p["k"],
+                n_periods=p["n_periods"],
+                sharpe_gross=p.get("sharpe_gross"),
+                sharpe_net=p.get("sharpe_net"),
+                avg_daily_gross=p.get("avg_daily_gross"),
+                avg_daily_net=p.get("avg_daily_net"),
+                max_dd=p.get("max_dd"),
+            )
+            for p in result["periods"]
+        ],
     )

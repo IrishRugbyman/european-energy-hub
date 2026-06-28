@@ -1541,3 +1541,22 @@ def test_market_pulse(client):
     assert "zone" in sp
     assert "css" in sp
     assert "cds" in sp
+
+
+def test_spreads_holding_period(client):
+    r = client.get("/api/spreads/holding-period?zone=DE-LU")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "DE-LU"
+    assert "periods" in data
+    assert len(data["periods"]) >= 3
+    assert data["best_k"] in (1, 2, 3, 5, 7, 10)
+    # Each period has required fields
+    p = data["periods"][0]
+    assert "k" in p
+    assert "n_periods" in p
+    assert "sharpe_gross" in p
+    assert "sharpe_net" in p
+    # k=1 always present
+    ks = [p["k"] for p in data["periods"]]
+    assert 1 in ks

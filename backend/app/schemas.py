@@ -1709,3 +1709,25 @@ class MarketPulseResponse(BaseModel):
     spreads: list[MarketPulseSpread]
     rebap_today_mean: float | None
     signal: list[MarketPulseSignal]
+
+
+# --- Holding period sensitivity ---
+
+
+class HoldingPeriodRow(BaseModel):
+    k: int
+    n_periods: int
+    sharpe_gross: float | None
+    sharpe_net: float | None
+    avg_daily_gross: float | None
+    avg_daily_net: float | None
+    max_dd: float | None
+
+
+class HoldingPeriodResponse(BaseModel):
+    zone: str
+    cost: float
+    signal_window: int
+    best_k: int
+    best_sharpe_net: float | None
+    periods: list[HoldingPeriodRow]

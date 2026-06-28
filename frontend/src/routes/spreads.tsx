@@ -1255,6 +1255,8 @@ function SpreadsDashboard() {
 
           <RegimeAwareSection />
 
+          <HoldingPeriodSection />
+
           <PortfolioSection />
 
           <BacktestSection zone="DE-LU" />
@@ -3110,6 +3112,170 @@ function ResidualMeanReversionSection() {
             three agree. Note: the rescaled-range (R/S) Hurst is deliberately not used — on these short, fast-reverting
             series it is badly upward-biased (reads ~0.7-0.9, spuriously "trending"); variance-scaling agrees with the
             other two. The short half-life is exactly why a daily-rebalanced contrarian fade is the right structure.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function HoldingPeriodSection() {
+  const [zone, setZone] = useState('DE-LU')
+  const { data, isLoading } = useQuery({
+    queryKey: ['holding-period', zone],
+    queryFn: () => api.spreadsHoldingPeriod(zone),
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const fmtSh = (v: number | null | undefined) => (v != null ? v.toFixed(2) : '--')
+
+  // Compute max gross Sharpe for color scaling
+  const maxGross = data ? Math.max(...data.periods.map((p) => p.sharpe_gross ?? 0)) : 1
+  const maxNet = data ? Math.max(...data.periods.map((p) => p.sharpe_net ?? 0)) : 1
+
+  const sharpeColor = (v: number | null, refMax: number) => {
+    if (v == null) return '#64748b'
+    const t = Math.max(0, Math.min(1, v / refMax))
+    if (t > 0.75) return '#4ade80'
+    if (t > 0.4) return '#facc15'
+    return '#f87171'
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">Holding Period Sensitivity: Does Longer = Better?</h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Net Sharpe vs k-day holding (annualized, EDGE_NET_COST / k per day)
+        </span>
+        <div className="ml-auto flex gap-1">
+          {FUNDAMENTAL_ZONES.map((z) => (
+            <button
+              key={z}
+              onClick={() => setZone(z)}
+              className={`px-2 py-0.5 rounded text-xs transition-colors ${
+                zone === z
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+              }`}
+            >
+              {z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <p className="text-xs text-muted-foreground mb-3">
+        Phase 53 showed residuals revert with OU half-lives of 1.2-2.7 days. A longer holding period
+        amortises transaction cost (cost/k per day) but the signal decays toward its OU equilibrium.
+        This tests the trade-off across k = 1, 2, 3, 5, 7, 10 days.
+      </p>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Running holding period sweep...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Headline */}
+          <div className={`rounded-lg px-3 py-2 text-xs border ${data.best_k > 1 ? 'bg-amber-500/10 border-amber-500/30 text-amber-200' : 'bg-card/60 border-border text-muted-foreground'}`}>
+            Optimal holding period for {zone}: <strong>k = {data.best_k}</strong> days
+            {data.best_sharpe_net != null && (
+              <> — net Sharpe <strong>{fmtSh(data.best_sharpe_net)}</strong>
+                {data.best_k > 1 && (
+                  <> vs <strong>{fmtSh(data.periods.find((p) => p.k === 1)?.sharpe_net)}</strong> at daily rebalancing</>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="text-muted-foreground border-b border-border">
+                  <th className="text-left font-medium py-1 pr-2">Hold (days)</th>
+                  <th className="text-right font-medium py-1 px-2">Gross Sharpe</th>
+                  <th className="text-right font-medium py-1 px-2">Net Sharpe</th>
+                  <th className="text-right font-medium py-1 px-2">Avg daily net (EUR)</th>
+                  <th className="text-right font-medium py-1 pl-2">Max DD (EUR)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.periods.map((p) => {
+                  const isBest = p.k === data.best_k
+                  return (
+                    <tr
+                      key={p.k}
+                      className={`border-b border-border/40 ${isBest ? 'bg-primary/[0.06]' : ''}`}
+                    >
+                      <td className="py-1 pr-2 font-mono text-foreground">
+                        k={p.k}
+                        {isBest && (
+                          <span className="ml-1 text-[9px] bg-primary/20 text-primary rounded px-1 py-0.5">best</span>
+                        )}
+                      </td>
+                      <td className="py-1 px-2 text-right font-mono" style={{ color: sharpeColor(p.sharpe_gross, maxGross) }}>
+                        {fmtSh(p.sharpe_gross)}
+                      </td>
+                      <td className="py-1 px-2 text-right font-mono" style={{ color: sharpeColor(p.sharpe_net, maxNet) }}>
+                        {fmtSh(p.sharpe_net)}
+                      </td>
+                      <td className="py-1 px-2 text-right font-mono text-muted-foreground">
+                        {p.avg_daily_net != null ? p.avg_daily_net.toFixed(3) : '--'}
+                      </td>
+                      <td className="py-1 pl-2 text-right font-mono text-red-400">
+                        {p.max_dd != null ? p.max_dd.toFixed(1) : '--'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Chart: net Sharpe vs k */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-2">Net Sharpe vs holding period (annualized, sqrt(252) scaling)</p>
+            <ResponsiveContainer width="100%" height={160}>
+              <ComposedChart data={data.periods} margin={{ top: 4, right: 8, bottom: 4, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                <XAxis
+                  dataKey="k"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => `k=${v}`}
+                />
+                <YAxis
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={28}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                  formatter={(val: unknown, name: unknown) => {
+                    const v = typeof val === 'number' ? val.toFixed(2) : '--'
+                    return [v, name === 'sharpe_net' ? 'Net Sharpe' : 'Gross Sharpe']
+                  }}
+                  labelFormatter={(l) => `k=${l} days`}
+                />
+                <Line dataKey="sharpe_gross" stroke="#60a5fa" strokeWidth={1.2} dot={{ r: 3, fill: '#60a5fa' }} strokeDasharray="4 2" isAnimationActive={false} name="sharpe_gross" />
+                <Line dataKey="sharpe_net" stroke="#4ade80" strokeWidth={1.5} dot={{ r: 4, fill: '#4ade80' }} isAnimationActive={false} name="sharpe_net" />
+              </ComposedChart>
+            </ResponsiveContainer>
+            <div className="flex items-center gap-4 mt-1 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="w-5 h-0.5 inline-block" style={{ background: '#60a5fa', borderTop: '1px dashed #60a5fa' }} /> Gross (before cost)</span>
+              <span className="flex items-center gap-1"><span className="w-5 h-0.5 rounded inline-block" style={{ background: '#4ade80' }} /> Net (after cost/k)</span>
+            </div>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground leading-relaxed">
+            The Sharpe curve peaks at k={data.best_k} because the signal identifies multi-day
+            overvaluation / undervaluation episodes that persist longer than the OU half-life suggests
+            for individual residuals. The half-life measures the <em>average</em> reversion speed;
+            individual episodes can last several times longer, so the cumulative signal over k days
+            still adds P&L even as daily turnover cost drops. For zones with slow-reverting nuclear
+            baseload (FR), the optimum shifts to higher k; for fast-reverting wind-heavy hubs
+            (NL, BE), the curve peaks earlier.
           </p>
         </div>
       )}

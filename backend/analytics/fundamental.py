@@ -2213,3 +2213,129 @@ def compute_residual_mean_reversion(query_fn: Callable) -> dict:
         "n_zones": len(rows),
         "n_mean_reverting": sum(1 for r in rows if r["mean_reverting"]),
     }
+
+
+HOLDING_PERIODS = [1, 2, 3, 5, 7, 10]
+
+
+def compute_holding_period_sensitivity(
+    query_fn: Callable,
+    zone: str = "DE-LU",
+    cost: float = EDGE_NET_COST,
+    source: str = FUNDAMENTAL_SOURCE,
+) -> dict:
+    """How does the nonlinear OOS signal Sharpe change as the holding period grows?
+
+    Phase 53 showed the fair-value residuals revert with half-lives of 1.2-2.7 trading
+    days. The daily-rebalanced signal (holding period k=1) captures the fastest-reverting
+    component but pays the full entry+exit cost every day. This tests whether longer holding
+    periods (k=2..10 days) improve the net Sharpe - the trade-off is: longer holding reduces
+    daily transaction cost (cost is paid once per k days) but the signal also decays toward
+    the OU equilibrium over those k days, especially for short-half-life zones.
+
+    For each holding period k and each evaluation day t we compute:
+      - pos(t): the nonlinear z-score position at day t (same as P43-P52 signal)
+      - k_day_return(t): price(t+k) - price(t)  [the k-day realised move]
+      - gross P&L per k-day period: pos(t) * k_day_return(t)
+      - daily-equivalent gross: gross / k  (normalised so Sharpes are comparable)
+      - daily-equivalent net: daily_gross - cost/k  (cost is ONE trade amortised over k days)
+      - annualized net Sharpe: sqrt(252) * mean(daily_net) / std(daily_net)
+
+    Returns per-zone list of {k, n_periods, sharpe_gross, sharpe_net, avg_daily_gross,
+    avg_daily_net, max_dd} for k in HOLDING_PERIODS, plus the optimal holding period
+    by net Sharpe.
+    """
+    result = _nonlinear_signal_pnl(query_fn, zone, source)
+    if result is None:
+        return {}
+
+    # Recompute from raw residuals to get the aligned position and price arrays.
+    try:
+        rows = _fetch_fundamental_features(query_fn, zone, source)
+    except Exception:
+        return {}
+    if rows is None or rows.empty or len(rows) < WF_MIN_TRAIN + 40:
+        return {}
+
+    df = rows.copy()
+    df["price_date"] = pd.to_datetime(df["price_date"])
+    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
+    df = df.reset_index(drop=True)
+
+    ttf = df["ttf_eur_mwh"].to_numpy(float)
+    eua = df["eua_eur_t"].to_numpy(float)
+    wind = df["wind_pct"].to_numpy(float)
+    solar = df["solar_pct"].to_numpy(float)
+    y = df["base_eur"].to_numpy(float)
+    dates = df["price_date"]
+    n = len(y)
+
+    Xnl = _design_nonlinear(ttf, eua, wind, solar)
+    start = max(WF_MIN_TRAIN, n - WF_MAX_OOS)
+
+    idx, res_nl = [], []
+    for t in range(start, n):
+        cnl, _, _, _ = np.linalg.lstsq(Xnl[:t], y[:t], rcond=None)
+        idx.append(t)
+        res_nl.append(y[t] - float(Xnl[t] @ cnl))
+
+    if len(idx) < WF_SIGNAL_WINDOW + 5:
+        return {}
+
+    idx = np.array(idx)
+    prices = y[idx]
+    res_series = pd.Series(res_nl)
+    rm = res_series.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+    rs = res_series.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+    z = ((res_series - rm) / rs.replace(0, np.nan)).fillna(0.0).to_numpy()
+    pos = np.clip(-z, -1.0, 1.0)
+
+    def _sharpe(pnl: np.ndarray) -> float | None:
+        if len(pnl) < 10 or pnl.std() == 0:
+            return None
+        return round(float(pnl.mean() / pnl.std() * np.sqrt(252)), 3)
+
+    def _maxdd(pnl: np.ndarray) -> float:
+        cum = np.cumsum(pnl)
+        peak = np.maximum.accumulate(cum)
+        return round(float((cum - peak).min()), 2)
+
+    period_results = []
+    best_net: float | None = None
+    best_k = 1
+
+    for k in HOLDING_PERIODS:
+        m = len(pos) - k
+        if m < 20:
+            continue
+        # k-day return starting from each evaluation day
+        k_returns = prices[k:] - prices[:-k]
+        positions = pos[:m]
+        gross_kday = positions * k_returns[:m]
+        # Normalize to daily-equivalent P&L
+        daily_gross = gross_kday / k
+        daily_net = daily_gross - cost / k
+        sh_gross = _sharpe(daily_gross)
+        sh_net = _sharpe(daily_net)
+        if sh_net is not None and (best_net is None or sh_net > best_net):
+            best_net = sh_net
+            best_k = k
+        period_results.append({
+            "k": k,
+            "n_periods": int(m),
+            "sharpe_gross": sh_gross,
+            "sharpe_net": sh_net,
+            "avg_daily_gross": round(float(daily_gross.mean()), 4),
+            "avg_daily_net": round(float(daily_net.mean()), 4),
+            "max_dd": _maxdd(daily_net),
+        })
+
+    return {
+        "zone": zone,
+        "cost": cost,
+        "source": source,
+        "signal_window": WF_SIGNAL_WINDOW,
+        "periods": period_results,
+        "best_k": best_k,
+        "best_sharpe_net": best_net,
+    }
