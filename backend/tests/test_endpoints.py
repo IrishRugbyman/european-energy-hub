@@ -1,5 +1,7 @@
 """Endpoint tests against the seeded DuckDB fixture."""
 
+import pytest
+
 
 def test_health(client):
     r = client.get("/api/health")
@@ -2001,3 +2003,32 @@ def test_spreads_peak_offpeak_trend(client):
         assert abs(p["spread_eur"] - (p["peak_eur"] - p["offpeak_eur"])) < 0.5
     for zone in data["zones"]:
         assert zone in data["current_spread"]
+
+
+def test_hydro_map(client):
+    r = client.get("/api/hydro/map")
+    assert r.status_code == 200
+    data = r.json()
+    assert "countries" in data
+    assert len(data["countries"]) == 3  # NO, SE, FR seeded
+    no_row = next(c for c in data["countries"] if c["country"] == "NO")
+    assert no_row["stored_twh"] == pytest.approx(52.0)
+    assert no_row["vs_avg5_pct"] == pytest.approx(-8.0)
+
+
+def test_hydro_country_found(client):
+    r = client.get("/api/hydro/country/NO")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["country"] == "NO"
+    assert data["latest"]["stored_twh"] == pytest.approx(52.0)
+    assert len(data["history"]) > 0
+    assert len(data["seasonal"]) > 0
+    pt = data["seasonal"][0]
+    assert "week_of_year" in pt
+    assert "avg5_twh" in pt
+
+
+def test_hydro_country_not_found(client):
+    r = client.get("/api/hydro/country/XX")
+    assert r.status_code == 404

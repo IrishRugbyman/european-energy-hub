@@ -44,6 +44,7 @@ from analytics.power import build_power_tables, build_power_correlations
 from analytics.spreads import build_spreads_tables
 from analytics.flows import build_flows_tables
 from analytics.us_gas import build_us_storage_tables
+from analytics.hydro import build_hydro_tables
 from analytics.us_plants import build_us_plants_table
 from analytics.us_power import build_us_power_tables
 
@@ -132,6 +133,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     eia_key = _read_eia_key()
     us_power_tables = build_us_power_tables(eia_key) if eia_key else {"us_power_hourly": pd.DataFrame(), "us_power_latest": pd.DataFrame()}
 
+    logger.info("Building hydro reservoir tables from market_data (PostgreSQL)...")
+    hydro_tables = build_hydro_tables()
+
     logger.info("Loading US NG power plants dataset (cleanview + EIA-860)...")
     us_plants_df = build_us_plants_table()
 
@@ -163,6 +167,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_us_storage(conn, us_storage_tables)
         _write_us_power(conn, us_power_tables)
         _write_us_plants(conn, us_plants_df)
+        _write_hydro(conn, hydro_tables)
         _write_heat_risk(conn, heat_risk_tables)
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -178,6 +183,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_us_power", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", now_iso])
+        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_hydro", now_iso])
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -938,6 +944,40 @@ def _write_us_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
     n = len(latest) if latest is not None else 0
     logger.info(f"us_storage: {n} region-latest rows")
+
+
+def _write_hydro(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    history = tables["hydro_reservoir_history"]
+    seasonal = tables["hydro_reservoir_seasonal"]
+    latest = tables["hydro_reservoir_latest"]
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE hydro_reservoir_history (
+            country VARCHAR, week_date DATE, stored_twh REAL
+        )
+    """)
+    if not history.empty:
+        conn.execute("INSERT INTO hydro_reservoir_history SELECT * FROM history")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE hydro_reservoir_seasonal (
+            country VARCHAR, week_of_year SMALLINT,
+            avg5_twh REAL, min5_twh REAL, max5_twh REAL
+        )
+    """)
+    if not seasonal.empty:
+        conn.execute("INSERT INTO hydro_reservoir_seasonal SELECT * FROM seasonal")
+
+    conn.execute("""
+        CREATE OR REPLACE TABLE hydro_reservoir_latest (
+            country VARCHAR, week_date VARCHAR, stored_twh REAL,
+            vs_avg5_pct REAL, yoy_pct REAL, rank5yr_pct REAL
+        )
+    """)
+    if not latest.empty:
+        conn.execute("INSERT INTO hydro_reservoir_latest SELECT * FROM latest")
+
+    logger.info("hydro tables written")
 
 
 def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:

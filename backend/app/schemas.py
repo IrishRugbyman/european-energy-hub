@@ -2234,6 +2234,41 @@ class ZoneDispersionResponse(BaseModel):
     as_of: str
 
 
+# Phase 84: Hydro reservoir levels
+
+class HydroCountryLatest(BaseModel):
+    country: str
+    week_date: str
+    stored_twh: float | None
+    vs_avg5_pct: float | None
+    yoy_pct: float | None
+    rank5yr_pct: float | None
+
+
+class HydroMapResponse(BaseModel):
+    countries: list[HydroCountryLatest]
+    refreshed_at: str | None
+
+
+class HydroHistPoint(BaseModel):
+    week_date: str
+    stored_twh: float | None
+
+
+class HydroSeasonalPoint(BaseModel):
+    week_of_year: int
+    avg5_twh: float | None
+    min5_twh: float | None
+    max5_twh: float | None
+
+
+class HydroCountryResponse(BaseModel):
+    country: str
+    history: list[HydroHistPoint]
+    seasonal: list[HydroSeasonalPoint]
+    latest: HydroCountryLatest | None
+
+
 # Phase 83: Monthly peak-offpeak spread trend (EU duck curve)
 class PeakOffpeakPoint(BaseModel):
     month: str

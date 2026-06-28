@@ -293,6 +293,11 @@ from .schemas import (
     ZoneDispersionResponse,
     PeakOffpeakPoint,
     PeakOffpeakResponse,
+    HydroCountryLatest,
+    HydroMapResponse,
+    HydroHistPoint,
+    HydroSeasonalPoint,
+    HydroCountryResponse,
 )
 
 
@@ -5864,3 +5869,79 @@ def spreads_congestion_premium():
         )
 
     return _cached_compute("congestion_premium", _compute, ttl=3600)
+
+
+# ---------------------------------------------------------------------------
+# Hydro reservoir endpoints (Phase 84)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/hydro/map", response_model=HydroMapResponse)
+def hydro_map():
+    rows_df = db.query(
+        "SELECT country, week_date, stored_twh, vs_avg5_pct, yoy_pct, rank5yr_pct FROM hydro_reservoir_latest ORDER BY stored_twh DESC"
+    )
+    countries = [
+        HydroCountryLatest(
+            country=r.country,
+            week_date=str(r.week_date),
+            stored_twh=_float(r.stored_twh),
+            vs_avg5_pct=_float(r.vs_avg5_pct),
+            yoy_pct=_float(r.yoy_pct),
+            rank5yr_pct=_float(r.rank5yr_pct),
+        )
+        for r in rows_df.itertuples()
+    ] if not rows_df.empty else []
+    return HydroMapResponse(countries=countries, refreshed_at=_meta_val("refreshed_at_hydro"))
+
+
+@app.get("/api/hydro/country/{cc}", response_model=HydroCountryResponse)
+def hydro_country(cc: str):
+    import datetime as _dt
+    cc = cc.upper()
+    latest_df = db.query(
+        "SELECT country, week_date, stored_twh, vs_avg5_pct, yoy_pct, rank5yr_pct FROM hydro_reservoir_latest WHERE country = ?",
+        [cc],
+    )
+    if latest_df.empty:
+        raise HTTPException(status_code=404, detail=f"Hydro country not found: {cc}")
+
+    r = latest_df.iloc[0]
+    latest = HydroCountryLatest(
+        country=cc,
+        week_date=str(r["week_date"]),
+        stored_twh=_float(r["stored_twh"]),
+        vs_avg5_pct=_float(r["vs_avg5_pct"]),
+        yoy_pct=_float(r["yoy_pct"]),
+        rank5yr_pct=_float(r["rank5yr_pct"]),
+    )
+
+    current_year = _dt.datetime.now(_dt.timezone.utc).year
+    hist_df = db.query(
+        """
+        SELECT week_date::VARCHAR AS week_date, stored_twh
+        FROM hydro_reservoir_history
+        WHERE country = ? AND YEAR(week_date::DATE) >= ?
+        ORDER BY week_date
+        """,
+        [cc, current_year - 1],
+    )
+    history = [
+        HydroHistPoint(week_date=str(row.week_date), stored_twh=_float(row.stored_twh))
+        for row in hist_df.itertuples()
+    ] if not hist_df.empty else []
+
+    seasonal_df = db.query(
+        "SELECT week_of_year, avg5_twh, min5_twh, max5_twh FROM hydro_reservoir_seasonal WHERE country = ? ORDER BY week_of_year",
+        [cc],
+    )
+    seasonal = [
+        HydroSeasonalPoint(
+            week_of_year=int(row.week_of_year),
+            avg5_twh=_float(row.avg5_twh),
+            min5_twh=_float(row.min5_twh),
+            max5_twh=_float(row.max5_twh),
+        )
+        for row in seasonal_df.itertuples()
+    ] if not seasonal_df.empty else []
+
+    return HydroCountryResponse(country=cc, history=history, seasonal=seasonal, latest=latest)

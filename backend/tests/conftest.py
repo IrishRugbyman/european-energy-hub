@@ -703,6 +703,49 @@ def _seed_db(path: str) -> None:
     )
     conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", "2026-06-25T08:00:00+00:00"])
 
+    # Hydro reservoir tables (Phase 84)
+    conn.execute("""
+        CREATE TABLE hydro_reservoir_history (
+            country VARCHAR, week_date DATE, stored_twh REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE hydro_reservoir_seasonal (
+            country VARCHAR, week_of_year SMALLINT,
+            avg5_twh REAL, min5_twh REAL, max5_twh REAL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE hydro_reservoir_latest (
+            country VARCHAR, week_date VARCHAR, stored_twh REAL,
+            vs_avg5_pct REAL, yoy_pct REAL, rank5yr_pct REAL
+        )
+    """)
+
+    import datetime as _dt
+    from datetime import timedelta as _td
+    _today = _dt.date.today()
+    _week = _today - _td(days=_today.weekday() + 1)  # last Sunday
+    for _cc, _twh in [("NO", 52.0), ("SE", 24.0), ("FR", 2.5)]:
+        conn.execute(
+            "INSERT INTO hydro_reservoir_latest VALUES (?, ?, ?, ?, ?, ?)",
+            [_cc, str(_week), _twh, -8.0, -3.0, 30.0],
+        )
+        # 2 years of weekly history (104 weeks)
+        for _wi in range(104):
+            _wd = _week - _td(weeks=_wi)
+            _woy = _wd.isocalendar()[1]
+            conn.execute(
+                "INSERT INTO hydro_reservoir_history VALUES (?, ?, ?)",
+                [_cc, str(_wd), _twh + (_woy - 26) * 0.2],
+            )
+        # seasonal band (53 weeks)
+        for _woy in range(1, 54):
+            conn.execute(
+                "INSERT INTO hydro_reservoir_seasonal VALUES (?, ?, ?, ?, ?)",
+                [_cc, _woy, _twh + (_woy - 26) * 0.2, _twh - 5, _twh + 5],
+            )
+
     conn.close()
 
 
