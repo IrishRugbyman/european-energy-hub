@@ -3516,7 +3516,7 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_fundamental_model(db.query, zone)
+    result = _cached_compute(f"fundamental_{zone}", lambda: compute_fundamental_model(db.query, zone), ttl=300)
 
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for fundamental model")
@@ -3613,7 +3613,7 @@ def spreads_fundamental_backtest(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_fundamental_backtest(db.query, zone)
+    result = _cached_compute(f"fundamental_bt_{zone}", lambda: compute_fundamental_backtest(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for backtest")
 
@@ -3652,7 +3652,7 @@ def spreads_wind_price_analysis(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_wind_price_analysis(db.query, zone)
+    result = _cached_compute(f"wind_price_{zone}", lambda: compute_wind_price_analysis(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for wind-price analysis")
 
@@ -3686,7 +3686,7 @@ def spreads_nonlinear_model(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_nonlinear_model(db.query, zone)
+    result = _cached_compute(f"nl_model_{zone}", lambda: compute_nonlinear_model(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for nonlinear model")
 
@@ -3870,7 +3870,7 @@ def spreads_enriched_model(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_enriched_model(db.query, zone)
+    result = _cached_compute(f"enriched_{zone}", lambda: compute_enriched_model(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for enriched model")
 
@@ -3909,7 +3909,7 @@ def spreads_nuclear_wind_interaction(zone: str = "FR"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_nuclear_wind_interaction(db.query, zone)
+    result = _cached_compute(f"nuclear_wind_{zone}", lambda: compute_nuclear_wind_interaction(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for nuclear-wind interaction")
 
@@ -3946,7 +3946,7 @@ def spreads_gbm_model(zone: str = "DE-LU"):
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = compute_gbm_model(db.query, zone)
+    result = _cached_compute(f"gbm_{zone}", lambda: compute_gbm_model(db.query, zone), ttl=3600)
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for GBM model")
 
