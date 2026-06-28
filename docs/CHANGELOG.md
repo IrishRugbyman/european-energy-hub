@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 58: live market pulse widget on landing page
+
+**Built:** Added a live market data strip between the hero and the dashboard grid on the landing page (energy.lbzgiu.xyz/). New `GET /api/market-pulse` endpoint aggregates the key EU energy numbers into a single fast response (pure pre-computed table reads, no OLS or computation): TTF front-month EUR/MWh with day-over-day delta, EUA EUR/t with d/d delta, EU aggregate gas storage fill % with vs-5yr-avg delta, DE-LU DA base price EUR/MWh with vs-30d-% delta, CSS/CDS and regime label (gas/coal) for all 5 fundamental zones (BE, DE-LU, FR, IT-NORD, NL), and German reBAP today mean EUR/MWh. Each chip links to its full dashboard. Schema: `MarketPulseResponse` with `MarketPulseSpread` and `MarketPulseSignal` models. `MarketPulse` component on landing page with commodity group, gas storage chip, power chip, 5 spread mini-cards, and reBAP chip.
+
+**Decision:** The landing page previously had only static navigation cards with no live data - a visitor had no reason to know the site was live until they clicked into a dashboard. The market pulse strip makes the "live data" story visible in the first second: anyone landing on energy.lbzgiu.xyz sees today's TTF, EUA, EU storage fill, and CSS by zone without any navigation. Each chip is clickable and goes directly to the relevant page. Endpoint latency is sub-10ms (all reads from pre-computed DuckDB tables). 110 tests passing.
+
 ## 2026-06-28 - Phase 57: nuclear * wind interaction term on /spreads
 
 **Tried:** Walk-forward test of whether adding `nuclear_lag1_gw * wind_pct / 100` as a 13th column in the enriched-OLS fair-value design (P48+P54, 12 columns) is justified by information criteria. The hypothesis: when D-1 nuclear output is low AND day-ahead wind is high, the DA price crashes MORE than the additive enriched model predicts - a super-additive supply shock. Added `compute_nuclear_wind_interaction()`: at each WF step, both the enriched design and the extended design (+ interaction term) are refit on the training window and predict OOS. Reports RMSE, tradeable Sharpe, walk-forward interaction coefficient stability, and the mean ΔAIC/ΔBIC across the WF window. AIC threshold for justification: mean ΔAIC < -2 (conventional one-parameter test).
