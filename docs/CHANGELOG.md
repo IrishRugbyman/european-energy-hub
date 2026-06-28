@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 61: nuclear heat risk alert on /power and landing page
+
+**Built:** When any French nuclear plant is at warning or critical heat stress (river cooling constraint), two new alert surfaces appear: (1) A floating banner on the /power map page (absolute top-center, z-999) showing "FR NUCLEAR CRITICAL/WARNING", total GW at risk, and the top 3 plant names with observed temperatures - styled red for critical, amber for warning, links to /generation. (2) A nuclear chip in the market pulse strip on the landing page (rightmost), showing "FR Nuclear / X.X GW at risk / CRITICAL" in matching colors. The chip only renders when capacity_critical_mw + capacity_warning_mw > 0, so it produces no visual noise during normal conditions. No backend changes - both surfaces query the existing `/api/generation/heat-risk` endpoint.
+
+**Context:** On 2026-06-28, all 5 Rhone-valley plants are at CRITICAL: Tricastin (3600 MW, 38.5C air, implied river 31.8C vs limit 24C), Cruas-Meysse (3700 MW, 37.7C), Saint-Alban (1500 MW, 38.0C), Bugey (1850 MW, 38.9C), Golfech (1400 MW, 37.3C). Combined critical capacity 14050 MW, representing ~40% of FR nuclear fleet. River cooling limits force output reductions when Rhone exceeds 24-28C, causing FR power prices to spike and the CDS/CSS spreads to widen. Previously this information was only on /generation; now it surfaces immediately on the /power map page that shows the price effect. 111 tests unchanged.
+
 ## 2026-06-28 - Phase 60: signal holding-period sensitivity on /spreads
 
 **Built:** `GET /api/spreads/holding-period?zone=` and `HoldingPeriodSection` on /spreads. Tests the OOS nonlinear signal net Sharpe across k = 1, 2, 3, 5, 7, 10 day holding periods. At k days, each position is held for k trading days and cost is amortised as EDGE_NET_COST/k per day. Backend: `compute_holding_period_sensitivity()` in `fundamental.py` replays the walk-forward OLS residual and z-score, then for each k slices k-day price windows and computes daily-equivalent P&L (gross/k net of cost/k). Schema: `HoldingPeriodRow` + `HoldingPeriodResponse`. Frontend: zone picker, summary table (k, gross Sharpe, net Sharpe, avg daily net, max drawdown), and a line chart (gross dashed blue, net solid green) plotting Sharpe vs k. 111 tests passing.

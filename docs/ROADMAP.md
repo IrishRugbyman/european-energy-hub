@@ -320,6 +320,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 60 - Signal holding period sensitivity on /spreads [COMPLETE 2026-06-28]
 
+### Phase 61 - Nuclear heat risk alert on /power and landing page [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,
