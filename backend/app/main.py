@@ -269,6 +269,9 @@ from .schemas import (
     GasPowerPassThroughResponse,
     EuaMonthlySeasonalPoint,
     EuaSeasonalityResponse,
+    UsStorageRegionPoint,
+    UsStorageHistPoint,
+    UsStorageResponse,
 )
 
 
@@ -2366,6 +2369,88 @@ def prices_eua_seasonality():
         )
 
     return _cached_compute("eua_seasonality", _compute, ttl=3600)
+
+
+@app.get("/api/prices/us-gas-storage", response_model=UsStorageResponse)
+def prices_us_gas_storage():
+    """EIA US natural gas storage by region vs 5-year seasonal range.
+
+    Shows the US storage surplus/deficit which is the primary driver of Henry Hub
+    prices and hence the transatlantic LNG arbitrage spread (see /api/prices/lng-arb).
+    When US storage is above the 5yr average, HH prices are suppressed and the US-EU
+    LNG arbitrage widens, incentivizing more US LNG exports to Europe.
+
+    Data: EIA weekly working gas in storage, 5 regions (East, Midwest, Mountain, South
+    Central, Pacific). The 5yr seasonal range provides context for how unusual the current
+    level is relative to the storage cycle.
+    """
+    _rate_limited()
+    latest_df = db.query("""
+        SELECT region, week_date, value_bcf, week_change_bcf, yoy_bcf,
+               vs_avg5_bcf, vs_avg5_pct, implied_fill_pct,
+               avg5_bcf, min5_bcf, max5_bcf
+        FROM us_storage_latest
+        ORDER BY region
+    """)
+    if latest_df is None or len(latest_df) == 0:
+        raise HTTPException(status_code=503, detail="US storage data unavailable")
+
+    week_date = str(latest_df.iloc[0]["week_date"])
+
+    # Regional breakdown
+    regions = [
+        UsStorageRegionPoint(
+            region=str(r.region),
+            value_bcf=round(float(r.value_bcf), 1),
+            avg5_bcf=round(float(r.avg5_bcf), 1),
+            min5_bcf=round(float(r.min5_bcf), 1),
+            max5_bcf=round(float(r.max5_bcf), 1),
+            vs_avg5_pct=round(float(r.vs_avg5_pct), 2),
+            implied_fill_pct=round(float(r.implied_fill_pct), 2),
+        )
+        for r in latest_df.itertuples()
+    ]
+
+    # Totals
+    total_bcf = float(latest_df["value_bcf"].sum())
+    avg5_bcf = float(latest_df["avg5_bcf"].sum())
+    min5_bcf = float(latest_df["min5_bcf"].sum())
+    max5_bcf = float(latest_df["max5_bcf"].sum())
+    vs_avg5_pct = (total_bcf - avg5_bcf) / avg5_bcf * 100 if avg5_bcf > 0 else 0.0
+
+    # Historical totals (last 2 years)
+    hist_df = db.query("""
+        SELECT week_date, SUM(value_bcf) AS total_bcf
+        FROM us_storage_history
+        WHERE week_date >= CURRENT_DATE - INTERVAL 2 YEAR
+        GROUP BY week_date
+        ORDER BY week_date
+    """)
+    history = []
+    if hist_df is not None and len(hist_df) > 0:
+        history = [
+            UsStorageHistPoint(week_date=str(r.week_date), total_bcf=round(float(r.total_bcf), 1))
+            for r in hist_df.itertuples()
+        ]
+
+    # Latest HH price for context
+    hh_df = db.query("""
+        SELECT hh_usd_mmbtu FROM prices_daily
+        WHERE hh_usd_mmbtu IS NOT NULL ORDER BY price_date DESC LIMIT 1
+    """)
+    hh_price = float(hh_df.iloc[0]["hh_usd_mmbtu"]) if hh_df is not None and len(hh_df) > 0 else None
+
+    return UsStorageResponse(
+        week_date=week_date,
+        total_bcf=round(total_bcf, 1),
+        avg5_bcf=round(avg5_bcf, 1),
+        min5_bcf=round(min5_bcf, 1),
+        max5_bcf=round(max5_bcf, 1),
+        vs_avg5_pct=round(vs_avg5_pct, 2),
+        regions=regions,
+        history=history,
+        hh_usd_mmbtu=round(hh_price, 2) if hh_price is not None else None,
+    )
 
 
 @app.get("/api/prices/fuel-switching-eua", response_model=FuelSwitchingEuaResponse)

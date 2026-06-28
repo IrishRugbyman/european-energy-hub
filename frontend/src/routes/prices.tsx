@@ -19,7 +19,7 @@ import {
   Cell,
   Area,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint, type EuaSeasonalityResponse, type EuaMonthlySeasonalPoint } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint, type EuaSeasonalityResponse, type EuaMonthlySeasonalPoint, type UsStorageResponse, type UsStorageRegionPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1129,6 +1129,169 @@ const SEASON_COLORS: Record<string, string> = {
   autumn: '#a78bfa',
 }
 
+function UsGasStorageSection() {
+  const { data, isLoading } = useQuery<UsStorageResponse>({
+    queryKey: ['prices-us-gas-storage'],
+    queryFn: api.pricesUsGasStorage,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const surplusColor = (pct: number) =>
+    pct > 5 ? '#4ade80' : pct > 0 ? '#86efac' : pct > -5 ? '#fbbf24' : '#f87171'
+
+  const REGION_COLORS: Record<string, string> = {
+    East: '#60a5fa', Midwest: '#f472b6', Mountain: '#34d399',
+    Pacific: '#fbbf24', 'South Central': '#a78bfa', 'US-48': '#94a3b8',
+  }
+
+  const chartData = data?.history?.map((h) => ({ date: h.week_date, total: h.total_bcf })) ?? []
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          US Natural Gas Storage (EIA weekly, Bcf)
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 75 - US storage surplus/deficit is the primary HH price driver and
+          determines the transatlantic LNG arb window
+        </span>
+        {data && (
+          <span
+            className="ml-auto text-xs font-semibold px-2 py-0.5 rounded border"
+            style={{
+              color: surplusColor(data.vs_avg5_pct),
+              borderColor: surplusColor(data.vs_avg5_pct) + '60',
+              background: surplusColor(data.vs_avg5_pct) + '15',
+            }}
+          >
+            {data.vs_avg5_pct > 0 ? '+' : ''}{data.vs_avg5_pct.toFixed(1)}% vs 5yr avg
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading EIA storage data...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Total US storage</p>
+              <p className="text-sm font-semibold text-foreground">{data.total_bcf.toFixed(0)} Bcf</p>
+              <p className="text-[10px] text-muted-foreground">as of {data.week_date}</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">5yr average</p>
+              <p className="text-sm font-semibold text-foreground">{data.avg5_bcf.toFixed(0)} Bcf</p>
+              <p className="text-[10px] text-muted-foreground">
+                range: {data.min5_bcf.toFixed(0)}-{data.max5_bcf.toFixed(0)} Bcf
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">vs 5yr average</p>
+              <p
+                className="text-sm font-semibold"
+                style={{ color: surplusColor(data.vs_avg5_pct) }}
+              >
+                {data.vs_avg5_pct > 0 ? '+' : ''}{data.vs_avg5_pct.toFixed(1)}%
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                {data.total_bcf - data.avg5_bcf > 0 ? '+' : ''}
+                {(data.total_bcf - data.avg5_bcf).toFixed(0)} Bcf surplus
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Henry Hub</p>
+              {data.hh_usd_mmbtu != null ? (
+                <p className="text-sm font-semibold text-amber-400">
+                  ${data.hh_usd_mmbtu.toFixed(2)}/MMBtu
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">--</p>
+              )}
+              <p className="text-[10px] text-muted-foreground">latest price</p>
+            </div>
+          </div>
+
+          {/* Historical chart */}
+          {chartData.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                Total US working gas in storage (Bcf) - last 2 years, all 5 EIA regions.
+              </p>
+              <ResponsiveContainer width="100%" height={140}>
+                <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }}
+                    tickLine={false} tickFormatter={(v) => v.slice(0, 7)} minTickGap={60} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    tickFormatter={(v) => v.toFixed(0)} domain={['auto', 'auto']} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v) => (typeof v === 'number' ? [`${v.toFixed(0)} Bcf`, 'Total storage'] : [v, ''])}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <ReferenceLine y={data.avg5_bcf} stroke="#64748b" strokeDasharray="3 3"
+                    label={{ value: '5yr avg', fill: '#64748b', fontSize: 8, position: 'insideTopRight' }} />
+                  <Line type="monotone" dataKey="total" stroke="#38bdf8" dot={false} strokeWidth={1.5}
+                    name="Total US storage (Bcf)" />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          {/* Regional breakdown table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Region</th>
+                  <th className="text-right">Storage (Bcf)</th>
+                  <th className="text-right">5yr avg</th>
+                  <th className="text-right">vs avg</th>
+                  <th className="text-right">Fill %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.regions.map((r: UsStorageRegionPoint) => (
+                  <tr key={r.region} className="border-b border-border/30">
+                    <td className="py-1 font-medium" style={{ color: REGION_COLORS[r.region] ?? '#94a3b8' }}>
+                      {r.region}
+                    </td>
+                    <td className="text-right text-foreground">{r.value_bcf.toFixed(0)}</td>
+                    <td className="text-right text-muted-foreground">{r.avg5_bcf.toFixed(0)}</td>
+                    <td
+                      className="text-right font-semibold"
+                      style={{ color: surplusColor(r.vs_avg5_pct) }}
+                    >
+                      {r.vs_avg5_pct > 0 ? '+' : ''}{r.vs_avg5_pct.toFixed(1)}%
+                    </td>
+                    <td className="text-right text-muted-foreground">{r.implied_fill_pct.toFixed(1)}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            US natural gas storage (working gas, 5 EIA regions from EIA-914) determines the HH
+            price level, which in turn anchors the transatlantic LNG arbitrage spread (see LNG arb
+            section below). Current US total storage: {data.vs_avg5_pct > 0 ? '+' : ''}
+            {data.vs_avg5_pct.toFixed(1)}% vs 5yr seasonal average ({data.total_bcf.toFixed(0)} vs {data.avg5_bcf.toFixed(0)} Bcf).
+            US storage surplus suppresses HH, widens the TTF-HH spread, and incentivizes US LNG
+            exports to Europe. This is structurally different from the EU situation: EU storage is
+            -10.9pp below its 5yr average while US is above average, creating a natural transatlantic
+            supply flow toward Europe. Mountain and South Central regions (Gulf Coast
+            production basins) tend to lead on both injection pace and price sensitivity.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function EuaSeasonalitySection() {
   const { data, isLoading } = useQuery<EuaSeasonalityResponse>({
     queryKey: ['prices-eua-seasonality'],
@@ -1725,6 +1888,7 @@ function PricesDashboard() {
           <TtfSeasonality months={seasonalityData?.months ?? []} />
           {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
           <EuaSeasonalitySection />
+          <UsGasStorageSection />
           <LngArbSection />
           <FuelSwitchingEuaSection />
           <StorageTtfFundamentalSection />

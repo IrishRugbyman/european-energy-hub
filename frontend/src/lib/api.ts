@@ -1221,6 +1221,35 @@ export const api = {
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
   pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
   pricesEuaSeasonality: () => get<EuaSeasonalityResponse>('/prices/eua-seasonality'),
+  pricesUsGasStorage: () => get<UsStorageResponse>('/prices/us-gas-storage'),
+}
+
+// Phase 75: US gas storage
+export interface UsStorageRegionPoint {
+  region: string
+  value_bcf: number
+  avg5_bcf: number
+  min5_bcf: number
+  max5_bcf: number
+  vs_avg5_pct: number
+  implied_fill_pct: number
+}
+
+export interface UsStorageHistPoint {
+  week_date: string
+  total_bcf: number
+}
+
+export interface UsStorageResponse {
+  week_date: string
+  total_bcf: number
+  avg5_bcf: number
+  min5_bcf: number
+  max5_bcf: number
+  vs_avg5_pct: number
+  regions: UsStorageRegionPoint[]
+  history: UsStorageHistPoint[]
+  hh_usd_mmbtu: number | null
 }
 
 // Phase 74: EUA surrender calendar seasonality

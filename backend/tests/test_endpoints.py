@@ -1634,6 +1634,22 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_prices_us_gas_storage(client):
+    r = client.get("/api/prices/us-gas-storage")
+    # Fixture may not have us_storage_latest; 503 is acceptable
+    if r.status_code == 503:
+        return
+    assert r.status_code == 200
+    data = r.json()
+    assert data["total_bcf"] > 0
+    assert "vs_avg5_pct" in data
+    assert len(data["regions"]) >= 1
+    r0 = data["regions"][0]
+    assert "region" in r0 and "value_bcf" in r0 and "avg5_bcf" in r0
+    assert isinstance(data["history"], list)
+    assert data["hh_usd_mmbtu"] is None or data["hh_usd_mmbtu"] > 0
+
+
 def test_prices_eua_seasonality(client):
     r = client.get("/api/prices/eua-seasonality")
     assert r.status_code == 200

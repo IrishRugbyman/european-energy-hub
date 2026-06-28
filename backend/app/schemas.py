@@ -1874,6 +1874,34 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 75: US gas storage vs EIA 5yr range
+class UsStorageRegionPoint(BaseModel):
+    region: str
+    value_bcf: float
+    avg5_bcf: float
+    min5_bcf: float
+    max5_bcf: float
+    vs_avg5_pct: float
+    implied_fill_pct: float
+
+
+class UsStorageHistPoint(BaseModel):
+    week_date: str
+    total_bcf: float
+
+
+class UsStorageResponse(BaseModel):
+    week_date: str
+    total_bcf: float
+    avg5_bcf: float
+    min5_bcf: float
+    max5_bcf: float
+    vs_avg5_pct: float          # % above/below 5yr avg
+    regions: list[UsStorageRegionPoint]
+    history: list[UsStorageHistPoint]
+    hh_usd_mmbtu: float | None    # latest HH price for context
+
+
 # Phase 74: EUA surrender calendar seasonality
 class EuaMonthlySeasonalPoint(BaseModel):
     month_num: int    # 1-12
