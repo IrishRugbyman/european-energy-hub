@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 70: Fuel-switching EUA indicator on /prices
+
+**Built:** `GET /api/prices/fuel-switching-eua` and `FuelSwitchingEuaSection` on /prices. Computes the EUA level at which gas-fired CCGTs and coal plants are equally competitive on a total cost basis (CSS = CDS equilibrium): `EUA_switch = (TTF/0.49 - coal_EUR_MWh/0.36) / 0.596`. Uses FX-adjusted coal_eur_mwh from `spreads_daily` (includes EUR/USD correction applied in `refresh.py`). Returns the full time series from 2021-10 plus 90-day regime split (days gas marginal vs days coal marginal).
+
+**Finding:** Current (2026-06-26): EUA_actual=76.0, EUA_switch=81.5, premium=-5.5 EUR/t. Coal has been the cheaper marginal fuel for all of the last 90 days. EUA needs to rise 5.5 EUR/t for a regime flip to gas marginal. This directly confirms the P59 fuel cost decomposition finding and the P48 FSS regime: coal dominates because TTF remains elevated vs coal (TTF at 41 EUR/MWh, coal at only 12.5 EUR/MWh equivalence). Frontend: dual-line chart (EUA actual vs switching price) + color-coded premium bar (green=gas marginal, red=coal marginal). 118 tests.
+
 ## 2026-06-28 - Phase 69: EU gas storage deviation vs TTF fundamental scatter on /prices
 
 **Built:** `GET /api/prices/storage-ttf` returning 1953 daily observations of EU storage deviation (fill_pct minus 5yr DOY-adjusted average from `storage_seasonal`) joined to TTF front-month, with full-sample OLS regression and rolling 90d Pearson correlation. Added `StorageTtfFundamentalSection` on the /prices page with season-colored scatter (winter/spring/summer/autumn), current-point highlight, rolling correlation chart, OLS coefficient display, and current residual analysis.

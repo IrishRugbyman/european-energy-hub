@@ -338,6 +338,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 69 - EU gas storage deviation vs TTF fundamental scatter on /prices [COMPLETE 2026-06-28]
 
+### Phase 70 - Fuel-switching EUA indicator on /prices [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,
