@@ -18,7 +18,7 @@ import {
   ReferenceLine,
   Cell,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -961,6 +961,186 @@ function PowerMonthlyHeatmap({ data }: { data: PowerMonthlyResponse }) {
   )
 }
 
+const SEASON_COLORS: Record<string, string> = {
+  winter: '#60a5fa',
+  spring: '#4ade80',
+  summer: '#f97316',
+  autumn: '#a78bfa',
+}
+
+function StorageTtfFundamentalSection() {
+  const { data, isLoading } = useQuery<StorageTtfFundamentalResponse>({
+    queryKey: ['prices-storage-ttf'],
+    queryFn: api.pricesStorageTtf,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const rollCorr = data?.rolling_corr?.slice(-400) ?? []
+
+  const residualColor = (v: number) =>
+    v > 5 ? '#f87171' : v < -5 ? '#4ade80' : '#94a3b8'
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Gas Market Fundamental: EU Storage Deviation vs TTF
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 69 - storage scarcity premium and the intrinsic value of underground storage
+        </span>
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading storage-TTF analysis...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Full-sample Pearson</p>
+              <p className="text-sm font-semibold text-sky-400">{data.full_pearson.toFixed(3)}</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">OLS sensitivity</p>
+              <p className="text-sm font-semibold text-foreground">
+                {(-data.ols_beta).toFixed(2)} EUR/MWh per pp
+              </p>
+              <p className="text-[10px] text-muted-foreground">1pp deficit raises TTF</p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Current storage dev</p>
+              <p className="text-sm font-semibold" style={{ color: data.current_storage_dev < 0 ? '#f87171' : '#4ade80' }}>
+                {data.current_storage_dev >= 0 ? '+' : ''}{data.current_storage_dev.toFixed(1)}pp
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">OLS fair value / actual</p>
+              <p className="text-sm font-semibold text-foreground">
+                {data.current_predicted_ttf.toFixed(1)} / {data.current_ttf.toFixed(1)}
+              </p>
+              <p className="text-[10px]" style={{ color: residualColor(data.current_residual) }}>
+                residual {data.current_residual >= 0 ? '+' : ''}{data.current_residual.toFixed(1)} EUR/MWh
+              </p>
+            </div>
+          </div>
+
+          {/* Scatter: storage dev vs TTF, colored by season */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              EU storage deviation (pp vs 5yr avg DOY) vs TTF front-month (EUR/MWh), 5-year daily, colored by season
+            </p>
+            <ResponsiveContainer width="100%" height={230}>
+              <ScatterChart margin={{ top: 4, right: 8, bottom: 16, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis
+                  dataKey="storage_dev"
+                  type="number"
+                  name="Storage deviation"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  label={{ value: 'EU storage dev (pp vs 5yr avg)', position: 'insideBottom', offset: -10, fontSize: 9, fill: '#64748b' }}
+                />
+                <YAxis
+                  dataKey="ttf"
+                  type="number"
+                  name="TTF"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => `${v}`}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(value, name) => [typeof value === 'number' ? value.toFixed(1) : value, name]}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                {(['winter', 'spring', 'summer', 'autumn'] as const).map((season) => (
+                  <Scatter
+                    key={season}
+                    name={season}
+                    data={data.scatter.filter((p) => p.season === season)}
+                    fill={SEASON_COLORS[season]}
+                    opacity={0.55}
+                    r={2}
+                  />
+                ))}
+                {/* Current point */}
+                <Scatter
+                  name="Current"
+                  data={[{ storage_dev: data.current_storage_dev, ttf: data.current_ttf }]}
+                  fill="#fbbf24"
+                  opacity={1}
+                  r={5}
+                />
+              </ScatterChart>
+            </ResponsiveContainer>
+            <div className="flex gap-3 mt-1 flex-wrap">
+              {(['winter', 'spring', 'summer', 'autumn'] as const).map((s) => (
+                <span key={s} className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <span className="inline-block w-2 h-2 rounded-full" style={{ background: SEASON_COLORS[s] }} />
+                  {s}
+                </span>
+              ))}
+              <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                <span className="inline-block w-2 h-2 rounded-full bg-yellow-400" />
+                current
+              </span>
+            </div>
+          </div>
+
+          {/* Rolling 90d correlation */}
+          {rollCorr.length > 0 && (
+            <div>
+              <p className="text-[10px] text-muted-foreground mb-1">
+                Rolling 90d Pearson correlation: EU storage deviation vs TTF
+              </p>
+              <ResponsiveContainer width="100%" height={100}>
+                <LineChart data={rollCorr} margin={{ top: 4, right: 8, bottom: 0, left: -20 }}>
+                  <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                  <XAxis dataKey="date" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                    interval={Math.floor(rollCorr.length / 4)} />
+                  <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} domain={[-1, 0.5]}
+                    tickFormatter={(v) => v.toFixed(1)} />
+                  <Tooltip
+                    contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                    formatter={(v) => [typeof v === 'number' ? v.toFixed(3) : '--', '90d Pearson']}
+                    labelStyle={{ color: '#94a3b8' }}
+                  />
+                  <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+                  <Line type="monotone" dataKey="corr" stroke="#38bdf8" dot={false} strokeWidth={1.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            The EU gas storage fill relative to the trailing 5-year average (DOY-adjusted) is the
+            primary structural driver of TTF direction. OLS slope = {data.ols_beta.toFixed(2)} EUR/MWh
+            per pp of storage deviation, meaning each percentage point of storage deficit historically
+            raised TTF by {(-data.ols_beta).toFixed(2)} EUR/MWh (full 2019-2026 sample, Pearson = {data.full_pearson.toFixed(2)}).
+            This sensitivity is the basis of the gas storage real-option intrinsic value: a facility
+            owner captures the time spread between injection and withdrawal, which scales with how
+            steeply storage scarcity is priced into the forward curve (backwardation / contango slope).
+            Current OLS-implied fair value: {data.current_predicted_ttf.toFixed(1)} EUR/MWh
+            (storage_dev = {data.current_storage_dev.toFixed(1)}pp).
+            Actual TTF = {data.current_ttf.toFixed(1)} EUR/MWh, residual ={' '}
+            <span style={{ color: residualColor(data.current_residual) }}>
+              {data.current_residual >= 0 ? '+' : ''}{data.current_residual.toFixed(1)} EUR/MWh
+            </span>.
+            {data.current_residual < -10 &&
+              ' TTF is substantially below the OLS line - the market is discounting storage scarcity relative to the 2022-driven historical relationship. This implies either improved supply security (LNG availability, reduced demand) or that the 2022 crisis outlier is disproportionately anchoring the regression.'
+            }
+            {data.current_residual > 10 &&
+              ' TTF is substantially above the OLS line - additional scarcity premia beyond storage are being priced (supply disruption risk, cold/hot weather forecast, geopolitical uncertainty).'
+            }
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function PricesDashboard() {
   const [window, setWindow] = useState<Window>('2Y')
   const [indexed, setIndexed] = useState(false)
@@ -1105,6 +1285,7 @@ function PricesDashboard() {
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />
           {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
+          <StorageTtfFundamentalSection />
         </div>
       )}
 

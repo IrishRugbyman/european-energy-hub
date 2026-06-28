@@ -254,6 +254,9 @@ from .schemas import (
     ZoneSignalPairSeries,
     ZoneSignalPair,
     ZoneSignalCorrelationResponse,
+    StorageTtfScatterPoint,
+    StorageTtfRollingCorrPoint,
+    StorageTtfFundamentalResponse,
 )
 
 
@@ -1908,6 +1911,125 @@ def prices_regime():
         for r in df.itertuples()
     ]
     return PriceRegimeResponse(rows=rows)
+
+
+@app.get("/api/prices/storage-ttf", response_model=StorageTtfFundamentalResponse)
+def prices_storage_ttf():
+    """EU gas storage deviation vs TTF front-month fundamental scatter.
+
+    The EU gas storage fill relative to the trailing 5-year average is the primary
+    fundamental driver of TTF price direction:
+    - When storage is below the 5yr average (negative deviation), scarcity premium pushes TTF up.
+    - When storage is above average, injection economics cap TTF (arbitrage: inject now, sell forward).
+
+    This relationship is the basis of the gas storage option valuation (the intrinsic value of an
+    EU underground storage facility equals the expected gain from buy-low/inject / sell-high/withdraw
+    cycles, which scales with TTF backwardation driven by the storage scarcity).
+
+    Returns:
+    - scatter: daily (storage_dev, ttf, season, date) from 2019-01-01 to latest joined date.
+      Storage deviation = EU fill_pct minus 5yr avg fill for that day-of-year.
+    - rolling_corr: rolling 90-day Pearson(storage_dev, TTF) to show how tight the link is.
+    - OLS regression coefficients alpha + beta (EUR/MWh per pp of storage deviation).
+    - current point + OLS-implied fair value + residual (how far above/below OLS today).
+    """
+    _rate_limited()
+    import numpy as np
+
+    CORR_WINDOW = 90
+    df = db.query("""
+        WITH storage_vs_avg AS (
+            SELECT
+                sh.gas_day AS dt,
+                sh.full_pct - ss.avg5 AS storage_dev
+            FROM storage_history sh
+            JOIN storage_seasonal ss
+                ON ss.country = 'EU'
+                AND ss.doy = EXTRACT(doy FROM sh.gas_day)::SMALLINT
+            WHERE sh.country = 'EU'
+        )
+        SELECT
+            p.price_date AS dt,
+            s.storage_dev,
+            p.ttf_eur_mwh AS ttf,
+            EXTRACT(month FROM p.price_date) AS month_num
+        FROM prices_daily p
+        JOIN storage_vs_avg s ON s.dt = p.price_date
+        WHERE p.ttf_eur_mwh IS NOT NULL
+          AND s.storage_dev IS NOT NULL
+        ORDER BY p.price_date
+    """)
+    if df is None or len(df) < 60:
+        raise HTTPException(status_code=503, detail="Insufficient data for storage-TTF analysis")
+
+    def _season(m: int) -> str:
+        if m in (12, 1, 2):
+            return "winter"
+        if m in (3, 4, 5):
+            return "spring"
+        if m in (6, 7, 8):
+            return "summer"
+        return "autumn"
+
+    df["season"] = df["month_num"].astype(int).map(_season)
+    df["dt"] = df["dt"].astype(str)
+
+    x = df["storage_dev"].to_numpy()
+    y = df["ttf"].to_numpy()
+    mask = np.isfinite(x) & np.isfinite(y)
+    x_m, y_m = x[mask], y[mask]
+
+    full_pearson = float(np.corrcoef(x_m, y_m)[0, 1]) if len(x_m) > 2 else 0.0
+
+    # OLS
+    xb = np.vstack([np.ones(len(x_m)), x_m]).T
+    ols_coef = np.linalg.lstsq(xb, y_m, rcond=None)[0]
+    ols_alpha = float(ols_coef[0])
+    ols_beta = float(ols_coef[1])
+
+    # Rolling Pearson using pandas
+    import pandas as pd
+    s_dev = pd.Series(x, name="storage_dev")
+    s_ttf = pd.Series(y, name="ttf")
+    roll_corr = s_dev.rolling(CORR_WINDOW, min_periods=30).corr(s_ttf).dropna()
+    rolling_corr = [
+        StorageTtfRollingCorrPoint(date=df["dt"].iloc[i], corr=round(float(v), 3))
+        for i, v in roll_corr.items()
+    ]
+
+    # Scatter (cap to last 5 years to keep payload manageable; ~1800 points)
+    scatter_df = df.tail(1825)
+    scatter = [
+        StorageTtfScatterPoint(
+            date=r.dt,
+            storage_dev=round(float(r.storage_dev), 2),
+            ttf=round(float(r.ttf), 2),
+            season=r.season,
+        )
+        for r in scatter_df.itertuples()
+        if np.isfinite(r.storage_dev) and np.isfinite(r.ttf)
+    ]
+
+    # Current
+    latest = df.iloc[-1]
+    cur_dev = float(latest["storage_dev"])
+    cur_ttf = float(latest["ttf"])
+    cur_pred = ols_alpha + ols_beta * cur_dev
+    cur_resid = cur_ttf - cur_pred
+
+    return StorageTtfFundamentalResponse(
+        scatter=scatter,
+        rolling_corr=rolling_corr,
+        full_pearson=round(full_pearson, 3),
+        ols_alpha=round(ols_alpha, 2),
+        ols_beta=round(ols_beta, 3),
+        current_date=str(latest["dt"]),
+        current_storage_dev=round(cur_dev, 2),
+        current_ttf=round(cur_ttf, 2),
+        current_predicted_ttf=round(cur_pred, 2),
+        current_residual=round(cur_resid, 2),
+        corr_window=CORR_WINDOW,
+    )
 
 
 @app.get("/api/generation/map", response_model=GenMapResponse)

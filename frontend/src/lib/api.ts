@@ -1215,6 +1215,34 @@ export const api = {
   spreadsStorageFactorTest: (zone?: string) => get<StorageFactorTestResponse>(`/spreads/storage-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsLoadErrorFactorTest: (zone?: string) => get<LoadErrorFactorTestResponse>(`/spreads/load-error-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsZoneSignalCorrelations: () => get<ZoneSignalCorrelationResponse>('/spreads/zone-signal-correlations'),
+  pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
+}
+
+// Phase 69: TTF-storage fundamental scatter
+export interface StorageTtfScatterPoint {
+  date: string
+  storage_dev: number
+  ttf: number
+  season: string
+}
+
+export interface StorageTtfRollingCorrPoint {
+  date: string
+  corr: number
+}
+
+export interface StorageTtfFundamentalResponse {
+  scatter: StorageTtfScatterPoint[]
+  rolling_corr: StorageTtfRollingCorrPoint[]
+  full_pearson: number
+  ols_alpha: number
+  ols_beta: number
+  current_date: string
+  current_storage_dev: number
+  current_ttf: number
+  current_predicted_ttf: number
+  current_residual: number
+  corr_window: number
 }
 
 // US power generation

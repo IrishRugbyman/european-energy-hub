@@ -1634,6 +1634,31 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_prices_storage_ttf(client):
+    r = client.get("/api/prices/storage-ttf")
+    assert r.status_code == 200
+    data = r.json()
+    assert "scatter" in data and len(data["scatter"]) > 10
+    pt = data["scatter"][0]
+    assert "date" in pt and "storage_dev" in pt and "ttf" in pt and "season" in pt
+    assert pt["season"] in ("winter", "spring", "summer", "autumn")
+    assert "rolling_corr" in data and len(data["rolling_corr"]) > 0
+    rc = data["rolling_corr"][0]
+    assert "date" in rc and "corr" in rc
+    assert -1.0 <= rc["corr"] <= 1.0
+    assert isinstance(data["full_pearson"], float)
+    assert isinstance(data["ols_alpha"], float)
+    assert isinstance(data["ols_beta"], float)
+    # Storage deficit should push TTF up: beta should be negative
+    assert data["ols_beta"] < 0
+    assert "current_date" in data
+    assert "current_storage_dev" in data
+    assert "current_ttf" in data and data["current_ttf"] > 0
+    assert "current_predicted_ttf" in data
+    assert "current_residual" in data
+    assert data["corr_window"] == 90
+
+
 def test_spreads_zone_signal_correlations(client):
     r = client.get("/api/spreads/zone-signal-correlations")
     assert r.status_code == 200

@@ -1874,6 +1874,33 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 69: TTF-storage fundamental scatter
+class StorageTtfScatterPoint(BaseModel):
+    date: str
+    storage_dev: float
+    ttf: float
+    season: str  # 'winter' | 'spring' | 'summer' | 'autumn'
+
+
+class StorageTtfRollingCorrPoint(BaseModel):
+    date: str
+    corr: float
+
+
+class StorageTtfFundamentalResponse(BaseModel):
+    scatter: list[StorageTtfScatterPoint]
+    rolling_corr: list[StorageTtfRollingCorrPoint]
+    full_pearson: float
+    ols_alpha: float
+    ols_beta: float   # EUR/MWh per pp of storage deviation
+    current_date: str
+    current_storage_dev: float
+    current_ttf: float
+    current_predicted_ttf: float
+    current_residual: float
+    corr_window: int
+
+
 # Phase 68: Zone signal correlation heatmap
 class ZoneSignalCorrPoint(BaseModel):
     date: str
