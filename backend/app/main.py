@@ -227,6 +227,9 @@ from .schemas import (
     RebapSignalToday,
     NuclearWindInteractionResponse,
     NuclearWindCoef,
+    MarketPulseResponse,
+    MarketPulseSpread,
+    MarketPulseSignal,
 )
 
 
@@ -4039,3 +4042,84 @@ def power_cf_map():
     ]
     gen_date = rows[0].gen_date if rows else None
     return CfMapResponse(gen_date=gen_date, rows=rows)
+
+
+@app.get("/api/market-pulse", response_model=MarketPulseResponse)
+def market_pulse():
+    """Single aggregated snapshot of the key EU energy market numbers for the landing page."""
+    # Commodity prices (latest 2 rows for day-over-day delta)
+    px = db.query("""
+        SELECT price_date::VARCHAR AS price_date, ttf_eur_mwh, eua_eur_t
+        FROM prices_daily
+        WHERE ttf_eur_mwh IS NOT NULL
+        ORDER BY price_date DESC
+        LIMIT 2
+    """)
+    ttf_latest = _float(px.iloc[0]["ttf_eur_mwh"]) if px is not None and not px.empty else None
+    ttf_prev = _float(px.iloc[1]["ttf_eur_mwh"]) if px is not None and len(px) > 1 else None
+    ttf_d1 = round(ttf_latest - ttf_prev, 2) if ttf_latest is not None and ttf_prev is not None else None
+
+    eua_latest = _float(px.iloc[0]["eua_eur_t"]) if px is not None and not px.empty else None
+    eua_prev = _float(px.iloc[1]["eua_eur_t"]) if px is not None and len(px) > 1 else None
+    eua_d1 = round(eua_latest - eua_prev, 2) if eua_latest is not None and eua_prev is not None else None
+
+    as_of = str(px.iloc[0]["price_date"]) if px is not None and not px.empty else "unknown"
+
+    # EU aggregate gas storage
+    st = db.query("""
+        SELECT full_pct, vs_avg5_pct
+        FROM storage_latest
+        WHERE country = 'EU'
+        LIMIT 1
+    """)
+    eu_storage_pct = _float(st.iloc[0]["full_pct"]) if st is not None and not st.empty else None
+    eu_storage_vs_avg5 = _float(st.iloc[0]["vs_avg5_pct"]) if st is not None and not st.empty else None
+
+    # DE-LU DA base price
+    pw = db.query("""
+        SELECT base_eur, vs_30d_pct
+        FROM power_latest
+        WHERE zone = 'DE-LU'
+        LIMIT 1
+    """)
+    de_lu_price = _float(pw.iloc[0]["base_eur"]) if pw is not None and not pw.empty else None
+    de_lu_vs_30d_pct = _float(pw.iloc[0]["vs_30d_pct"]) if pw is not None and not pw.empty else None
+
+    # Multi-zone spreads (latest date for the 5 fundamental zones)
+    sp = db.query("""
+        SELECT zone, css, cds, regime_threshold
+        FROM multi_zone_spreads
+        WHERE price_date = (SELECT MAX(price_date) FROM multi_zone_spreads)
+          AND zone IN ('DE-LU', 'FR', 'NL', 'IT-NORD', 'BE')
+        ORDER BY zone
+    """)
+    spreads: list[MarketPulseSpread] = []
+    if sp is not None and not sp.empty:
+        spreads = [
+            MarketPulseSpread(
+                zone=str(r.zone),
+                css=_float(r.css),
+                cds=_float(r.cds),
+                regime=str(r.regime_threshold) if r.regime_threshold else None,
+            )
+            for r in sp.itertuples()
+        ]
+
+    # German reBAP today mean
+    im = db.query("SELECT today_mean FROM imbalance_latest LIMIT 1")
+    rebap_today_mean = _float(im.iloc[0]["today_mean"]) if im is not None and not im.empty else None
+
+    return MarketPulseResponse(
+        as_of=as_of,
+        ttf_eur_mwh=ttf_latest,
+        ttf_d1=ttf_d1,
+        eua_eur_t=eua_latest,
+        eua_d1=eua_d1,
+        eu_storage_pct=eu_storage_pct,
+        eu_storage_vs_avg5=eu_storage_vs_avg5,
+        de_lu_price=de_lu_price,
+        de_lu_vs_30d_pct=de_lu_vs_30d_pct,
+        spreads=spreads,
+        rebap_today_mean=rebap_today_mean,
+        signal=[],
+    )

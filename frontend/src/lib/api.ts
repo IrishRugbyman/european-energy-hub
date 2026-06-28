@@ -1208,6 +1208,7 @@ export const api = {
   usNgPlants: () => get<UsNgPlantsResponse>('/us-power/plants'),
   spreadsFundamentalModel: (zone?: string) => get<FundamentalModelResponse>(`/spreads/fundamental-model${zone ? `?zone=${zone}` : ''}`),
   spreadsSignalSnapshot: () => get<SignalSnapshotResponse>('/spreads/signal-snapshot'),
+  marketPulse: () => get<MarketPulseResponse>('/market-pulse'),
 }
 
 // US power generation
@@ -1730,4 +1731,34 @@ export interface FundamentalBacktestResponse {
   zone: string
   equity: BacktestEquityPoint[]
   stats: BacktestStats
+}
+
+// --- Market pulse ---
+
+export interface MarketPulseSpread {
+  zone: string
+  css: number | null
+  cds: number | null
+  regime: string | null
+}
+
+export interface MarketPulseSignal {
+  zone: string
+  zscore: number | null
+  pct_rank_1yr: number | null
+}
+
+export interface MarketPulseResponse {
+  as_of: string
+  ttf_eur_mwh: number | null
+  ttf_d1: number | null
+  eua_eur_t: number | null
+  eua_d1: number | null
+  eu_storage_pct: number | null
+  eu_storage_vs_avg5: number | null
+  de_lu_price: number | null
+  de_lu_vs_30d_pct: number | null
+  spreads: MarketPulseSpread[]
+  rebap_today_mean: number | null
+  signal: MarketPulseSignal[]
 }

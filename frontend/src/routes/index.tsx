@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import {
   Flame,
   Zap,
@@ -10,7 +11,10 @@ import {
   BarChart2,
   Factory,
   ArrowRight,
+  TrendingDown,
+  Minus,
 } from 'lucide-react'
+import { api, type MarketPulseResponse, type MarketPulseSpread } from '@/lib/api'
 
 export const Route = createFileRoute('/')({
   component: LandingPage,
@@ -106,13 +110,211 @@ const DASHBOARDS: Dashboard[] = [
 
 const SOURCES = ['ENTSO-E', 'AGSI+', 'ENTSOG', 'EIA', 'SMARD', 'ICE / DB.nomics', 'IMF', 'yfinance']
 
+function fmt1(v: number | null | undefined): string {
+  if (v == null) return '-'
+  return v.toFixed(1)
+}
+
+function fmtInt(v: number | null | undefined): string {
+  if (v == null) return '-'
+  return Math.round(v).toString()
+}
+
+function DeltaChip({ v, unit = '', invert = false }: { v: number | null | undefined; unit?: string; invert?: boolean }) {
+  if (v == null) return null
+  const positive = invert ? v < 0 : v > 0
+  const negative = invert ? v > 0 : v < 0
+  const color = positive ? 'text-emerald-400' : negative ? 'text-red-400' : 'text-muted-foreground'
+  const Icon = positive ? TrendingUp : negative ? TrendingDown : Minus
+  const sign = v > 0 ? '+' : ''
+  return (
+    <span className={`inline-flex items-center gap-0.5 text-[10px] font-mono ${color}`}>
+      <Icon className="w-2.5 h-2.5" />
+      {sign}{fmt1(v)}{unit}
+    </span>
+  )
+}
+
+function PulseCard({
+  label,
+  value,
+  unit,
+  delta,
+  deltaUnit,
+  deltaInvert,
+  to,
+  dim,
+}: {
+  label: string
+  value: string
+  unit: string
+  delta?: number | null
+  deltaUnit?: string
+  deltaInvert?: boolean
+  to?: DashRoute
+  dim?: boolean
+}) {
+  const inner = (
+    <div className={[
+      'flex flex-col gap-1 px-3 py-2.5 rounded-md border min-w-[100px]',
+      dim
+        ? 'bg-card/40 border-border/40'
+        : 'bg-card border-border hover:border-border/80 transition-colors',
+      to ? 'cursor-pointer' : '',
+    ].filter(Boolean).join(' ')}>
+      <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/55 leading-none">
+        {label}
+      </span>
+      <div className="flex items-baseline gap-1.5">
+        <span className="text-sm font-semibold tabular-nums text-foreground leading-tight">
+          {value}
+        </span>
+        <span className="text-[10px] text-muted-foreground/50">{unit}</span>
+      </div>
+      {delta != null && (
+        <DeltaChip v={delta} unit={deltaUnit} invert={deltaInvert} />
+      )}
+    </div>
+  )
+  if (to) {
+    return <Link to={to}>{inner}</Link>
+  }
+  return inner
+}
+
+function SpreadMiniCard({ sp }: { sp: MarketPulseSpread }) {
+  const regimeColor =
+    sp.regime === 'gas' ? 'text-blue-400' :
+    sp.regime === 'coal' ? 'text-amber-400' :
+    'text-muted-foreground'
+  return (
+    <div className="flex flex-col gap-1 px-3 py-2.5 rounded-md border bg-card border-border min-w-[88px]">
+      <div className="flex items-center justify-between gap-1">
+        <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/55 leading-none">
+          {sp.zone}
+        </span>
+        {sp.regime && (
+          <span className={`text-[9px] font-mono uppercase ${regimeColor}`}>{sp.regime}</span>
+        )}
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-[10px] text-muted-foreground/55">CSS</span>
+        <span className="text-sm font-semibold tabular-nums text-foreground leading-tight">
+          {sp.css != null ? fmt1(sp.css) : '-'}
+        </span>
+      </div>
+      <div className="flex items-baseline gap-1">
+        <span className="text-[10px] text-muted-foreground/55">CDS</span>
+        <span className="text-[12px] font-medium tabular-nums text-muted-foreground leading-tight">
+          {sp.cds != null ? fmt1(sp.cds) : '-'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function MarketPulse() {
+  const { data, isLoading } = useQuery<MarketPulseResponse>({
+    queryKey: ['market-pulse'],
+    queryFn: api.marketPulse,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  })
+
+  if (isLoading || !data) {
+    return (
+      <div className="h-14 flex items-center">
+        <div className="h-3 w-48 rounded bg-border/40 animate-pulse" />
+      </div>
+    )
+  }
+
+  return (
+    <section className="pb-8">
+      <div className="flex items-center gap-1.5 mb-3">
+        <span className="text-[10px] font-mono uppercase tracking-[0.14em] text-muted-foreground/35">
+          Market pulse
+        </span>
+        <span className="text-[10px] text-muted-foreground/30">{data.as_of}</span>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        {/* Commodities */}
+        <PulseCard
+          to="/prices"
+          label="TTF"
+          value={fmt1(data.ttf_eur_mwh)}
+          unit="EUR/MWh"
+          delta={data.ttf_d1}
+          deltaUnit=" d/d"
+        />
+        <PulseCard
+          to="/prices"
+          label="EUA"
+          value={fmtInt(data.eua_eur_t)}
+          unit="EUR/t"
+          delta={data.eua_d1}
+          deltaUnit=" d/d"
+        />
+
+        {/* Separator */}
+        <div className="w-px bg-border/30 self-stretch mx-0.5" />
+
+        {/* Gas storage */}
+        <PulseCard
+          to="/gas"
+          label="EU Storage"
+          value={fmt1(data.eu_storage_pct)}
+          unit="% full"
+          delta={data.eu_storage_vs_avg5}
+          deltaUnit="% vs avg"
+          deltaInvert={false}
+        />
+
+        {/* Separator */}
+        <div className="w-px bg-border/30 self-stretch mx-0.5" />
+
+        {/* DE-LU power */}
+        <PulseCard
+          to="/power"
+          label="DE-LU DA"
+          value={fmtInt(data.de_lu_price)}
+          unit="EUR/MWh"
+          delta={data.de_lu_vs_30d_pct}
+          deltaUnit="% vs 30d"
+        />
+
+        {/* Spreads */}
+        {data.spreads.map((sp) => (
+          <Link key={sp.zone} to="/spreads">
+            <SpreadMiniCard sp={sp} />
+          </Link>
+        ))}
+
+        {/* Separator */}
+        <div className="w-px bg-border/30 self-stretch mx-0.5" />
+
+        {/* reBAP */}
+        {data.rebap_today_mean != null && (
+          <PulseCard
+            to="/imbalance"
+            label="reBAP"
+            value={fmtInt(data.rebap_today_mean)}
+            unit="EUR/MWh"
+          />
+        )}
+      </div>
+    </section>
+  )
+}
+
 function LandingPage() {
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-[1400px] mx-auto px-6 md:px-10 lg:px-14">
 
         {/* Hero */}
-        <section className="pt-12 pb-10">
+        <section className="pt-12 pb-8">
           <h1 className="text-4xl md:text-5xl lg:text-[3.25rem] font-semibold tracking-tight leading-[1.06] text-foreground mb-4">
             European Energy<br className="hidden sm:block" /> Markets
           </h1>
@@ -127,6 +329,9 @@ function LandingPage() {
             <ArrowRight className="w-3.5 h-3.5" />
           </Link>
         </section>
+
+        {/* Live market numbers */}
+        <MarketPulse />
 
         {/* Dashboard grid */}
         <section className="pb-8">

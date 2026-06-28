@@ -1678,3 +1678,34 @@ class NuclearHeatRiskResponse(BaseModel):
     capacity_critical_mw: int
     capacity_warning_mw: int
     refreshed_at: str | None
+
+
+# --- Market pulse ---
+
+
+class MarketPulseSpread(BaseModel):
+    zone: str
+    css: float | None
+    cds: float | None
+    regime: str | None
+
+
+class MarketPulseSignal(BaseModel):
+    zone: str
+    zscore: float | None
+    pct_rank_1yr: int | None
+
+
+class MarketPulseResponse(BaseModel):
+    as_of: str
+    ttf_eur_mwh: float | None
+    ttf_d1: float | None
+    eua_eur_t: float | None
+    eua_d1: float | None
+    eu_storage_pct: float | None
+    eu_storage_vs_avg5: float | None
+    de_lu_price: float | None
+    de_lu_vs_30d_pct: float | None
+    spreads: list[MarketPulseSpread]
+    rebap_today_mean: float | None
+    signal: list[MarketPulseSignal]

@@ -1522,3 +1522,22 @@ def test_generation_heat_risk(client):
     # Forecast row present
     fc_rows = [t for t in data["trend"] if t["is_forecast"]]
     assert len(fc_rows) >= 1
+
+
+def test_market_pulse(client):
+    r = client.get("/api/market-pulse")
+    assert r.status_code == 200
+    data = r.json()
+    assert "as_of" in data
+    assert data["ttf_eur_mwh"] is not None
+    assert data["eua_eur_t"] is not None
+    assert data["eu_storage_pct"] is not None
+    assert 0 <= data["eu_storage_pct"] <= 100
+    assert data["de_lu_price"] is not None
+    assert isinstance(data["spreads"], list)
+    assert len(data["spreads"]) >= 1
+    # Check spread fields
+    sp = data["spreads"][0]
+    assert "zone" in sp
+    assert "css" in sp
+    assert "cds" in sp
