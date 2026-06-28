@@ -2444,3 +2444,117 @@ def compute_signal_posture(query_fn: Callable, nuclear_critical_mw: float = 0.0)
             if systematic else None
         ),
     }
+
+
+# Rolling window for the reBAP-vs-zscore correlation.
+_REBAP_CORR_WINDOW = 60  # days
+
+
+def compute_rebap_zscore_correlation(query_fn: Callable) -> dict:
+    """Cross-market correlation: DE-LU fundamental z-score vs German reBAP mean.
+
+    Both time series measure the same underlying driver - renewable shortfall:
+    - Z-score: DA power is above fair-value when wind is low (nonlinear OLS residual, OOS)
+    - reBAP: real-time balancing price rises when renewable generation undershoots forecast
+
+    The DA market and the RT market should correlate when the shortfall is large enough
+    to be priced in already at gate closure. This function quantifies that linkage:
+
+    1. Runs the walk-forward nonlinear OLS on DE-LU (same as _nonlinear_signal_pnl)
+       to get OOS residuals and their rolling z-scores.
+    2. Fetches imbalance_daily.mean_eur (German reBAP daily mean).
+    3. Joins the two series on price_date.
+    4. Computes overall Pearson and Spearman rank correlation.
+    5. Computes a rolling 60-day Pearson correlation series.
+    6. Bins the z-score into 5 quantile buckets and reports mean reBAP per bucket
+       (dose-response: does higher DA overpricing predict higher reBAP?).
+
+    Returns: {
+        "n": int,
+        "pearson_r": float,
+        "spearman_r": float,
+        "corr_window": int,
+        "rolling": [{"date": str, "corr": float}],
+        "scatter": [{"zscore": float, "rebap": float, "date": str}],
+        "dose_response": [{"bucket": str, "z_lo": float, "z_hi": float,
+                           "n": int, "mean_rebap": float, "med_rebap": float}],
+    }
+    """
+    sig = _nonlinear_signal_pnl(query_fn, "DE-LU")
+    if sig is None:
+        return {}
+
+    # OOS nonlinear residuals with their dates
+    res_nl = sig["res_nl"]
+    res_dates = sig["res_dates"]
+
+    # Compute rolling z-score of the residuals (same as the signal)
+    s = pd.Series(res_nl, index=pd.to_datetime(res_dates))
+    rm = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).mean()
+    rs = s.rolling(WF_SIGNAL_WINDOW, min_periods=10).std()
+    zscore_series = ((s - rm) / rs.replace(0, np.nan)).fillna(0.0)
+
+    # Fetch reBAP daily means
+    rebap_df = query_fn("SELECT price_date, mean_eur FROM imbalance_daily ORDER BY price_date")
+    if rebap_df is None or rebap_df.empty:
+        return {}
+
+    rebap_df["price_date"] = pd.to_datetime(rebap_df["price_date"])
+    rebap_df = rebap_df.set_index("price_date")["mean_eur"]
+
+    # Join
+    joined = pd.DataFrame({"zscore": zscore_series, "rebap": rebap_df}).dropna()
+    if len(joined) < 30:
+        return {}
+
+    pearson_r = float(joined["zscore"].corr(joined["rebap"]))
+
+    from scipy.stats import spearmanr  # type: ignore
+    sp_r, _ = spearmanr(joined["zscore"].values, joined["rebap"].values)
+    spearman_r = float(sp_r)
+
+    # Rolling correlation
+    rolling_corr = (
+        joined["zscore"].rolling(_REBAP_CORR_WINDOW, min_periods=20)
+        .corr(joined["rebap"])
+        .dropna()
+    )
+    rolling = [
+        {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
+        for d, v in rolling_corr.items()
+    ]
+
+    # Scatter (downsample to last 730 days max to bound payload size)
+    cutoff = joined.index.max() - pd.Timedelta(days=730)
+    scatter_df = joined[joined.index >= cutoff]
+    scatter = [
+        {"date": d.strftime("%Y-%m-%d"), "zscore": round(float(row["zscore"]), 2),
+         "rebap": round(float(row["rebap"]), 1)}
+        for d, row in scatter_df.iterrows()
+    ]
+
+    # Dose-response: bin z-score into quintiles, compute mean/median reBAP per bucket
+    labels = ["Q1 (low z)", "Q2", "Q3", "Q4", "Q5 (high z)"]
+    joined["z_bin"] = pd.qcut(joined["zscore"], q=5, labels=labels, duplicates="drop")
+    dose = []
+    for label, grp in joined.groupby("z_bin", observed=True):
+        q_lo = float(grp["zscore"].min())
+        q_hi = float(grp["zscore"].max())
+        dose.append({
+            "bucket": str(label),
+            "z_lo": round(q_lo, 2),
+            "z_hi": round(q_hi, 2),
+            "n": int(len(grp)),
+            "mean_rebap": round(float(grp["rebap"].mean()), 1),
+            "med_rebap": round(float(grp["rebap"].median()), 1),
+        })
+
+    return {
+        "n": int(len(joined)),
+        "pearson_r": round(pearson_r, 3),
+        "spearman_r": round(spearman_r, 3),
+        "corr_window": _REBAP_CORR_WINDOW,
+        "rolling": rolling,
+        "scatter": scatter,
+        "dose_response": dose,
+    }

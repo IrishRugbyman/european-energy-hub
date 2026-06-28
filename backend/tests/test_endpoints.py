@@ -1562,6 +1562,24 @@ def test_spreads_holding_period(client):
     assert 1 in ks
 
 
+def test_imbalance_rebap_zscore_correlation(client):
+    r = client.get("/api/imbalance/rebap-zscore-correlation")
+    assert r.status_code == 200
+    data = r.json()
+    assert "n" in data and data["n"] >= 10
+    assert "pearson_r" in data
+    assert "spearman_r" in data
+    assert -1.0 <= data["pearson_r"] <= 1.0
+    assert -1.0 <= data["spearman_r"] <= 1.0
+    assert "rolling" in data and len(data["rolling"]) > 0
+    assert "scatter" in data and len(data["scatter"]) > 0
+    assert "dose_response" in data and len(data["dose_response"]) >= 2
+    # Each dose bucket has required fields
+    b = data["dose_response"][0]
+    assert "bucket" in b and "z_lo" in b and "z_hi" in b
+    assert "n" in b and "mean_rebap" in b
+
+
 def test_spreads_signal_posture(client):
     r = client.get("/api/spreads/signal-posture")
     assert r.status_code == 200

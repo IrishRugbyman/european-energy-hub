@@ -237,6 +237,10 @@ from .schemas import (
     HoldingPeriodResponse,
     ZonePostureRow,
     SignalPostureResponse,
+    RebapZscoreRollingPoint,
+    RebapZscoreScatterPoint,
+    RebapZscoreDoseBucket,
+    RebapZscoreCorrelationResponse,
 )
 
 
@@ -4272,4 +4276,37 @@ def spreads_signal_posture():
         n_neutral=result["n_neutral"],
         systematic=result["systematic"],
         systematic_note=result.get("systematic_note"),
+    )
+
+
+@app.get("/api/imbalance/rebap-zscore-correlation", response_model=RebapZscoreCorrelationResponse)
+def imbalance_rebap_zscore_correlation():
+    """Cross-market correlation: DE-LU fair-value z-score vs German reBAP daily mean.
+
+    Quantifies how the DA market signal (power above/below fundamental fair value)
+    relates to the real-time balancing market (reBAP). Both are driven by the same
+    underlying factor - renewable output shortfall vs expectations. This endpoint
+    returns the full correlation profile: Pearson and Spearman r, rolling 60-day
+    correlation series, raw scatter, and a z-score quintile dose-response showing
+    mean reBAP per z-score bucket.
+    """
+    _rate_limited()
+    from analytics.fundamental import compute_rebap_zscore_correlation
+
+    result = _cached_compute(
+        "rebap_zscore_corr",
+        lambda: compute_rebap_zscore_correlation(db.query),
+        ttl=3600,
+    )
+    if not result or result.get("n", 0) < 30:
+        raise HTTPException(status_code=503, detail="Insufficient data for reBAP correlation")
+
+    return RebapZscoreCorrelationResponse(
+        n=result["n"],
+        pearson_r=result["pearson_r"],
+        spearman_r=result["spearman_r"],
+        corr_window=result["corr_window"],
+        rolling=[RebapZscoreRollingPoint(**r) for r in result["rolling"]],
+        scatter=[RebapZscoreScatterPoint(**r) for r in result["scatter"]],
+        dose_response=[RebapZscoreDoseBucket(**r) for r in result["dose_response"]],
     )

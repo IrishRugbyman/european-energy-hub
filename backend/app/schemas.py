@@ -1757,3 +1757,36 @@ class SignalPostureResponse(BaseModel):
     n_neutral: int
     systematic: bool
     systematic_note: str | None
+
+
+# --- reBAP vs z-score cross-signal correlation ---
+
+
+class RebapZscoreRollingPoint(BaseModel):
+    date: str
+    corr: float
+
+
+class RebapZscoreScatterPoint(BaseModel):
+    date: str
+    zscore: float
+    rebap: float
+
+
+class RebapZscoreDoseBucket(BaseModel):
+    bucket: str
+    z_lo: float
+    z_hi: float
+    n: int
+    mean_rebap: float
+    med_rebap: float
+
+
+class RebapZscoreCorrelationResponse(BaseModel):
+    n: int
+    pearson_r: float
+    spearman_r: float
+    corr_window: int
+    rolling: list[RebapZscoreRollingPoint]
+    scatter: list[RebapZscoreScatterPoint]
+    dose_response: list[RebapZscoreDoseBucket]

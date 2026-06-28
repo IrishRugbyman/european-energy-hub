@@ -14,11 +14,12 @@ import {
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts'
-import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint, type ImbalanceMonthlyRow, type RebapSignalResponse, type RebapEquityPoint } from '@/lib/api'
+import { api, type ImbalanceDailyPoint, type ImbalanceRecentPoint, type ImbalanceHourlyPoint, type BatteryHourlyPoint, type ImbalanceMonthlyRow, type RebapSignalResponse, type RebapEquityPoint, type RebapZscoreCorrelationResponse, type RebapZscoreDoseBucket, type RebapZscoreScatterPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 
 export const Route = createFileRoute('/imbalance')({
@@ -67,6 +68,12 @@ function ImbalanceDashboard() {
   const { data: signalData } = useQuery({
     queryKey: ['imbalance-signal'],
     queryFn: api.imbalanceSignal,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const { data: corrData } = useQuery<RebapZscoreCorrelationResponse>({
+    queryKey: ['rebap-zscore-corr'],
+    queryFn: api.imbalanceRebapZscoreCorr,
     staleTime: 60 * 60 * 1000,
   })
 
@@ -277,6 +284,9 @@ function ImbalanceDashboard() {
 
         {/* Renewable forecast-error signal */}
         {signalData && <ImbalanceSignalSection data={signalData} />}
+
+        {/* DA z-score vs RT reBAP cross-signal correlation */}
+        {corrData && <RebapZscoreCorrelationSection data={corrData} />}
 
         {/* Battery oracle dispatch */}
         {dispatchData && <BatteryDispatchPanel hourly={dispatchData.hourly} summary={dispatchData.summary} />}
@@ -499,6 +509,151 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
           ))}
         </div>
       </div>
+    </div>
+  )
+}
+
+function RebapZscoreCorrelationSection({ data }: { data: RebapZscoreCorrelationResponse }) {
+  const rColor = (r: number) => (r >= 0.5 ? '#4ade80' : r >= 0.3 ? '#86efac' : r >= 0 ? '#64748b' : '#f87171')
+  const recentCorr = data.rolling.length > 0 ? data.rolling[data.rolling.length - 1].corr : null
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">DA Fair-Value Signal vs RT reBAP</h2>
+        <span className="text-xs text-muted-foreground">
+          Cross-market linkage: do DA overpricing episodes predict elevated reBAP?
+        </span>
+      </div>
+
+      {/* Headline stats */}
+      <div className="flex flex-wrap gap-4 mb-4">
+        <div className="flex flex-col">
+          <span className="text-xs text-muted-foreground">Pearson r</span>
+          <span className="text-sm font-semibold" style={{ color: rColor(data.pearson_r) }}>
+            {data.pearson_r.toFixed(3)}
+          </span>
+        </div>
+        <div className="flex flex-col">
+          <span className="text-xs text-muted-foreground">Spearman r</span>
+          <span className="text-sm font-semibold" style={{ color: rColor(data.spearman_r) }}>
+            {data.spearman_r.toFixed(3)}
+          </span>
+        </div>
+        {recentCorr != null && (
+          <div className="flex flex-col">
+            <span className="text-xs text-muted-foreground">Rolling {data.corr_window}d (latest)</span>
+            <span className="text-sm font-semibold" style={{ color: rColor(recentCorr) }}>
+              {recentCorr.toFixed(3)}
+            </span>
+          </div>
+        )}
+        <div className="flex flex-col">
+          <span className="text-xs text-muted-foreground">Paired obs</span>
+          <span className="text-sm font-semibold text-foreground">{data.n}</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {/* Dose-response bar chart */}
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">Mean reBAP by z-score quintile (DE-LU)</p>
+          <ResponsiveContainer width="100%" height={160}>
+            <BarChart data={data.dose_response} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis dataKey="bucket" tick={{ fontSize: 10, fill: '#94a3b8' }} />
+              <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} unit=" €" />
+              <Tooltip
+                contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 12 }}
+                formatter={(v: unknown) => [`${Number(v).toFixed(1)} EUR/MWh`, 'Mean reBAP']}
+                labelFormatter={(l: unknown) => `z-score bucket: ${l}`}
+              />
+              <Bar dataKey="mean_rebap" radius={[3, 3, 0, 0]}>
+                {data.dose_response.map((_: RebapZscoreDoseBucket, i: number) => (
+                  <Cell key={i} fill={`hsl(${140 - i * 20}, 60%, 55%)`} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Rolling 60d correlation */}
+        <div>
+          <p className="text-xs text-muted-foreground mb-2">{data.corr_window}-day rolling Pearson r</p>
+          <ResponsiveContainer width="100%" height={160}>
+            <LineChart data={data.rolling} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+              <XAxis
+                dataKey="date"
+                tick={{ fontSize: 10, fill: '#94a3b8' }}
+                tickFormatter={(d: string) => d.slice(0, 7)}
+                interval={Math.floor(data.rolling.length / 8)}
+              />
+              <YAxis domain={[-1, 1]} tick={{ fontSize: 10, fill: '#94a3b8' }} />
+              <ReferenceLine y={0} stroke="#475569" strokeDasharray="3 3" />
+              <Tooltip
+                contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 12 }}
+                formatter={(v: unknown) => [Number(v).toFixed(3), `${data.corr_window}d corr`]}
+              />
+              <Line
+                type="monotone"
+                dataKey="corr"
+                stroke="#60a5fa"
+                dot={false}
+                strokeWidth={1.5}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Scatter plot */}
+      <div className="mb-4">
+        <p className="text-xs text-muted-foreground mb-2">Scatter: DA z-score vs daily mean reBAP (last 2yr)</p>
+        <ResponsiveContainer width="100%" height={180}>
+          <ScatterChart margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+            <XAxis
+              type="number"
+              dataKey="zscore"
+              name="z-score"
+              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              label={{ value: 'DA z-score', position: 'insideBottom', offset: -4, fontSize: 10, fill: '#94a3b8' }}
+            />
+            <YAxis
+              type="number"
+              dataKey="rebap"
+              name="reBAP"
+              tick={{ fontSize: 10, fill: '#94a3b8' }}
+              label={{ value: 'reBAP (EUR/MWh)', angle: -90, position: 'insideLeft', fontSize: 10, fill: '#94a3b8' }}
+            />
+            <Tooltip
+              contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 12 }}
+              formatter={(v: unknown, name: unknown) => [
+                name === 'zscore' ? Number(v).toFixed(2) : `${Number(v).toFixed(1)} EUR/MWh`,
+                name === 'zscore' ? 'DA z-score' : 'reBAP',
+              ]}
+            />
+            <Scatter data={data.scatter as RebapZscoreScatterPoint[]} fill="#60a5fa" opacity={0.4} />
+          </ScatterChart>
+        </ResponsiveContainer>
+      </div>
+
+      <p className="text-xs text-muted-foreground leading-relaxed">
+        The DE-LU fundamental z-score (OOS nonlinear OLS residual, walk-forward) and the German
+        daily mean reBAP share a common driver: renewable output shortfall. When DA power is above
+        fundamental fair value (high positive z), the shortfall was already priced in at gate closure;
+        the RT market (reBAP) confirms it. The dose-response shows the mean reBAP rises from Q1
+        ({data.dose_response[0]?.mean_rebap?.toFixed(0) ?? '?'} EUR/MWh at z {data.dose_response[0]?.z_hi?.toFixed(2)})
+        to Q5 ({data.dose_response[data.dose_response.length - 1]?.mean_rebap?.toFixed(0) ?? '?'} EUR/MWh
+        at z &gt; {data.dose_response[data.dose_response.length - 2]?.z_hi?.toFixed(2)}) - a{' '}
+        {data.dose_response.length > 1
+          ? (data.dose_response[data.dose_response.length - 1].mean_rebap - data.dose_response[0].mean_rebap).toFixed(0)
+          : '?'}{' '}
+        EUR/MWh differential. The rolling correlation spikes during systematic stress events (nuclear
+        heat waves, prolonged wind droughts) when both markets are driven by the same sustained supply
+        shortfall.
+      </p>
     </div>
   )
 }

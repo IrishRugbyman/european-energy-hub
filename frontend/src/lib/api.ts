@@ -1189,6 +1189,7 @@ export const api = {
   pricesCurveSnapshots: () => get<TtfCurveSnapshotsResponse>('/prices/curve/snapshots'),
   imbalanceMonthly: () => get<ImbalanceMonthlyResponse>('/imbalance/monthly'),
   imbalanceSignal: () => get<RebapSignalResponse>('/imbalance/signal'),
+  imbalanceRebapZscoreCorr: () => get<RebapZscoreCorrelationResponse>('/imbalance/rebap-zscore-correlation'),
   genCapacityAnnual: () => get<CapacityAnnualResponse>('/generation/capacity-annual'),
   powerNegHoursMonthly: () => get<NegHoursMonthlyResponse>('/power/neg-hours-monthly'),
   powerNegHoursZones: () => get<NegHoursZoneResponse>('/power/neg-hours-zones'),
@@ -1733,6 +1734,38 @@ export interface FundamentalBacktestResponse {
   zone: string
   equity: BacktestEquityPoint[]
   stats: BacktestStats
+}
+
+// --- reBAP vs z-score cross-signal correlation ---
+
+export interface RebapZscoreRollingPoint {
+  date: string
+  corr: number
+}
+
+export interface RebapZscoreScatterPoint {
+  date: string
+  zscore: number
+  rebap: number
+}
+
+export interface RebapZscoreDoseBucket {
+  bucket: string
+  z_lo: number
+  z_hi: number
+  n: number
+  mean_rebap: number
+  med_rebap: number
+}
+
+export interface RebapZscoreCorrelationResponse {
+  n: number
+  pearson_r: number
+  spearman_r: number
+  corr_window: number
+  rolling: RebapZscoreRollingPoint[]
+  scatter: RebapZscoreScatterPoint[]
+  dose_response: RebapZscoreDoseBucket[]
 }
 
 // --- Signal posture ---
