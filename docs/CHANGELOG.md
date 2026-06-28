@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 81: Annual negative-price hours trend by zone on /spreads
+
+**Built:** `GET /api/spreads/neg-price-annual` returning `NegPriceAnnualResponse` with year-by-year total negative-price hours per fundamental zone, current-year annualized projection. Frontend: `NegPriceAnnualSection` on /spreads with 4 stat cards (FR pace, FR YoY, DE-LU pace, IT-NORD structural zero), grouped BarChart (zones on x-axis, one bar per year with current year projected), and a zone detail table with YoY column. 119 tests.
+
+**Findings:** FR is pacing to 1,070 negative-price hours in 2026 vs 521 full-year 2025 (+105% YoY in just 177 days). DE-LU pacing to 732 vs 588 (+24%). NL and BE tracking similar to 2025. IT-NORD: structural zero in every year - zero negative-price hours despite being on the same grid as FR and DE-LU. This is the hourly expression of the P78 congestion premium: when FR has excess nuclear + solar supply at midday (price goes negative), it cannot export to Italy because the NTC interconnector runs at 96% utilization 83% of days. Result: FR pays grid operators to consume power while Italian consumers pay 80+ EUR/MWh simultaneously. The FR acceleration is driven by growing solar + stable nuclear baseload; a single summer afternoon at 60%+ solar penetration now routinely drives hourly prices to -50 EUR/MWh.
+
 ## 2026-06-28 - Phase 80: Renewable merit order cannibalization curve on /spreads
 
 **Built:** `GET /api/spreads/re-merit-order` returning `ReMeritOrderResponse` with per-zone Pearson correlation and per-10pp RE bucket mean/p25/p75 prices. Frontend: `ReMeritOrderSection` on /spreads with correlation stat cards, multi-line price-vs-RE% chart, and a zone detail table. 128 tests.
