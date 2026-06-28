@@ -334,6 +334,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 67 - D-1 load forecast error as a demand-side fundamental factor on /spreads [COMPLETE 2026-06-28]
 
+### Phase 68 - Zone signal correlation heatmap + portfolio concentration risk on /spreads [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,

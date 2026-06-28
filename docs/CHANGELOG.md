@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 68: Zone signal correlation heatmap + portfolio concentration risk on /spreads
+
+**Built:** `GET /api/spreads/zone-signal-correlations` and `ZoneSignalCorrelationSection` on /spreads. Measures pairwise Pearson correlations between the 5 fundamental zone OOS z-scores (computed by running `_nonlinear_signal_pnl` for each zone). Returns full-sample matrix, last-30d matrix, rolling 30d average pairwise concentration metric, and top 6 pairs ranked by largest full-sample vs 30d divergence. Alert fires when average pairwise 30d correlation exceeds 0.65.
+
+**Finding:** Current (2026-06-28) concentration_30d = 0.695 (ALERT, above 0.65 threshold) vs full-sample 0.494. NL/BE surged from 0.714 full-sample to 0.904 last 30 days. DE-LU/IT-NORD: 0.438 -> 0.783. FR/IT-NORD: 0.509 -> 0.747. All 5 zone z-scores positive (FR=1.80, IT-NORD=1.60, DE-LU=1.24, BE=0.72, NL=0.67) - the heat wave / FR nuclear Rhone curtailment is driving prices above fair value in every market simultaneously. Effective independent trades = 1/0.695 = 1.4 (vs 5 nominal). The portfolio's formal Sharpe (P50-P52) was computed on the full sample where diversification held; in the current regime it overstates protection. Frontend: dual 5x5 color-coded heatmaps (full vs 30d), rolling concentration chart with alert threshold line, pair summary cards. 116 tests passing.
+
 ## 2026-06-28 - Phase 67: D-1 load forecast error as a demand-side fundamental factor on /spreads
 
 **Tried:** Walk-forward AIC test of whether D-1 load forecast error (actual_load[t-1] - forecast_load[t-1], in GW) adds marginal information to the enriched nonlinear OLS fair-value model (P48+P54, 12 terms). Computes the demand miss via a LAG window function over `generation_forecast_daily` (which has both `load_fc_mw` and `load_actual_mw`). `compute_load_error_factor_test()` follows the same walk-forward AIC methodology as Phase 66 (storage factor test).
