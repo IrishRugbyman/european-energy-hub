@@ -277,6 +277,10 @@ from .schemas import (
     StorageAnalogResponse,
     PriceVarianceZoneRow,
     PriceVarianceDecompResponse,
+    CongestionPremiumRow,
+    CongestionScatterPoint,
+    CongestionMonthlyPoint,
+    CongestionPremiumResponse,
 )
 
 
@@ -5339,3 +5343,144 @@ def spreads_price_variance_decomp():
         )
 
     return _cached_compute("price_variance_decomp", _compute, ttl=3600)
+
+
+@app.get("/api/spreads/congestion-premium", response_model=CongestionPremiumResponse)
+def spreads_congestion_premium():
+    """Interconnection congestion premium: price spread attributable to grid capacity constraints.
+
+    For each active fundamental-zone border, computes:
+      - Average utilization %
+      - Days saturated (>90%)
+      - Spread when saturated vs free (<50%) = congestion premium
+
+    Focus border: FR -> IT-NORD (most significant in EU power market). The NTC is consistently
+    at 95-100% utilization; the 43 EUR/MWh congestion premium (spread_saturated -
+    spread_free) means Italian consumers pay 43 EUR/MWh more than French consumers
+    specifically because of grid capacity constraints, not fundamental fuel cost differences.
+    The premium widened to 88 EUR/MWh in June 2026 (summer cooling demand spike + spring
+    French nuclear maintenance outages).
+    """
+    _rate_limited()
+
+    def _compute():
+        from datetime import date as _date
+
+        FUNDAMENTAL_ZONES_LOCAL = ["DE-LU", "FR", "BE", "NL", "IT-NORD"]
+        FOCUS = ("FR", "IT-NORD")
+        as_of_date = str(_date.today())
+
+        zones_ph = ", ".join(f"'{z}'" for z in FUNDAMENTAL_ZONES_LOCAL)
+
+        border_df = db.query(
+            f"""
+            SELECT c.from_zone, c.to_zone,
+                   AVG(c.utilization_pct) AS avg_util,
+                   SUM(CASE WHEN c.utilization_pct > 90 THEN 1 ELSE 0 END) AS days_saturated,
+                   COUNT(*) AS n_days,
+                   AVG(CASE WHEN c.utilization_pct > 90 THEN ABS(pf.base_eur - pt.base_eur) END) AS spread_saturated,
+                   AVG(CASE WHEN c.utilization_pct <= 50 THEN ABS(pf.base_eur - pt.base_eur) END) AS spread_free,
+                   AVG(ABS(pf.base_eur - pt.base_eur)) AS spread_avg
+            FROM congestion_daily c
+            JOIN power_daily pf ON pf.zone = c.from_zone AND pf.price_date = c.price_date
+            JOIN power_daily pt ON pt.zone = c.to_zone AND pt.price_date = c.price_date
+            WHERE c.from_zone IN ({zones_ph}) AND c.to_zone IN ({zones_ph})
+              AND pf.base_eur IS NOT NULL AND pt.base_eur IS NOT NULL
+            GROUP BY c.from_zone, c.to_zone
+            HAVING COUNT(*) >= 30
+            ORDER BY AVG(ABS(pf.base_eur - pt.base_eur)) DESC
+            """
+        )
+
+        borders: list[CongestionPremiumRow] = []
+        if border_df is not None:
+            for r in border_df.itertuples():
+                sat = float(r.spread_saturated) if r.spread_saturated is not None else None
+                free = float(r.spread_free) if r.spread_free is not None else None
+                premium = (sat - free) if (sat is not None and free is not None) else None
+                borders.append(
+                    CongestionPremiumRow(
+                        from_zone=str(r.from_zone),
+                        to_zone=str(r.to_zone),
+                        avg_util_pct=round(float(r.avg_util), 1),
+                        days_saturated=int(r.days_saturated or 0),
+                        n_days=int(r.n_days),
+                        pct_saturated=round(float(r.days_saturated or 0) / int(r.n_days) * 100, 1),
+                        spread_saturated=round(sat, 1) if sat is not None else None,
+                        spread_free=round(free, 1) if free is not None else None,
+                        spread_avg=round(float(r.spread_avg), 1),
+                        congestion_premium=round(premium, 1) if premium is not None else None,
+                    )
+                )
+
+        # Focus border scatter (daily utilization vs spread)
+        scatter_df = db.query(
+            """
+            SELECT c.price_date::VARCHAR AS price_date,
+                   c.utilization_pct,
+                   ABS(pf.base_eur - pt.base_eur) AS spread_eur
+            FROM congestion_daily c
+            JOIN power_daily pf ON pf.zone = ? AND pf.price_date = c.price_date
+            JOIN power_daily pt ON pt.zone = ? AND pt.price_date = c.price_date
+            WHERE c.from_zone = ? AND c.to_zone = ?
+              AND pf.base_eur IS NOT NULL AND pt.base_eur IS NOT NULL
+            ORDER BY c.price_date
+            """,
+            [FOCUS[0], FOCUS[1], FOCUS[0], FOCUS[1]],
+        )
+        scatter: list[CongestionScatterPoint] = []
+        if scatter_df is not None:
+            for r in scatter_df.itertuples():
+                scatter.append(
+                    CongestionScatterPoint(
+                        price_date=str(r.price_date),
+                        utilization_pct=round(float(r.utilization_pct), 1),
+                        spread_eur=round(float(r.spread_eur), 1),
+                    )
+                )
+
+        # Monthly trend for focus border
+        monthly_df = db.query(
+            """
+            SELECT DATE_TRUNC('month', c.price_date)::VARCHAR AS month,
+                   AVG(ABS(pf.base_eur - pt.base_eur)) AS avg_spread,
+                   AVG(c.utilization_pct) AS avg_util
+            FROM congestion_daily c
+            JOIN power_daily pf ON pf.zone = ? AND pf.price_date = c.price_date
+            JOIN power_daily pt ON pt.zone = ? AND pt.price_date = c.price_date
+            WHERE c.from_zone = ? AND c.to_zone = ?
+              AND pf.base_eur IS NOT NULL AND pt.base_eur IS NOT NULL
+            GROUP BY DATE_TRUNC('month', c.price_date)
+            ORDER BY month
+            """,
+            [FOCUS[0], FOCUS[1], FOCUS[0], FOCUS[1]],
+        )
+        monthly: list[CongestionMonthlyPoint] = []
+        if monthly_df is not None:
+            for r in monthly_df.itertuples():
+                monthly.append(
+                    CongestionMonthlyPoint(
+                        month=str(r.month)[:10],
+                        avg_spread=round(float(r.avg_spread), 1),
+                        avg_util=round(float(r.avg_util), 1),
+                    )
+                )
+
+        # Current focus border stats (latest available day)
+        focus_current = next(
+            (b for b in borders if b.from_zone == FOCUS[0] and b.to_zone == FOCUS[1]), None
+        )
+        current_scatter = scatter[-1] if scatter else None
+
+        return CongestionPremiumResponse(
+            borders=borders,
+            focus_border=f"{FOCUS[0]}-{FOCUS[1]}",
+            focus_scatter=scatter,
+            focus_monthly=monthly,
+            focus_premium=focus_current.congestion_premium if focus_current else None,
+            focus_current_spread=current_scatter.spread_eur if current_scatter else None,
+            focus_current_util=current_scatter.utilization_pct if current_scatter else None,
+            as_of=as_of_date,
+        )
+
+    return _cached_compute("congestion_premium", _compute, ttl=3600)

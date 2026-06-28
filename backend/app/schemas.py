@@ -2044,6 +2044,43 @@ class StorageTtfFundamentalResponse(BaseModel):
     corr_window: int
 
 
+# Phase 78: Interconnection congestion premium quantification
+class CongestionPremiumRow(BaseModel):
+    from_zone: str
+    to_zone: str
+    avg_util_pct: float
+    days_saturated: int
+    n_days: int
+    pct_saturated: float
+    spread_saturated: float | None
+    spread_free: float | None
+    spread_avg: float
+    congestion_premium: float | None
+
+
+class CongestionScatterPoint(BaseModel):
+    price_date: str
+    utilization_pct: float
+    spread_eur: float
+
+
+class CongestionMonthlyPoint(BaseModel):
+    month: str
+    avg_spread: float
+    avg_util: float
+
+
+class CongestionPremiumResponse(BaseModel):
+    borders: list[CongestionPremiumRow]
+    focus_border: str
+    focus_scatter: list[CongestionScatterPoint]
+    focus_monthly: list[CongestionMonthlyPoint]
+    focus_premium: float | None
+    focus_current_spread: float | None
+    focus_current_util: float | None
+    as_of: str
+
+
 # Phase 77: EU power price variance decomposition (factor attribution)
 class PriceVarianceZoneRow(BaseModel):
     zone: str

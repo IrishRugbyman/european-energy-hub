@@ -1218,12 +1218,50 @@ export const api = {
   spreadsRegimeConditionalPnl: () => get<RegimeConditionalResponse>('/spreads/regime-conditional-pnl'),
   spreadsGasPowerPassthrough: () => get<GasPowerPassThroughResponse>('/spreads/gas-power-passthrough'),
   spreadsPriceVarianceDecomp: () => get<PriceVarianceDecompResponse>('/spreads/price-variance-decomp'),
+  spreadsCongestionPremium: () => get<CongestionPremiumResponse>('/spreads/congestion-premium'),
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
   pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
   pricesEuaSeasonality: () => get<EuaSeasonalityResponse>('/prices/eua-seasonality'),
   pricesUsGasStorage: () => get<UsStorageResponse>('/prices/us-gas-storage'),
   gasStorageAnalogs: () => get<StorageAnalogResponse>('/gas/storage-analogs'),
+}
+
+// Phase 78: Interconnection congestion premium
+export interface CongestionPremiumRow {
+  from_zone: string
+  to_zone: string
+  avg_util_pct: number
+  days_saturated: number
+  n_days: number
+  pct_saturated: number
+  spread_saturated: number | null
+  spread_free: number | null
+  spread_avg: number
+  congestion_premium: number | null
+}
+
+export interface CongestionScatterPoint {
+  price_date: string
+  utilization_pct: number
+  spread_eur: number
+}
+
+export interface CongestionMonthlyPoint {
+  month: string
+  avg_spread: number
+  avg_util: number
+}
+
+export interface CongestionPremiumResponse {
+  borders: CongestionPremiumRow[]
+  focus_border: string
+  focus_scatter: CongestionScatterPoint[]
+  focus_monthly: CongestionMonthlyPoint[]
+  focus_premium: number | null
+  focus_current_spread: number | null
+  focus_current_util: number | null
+  as_of: string
 }
 
 // Phase 77: EU power price variance decomposition

@@ -1877,3 +1877,30 @@ def test_spreads_price_variance_decomp(client):
         assert abs(total - 1.0) < 0.01, f"Attributions don't sum to 1: {total}"
         # R2 must equal 1 - att_residual
         assert abs(z["r2"] - (1.0 - z["att_residual"])) < 0.01
+
+
+def test_spreads_congestion_premium(client):
+    r = client.get("/api/spreads/congestion-premium")
+    assert r.status_code == 200
+    data = r.json()
+    assert "borders" in data
+    assert "focus_border" in data and data["focus_border"] == "FR-IT-NORD"
+    assert "focus_scatter" in data and isinstance(data["focus_scatter"], list)
+    assert "focus_monthly" in data and isinstance(data["focus_monthly"], list)
+    assert "focus_premium" in data  # nullable if fixture lacks data
+    assert "as_of" in data
+    # If borders are returned, check structure
+    for b in data["borders"]:
+        assert "from_zone" in b and "to_zone" in b
+        assert "avg_util_pct" in b and "n_days" in b
+        assert "spread_avg" in b and "pct_saturated" in b
+    # Scatter points
+    for pt in data["focus_scatter"]:
+        assert "price_date" in pt
+        assert "utilization_pct" in pt
+        assert "spread_eur" in pt and pt["spread_eur"] >= 0
+    # Monthly points
+    for m in data["focus_monthly"]:
+        assert "month" in m
+        assert "avg_spread" in m and m["avg_spread"] >= 0
+        assert "avg_util" in m
