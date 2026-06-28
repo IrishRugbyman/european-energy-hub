@@ -354,6 +354,39 @@ export interface GenMapResponse {
   max_date: string | null
 }
 
+export interface HydroCountryLatest {
+  country: string
+  week_date: string
+  stored_twh: number | null
+  vs_avg5_pct: number | null
+  yoy_pct: number | null
+  rank5yr_pct: number | null
+}
+
+export interface HydroMapResponse {
+  countries: HydroCountryLatest[]
+  refreshed_at: string | null
+}
+
+export interface HydroHistPoint {
+  week_date: string
+  stored_twh: number | null
+}
+
+export interface HydroSeasonalPoint {
+  week_of_year: number
+  avg5_twh: number | null
+  min5_twh: number | null
+  max5_twh: number | null
+}
+
+export interface HydroCountryResponse {
+  country: string
+  history: HydroHistPoint[]
+  seasonal: HydroSeasonalPoint[]
+  latest: HydroCountryLatest | null
+}
+
 export interface GenDailyPoint {
   gen_date: string
   renewable_pct: number | null
@@ -1173,6 +1206,8 @@ export const api = {
   genEuAnnual: () => get<EuAnnualFuelResponse>('/generation/eu/annual'),
   genEuMonthly: () => get<GenMonthlyResponse>('/generation/eu/monthly'),
   genEuCfLatest: () => get<EuCfLatestResponse>('/generation/eu/cf-latest'),
+  hydroMap: () => get<HydroMapResponse>('/hydro/map'),
+  hydroCountry: (cc: string) => get<HydroCountryResponse>(`/hydro/country/${cc}`),
   genEuCarbonIntensity: () => get<EuCiDailyResponse>('/generation/eu/carbon-intensity'),
   genZonesCf: () => get<ZoneCfResponse>('/generation/zones/cf'),
   genEuPriceRe: () => get<EuPriceReResponse>('/generation/eu/price-re'),
