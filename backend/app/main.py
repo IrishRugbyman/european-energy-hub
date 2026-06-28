@@ -105,6 +105,9 @@ from .schemas import (
     TtfSeasonalityResponse,
     TtfWinterPremiumYear,
     TtfWinterPremiumResponse,
+    ReMeritOrderBin,
+    ReMeritOrderZone,
+    ReMeritOrderResponse,
     CapacityFactorPoint,
     GenCapacityResponse,
     GasPacePoint,
@@ -2142,6 +2145,102 @@ def prices_ttf_winter_premium():
         )
 
     return _cached_compute("ttf_winter_premium", _compute, ttl=3600)
+
+
+@app.get("/api/spreads/re-merit-order", response_model=ReMeritOrderResponse)
+def spreads_re_merit_order():
+    """Renewable penetration vs price merit order (cannibalization curve).
+
+    For each fundamental zone, bins daily renewable generation (% of total) into
+    decile buckets and computes the average/p25/p75 power price in each bucket.
+    Shows how increasing RE drives prices toward zero and below, and how the
+    congestion-driven price floor differs by zone.
+    """
+
+    def _compute():
+        # RE bins: 0-10, 10-20, ..., 70+
+        BINS = [0, 10, 20, 30, 40, 50, 60, 70, 100]
+        BIN_LABELS = ["0-10", "10-20", "20-30", "30-40", "40-50", "50-60", "60-70", "70+"]
+        BIN_MIDS = [5, 15, 25, 35, 45, 55, 65, 80]
+
+        df = db.query(
+            """
+            SELECT g.zone, g.renewable_pct, p.base_eur
+            FROM generation_daily g
+            JOIN power_daily p ON p.zone = g.zone AND p.price_date = g.gen_date
+            WHERE g.zone IN ('DE-LU', 'FR', 'NL', 'IT-NORD', 'BE')
+              AND g.total_mw > 0
+              AND g.renewable_pct IS NOT NULL
+              AND p.base_eur IS NOT NULL
+            """,
+        )
+
+        if df.empty:
+            return ReMeritOrderResponse(zones=[], as_of=date.today().isoformat())
+
+        import pandas as pd  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415
+
+        # Assign bin index
+        bin_edges = BINS
+        df["bin_idx"] = pd.cut(
+            df["renewable_pct"],
+            bins=bin_edges,
+            labels=False,
+            include_lowest=True,
+        )
+
+        zones_out = []
+        for zone in ["DE-LU", "FR", "NL", "IT-NORD", "BE"]:
+            zdf = df[df["zone"] == zone].copy()
+            if len(zdf) < 10:
+                continue
+
+            # Pearson correlation
+            corr = float(zdf["renewable_pct"].corr(zdf["base_eur"]))
+
+            # Per-bin stats
+            bins_out = []
+            for i, label in enumerate(BIN_LABELS):
+                bdf = zdf[zdf["bin_idx"] == i]
+                if len(bdf) == 0:
+                    bins_out.append(
+                        ReMeritOrderBin(
+                            re_bin=label,
+                            re_mid=BIN_MIDS[i],
+                            mean_price=None,
+                            p25_price=None,
+                            p75_price=None,
+                            count=0,
+                        )
+                    )
+                    continue
+                prices = bdf["base_eur"].values
+                bins_out.append(
+                    ReMeritOrderBin(
+                        re_bin=label,
+                        re_mid=BIN_MIDS[i],
+                        mean_price=round(float(np.mean(prices)), 1),
+                        p25_price=round(float(np.percentile(prices, 25)), 1),
+                        p75_price=round(float(np.percentile(prices, 75)), 1),
+                        count=int(len(bdf)),
+                    )
+                )
+
+            zones_out.append(
+                ReMeritOrderZone(
+                    zone=zone,
+                    correlation=round(corr, 3),
+                    bins=bins_out,
+                )
+            )
+
+        return ReMeritOrderResponse(
+            zones=zones_out,
+            as_of=date.today().isoformat(),
+        )
+
+    return _cached_compute("re_merit_order", _compute, ttl=3600)
 
 
 @app.get("/api/prices/regime", response_model=PriceRegimeResponse)

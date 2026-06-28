@@ -2174,3 +2174,23 @@ class TtfWinterPremiumResponse(BaseModel):
     avg_premium_pre_crisis: float | None  # mean of 2019-2020 gas years (baseline)
     current_gas_year: int
     as_of: str
+
+
+class ReMeritOrderBin(BaseModel):
+    re_bin: str  # e.g. "0-10", "10-20", ...
+    re_mid: float  # midpoint of bin for plotting
+    mean_price: float | None
+    p25_price: float | None
+    p75_price: float | None
+    count: int
+
+
+class ReMeritOrderZone(BaseModel):
+    zone: str
+    correlation: float  # Pearson(RE%, price)
+    bins: list[ReMeritOrderBin]
+
+
+class ReMeritOrderResponse(BaseModel):
+    zones: list[ReMeritOrderZone]
+    as_of: str

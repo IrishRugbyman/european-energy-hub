@@ -1928,3 +1928,22 @@ def test_prices_ttf_winter_premium(client):
     # Pre-crisis baseline should be positive (winter historically pricier than summer)
     if data["avg_premium_pre_crisis"] is not None:
         assert data["avg_premium_pre_crisis"] > 0
+
+
+def test_spreads_re_merit_order(client):
+    r = client.get("/api/spreads/re-merit-order")
+    assert r.status_code == 200
+    data = r.json()
+    assert "zones" in data
+    assert "as_of" in data
+    for z in data["zones"]:
+        assert "zone" in z and "correlation" in z and "bins" in z
+        # Correlation is a float in [-1, 1]
+        assert -1.0 <= z["correlation"] <= 1.0
+        for b in z["bins"]:
+            assert "re_bin" in b and "re_mid" in b and "count" in b
+            if b["count"] > 0:
+                assert b["mean_price"] is not None
+                assert b["p25_price"] is not None
+                assert b["p75_price"] is not None
+                assert b["p25_price"] <= b["mean_price"] <= b["p75_price"] + 50

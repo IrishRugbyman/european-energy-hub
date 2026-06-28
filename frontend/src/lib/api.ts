@@ -1226,6 +1226,7 @@ export const api = {
   pricesUsGasStorage: () => get<UsStorageResponse>('/prices/us-gas-storage'),
   gasStorageAnalogs: () => get<StorageAnalogResponse>('/gas/storage-analogs'),
   pricesTtfWinterPremium: () => get<TtfWinterPremiumResponse>('/prices/ttf-winter-premium'),
+  spreadsReMeritOrder: () => get<ReMeritOrderResponse>('/spreads/re-merit-order'),
 }
 
 // Phase 78: Interconnection congestion premium
@@ -2242,5 +2243,25 @@ export interface TtfWinterPremiumResponse {
   years: TtfWinterPremiumYear[]
   avg_premium_pre_crisis: number | null
   current_gas_year: number
+  as_of: string
+}
+
+export interface ReMeritOrderBin {
+  re_bin: string
+  re_mid: number
+  mean_price: number | null
+  p25_price: number | null
+  p75_price: number | null
+  count: number
+}
+
+export interface ReMeritOrderZone {
+  zone: string
+  correlation: number
+  bins: ReMeritOrderBin[]
+}
+
+export interface ReMeritOrderResponse {
+  zones: ReMeritOrderZone[]
   as_of: string
 }
