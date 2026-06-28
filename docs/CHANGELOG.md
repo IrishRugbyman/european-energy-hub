@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 83: Peak-offpeak spread inversion (EU duck curve) on /spreads
+
+**Built:** `GET /api/spreads/peak-offpeak-trend` returning monthly average (peak - offpeak) per zone across DE-LU, FR, NL, IT-NORD, including inversion onset month and current spread. Frontend: `PeakOffpeakSection` with 4 stat cards (current spread + inversion onset per zone), multi-line LineChart with zero reference line, and last-12-months detail table with sign-colored spread values. 121 tests.
+
+**Findings:** All 4 zones are inverted in summer 2026 (the 08:00-20:00 "peak" window is cheaper than off-peak on average). April 2026 peak: DE-LU -47, NL -48 EUR/MWh - solar floods the midday window below overnight gas demand. June 2026: DE-LU -24, FR -27, NL -23, IT-NORD -13 EUR/MWh. IT-NORD shows a muted but consistent inversion driven by Italy's own growing solar fleet, even without absorbing FR surplus (congestion blocks imports). Battery storage arbitrage value: noon trough vs evening ramp creates ~77 EUR/MWh gross spread in peak April. The duck curve destroys the economics of gas peakers (traditionally earning midday premium) while creating structural demand for 4-6h battery discharge.
+
 ## 2026-06-28 - Phase 82: Monthly cross-zone price dispersion on /spreads
 
 **Built:** `GET /api/spreads/zone-dispersion` computing the monthly average daily cross-zone standard deviation of base DA prices across DE-LU, FR, NL, IT-NORD, BE. Returns the full monthly history, 2025 calendar-year average, 2026 YTD average, and peak dispersion month. Frontend: `ZoneDispersionSection` with a LineChart of monthly std plus a 2025 avg reference line, 4 stat cards, and a 12-month detail table with color-coded dispersion levels. 120 tests.
