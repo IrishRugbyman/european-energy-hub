@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 73: Rolling gas-to-power pass-through OLS coefficients on /spreads
+
+**Built:** `GET /api/spreads/gas-power-passthrough` returning `GasPowerPassThroughResponse`. Per fundamental zone, runs rolling 90-day multivariate OLS (power = alpha + beta_ttf * TTF + beta_eua * EUA) over the full daily history. Returns the rolling coefficient time series plus full-sample and 90d OLS summaries. Theory reference: beta_ttf = 1/CCGT_efficiency = 2.04. Frontend: `GasPowerPassThroughSection` with per-zone stat cards, rolling TTF-beta LineChart with theory reference line, and a regime-shift comparison table (full-sample vs 90d, TTF shift). 121 tests.
+
+**Finding:** Current 90d TTF betas: DE-LU 0.84, FR 0.88, NL 0.81, IT-NORD 1.53, BE 0.89. All below the 2.04 gas-marginal theory, confirming coal-marginal pricing. IT-NORD has the highest current TTF sensitivity, consistent with Italy's gas-heavy generation mix. EUA beta has simultaneously risen (FR: 1.58 full-sample to 2.87 last 90d), quantifying the carbon-price dominance when coal sets the marginal price. This analysis complements P71 (regime-conditional signal P&L) by giving the continuous market-implied marginal fuel signal rather than a discrete gas/coal classification.
+
 ## 2026-06-28 - Phase 72: LNG arbitrage spread (TTF vs Henry Hub) on /prices
 
 **Built:** `GET /api/prices/lng-arb` returning `LngArbResponse` with daily TTF/HH-EUR/arb_spread time series, summary stats (1yr and full-sample averages, % time economic), and current regime flag. Breakeven assumption: 12 EUR/MWh (liquefaction tolling + spot vessel freight + EU regasification). Frontend: `LngArbSection` with 4 stat cards, a `ComposedChart` showing TTF and HH lines on the left axis and the arb spread area on the right axis, plus a breakeven reference line. 120 tests.
