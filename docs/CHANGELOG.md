@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 62: z-score signal in market pulse spread cards
+
+**Built:** The market-pulse endpoint now populates the `signal` list with z-score and 1yr percentile for all 5 fundamental zones (DE-LU, FR, NL, IT-NORD, BE). Previously it returned `signal=[]` under the assumption that OLS model runs would be too slow for a landing page widget; actual latency is ~430ms across 5 zones, well within the 5-minute TanStack Query stale time. The landing page `SpreadMiniCard` gains a third row showing `z +1.02 98p`, colour-coded by signal extremity: red/orange for elevated (overbought), green shades for suppressed (oversold), grey for neutral. The signal field was already defined in the schema and types; only the endpoint computation and frontend rendering were added.
+
+**Context:** On 2026-06-28 all 5 zones show z-scores of +0.66 to +1.69 at 97-99th percentile, consistent with the nuclear heat risk on French Rhone plants elevating power prices above fundamental fair value. The market pulse now shows the full picture in a single view: TTF, EUA, EU storage, DE-LU price, CSS/CDS by zone, z-score signal, reBAP, and nuclear alert - all on the landing page before any navigation.
+
 ## 2026-06-28 - Phase 61: nuclear heat risk alert on /power and landing page
 
 **Built:** When any French nuclear plant is at warning or critical heat stress (river cooling constraint), two new alert surfaces appear: (1) A floating banner on the /power map page (absolute top-center, z-999) showing "FR NUCLEAR CRITICAL/WARNING", total GW at risk, and the top 3 plant names with observed temperatures - styled red for critical, amber for warning, links to /generation. (2) A nuclear chip in the market pulse strip on the landing page (rightmost), showing "FR Nuclear / X.X GW at risk / CRITICAL" in matching colors. The chip only renders when capacity_critical_mw + capacity_warning_mw > 0, so it produces no visual noise during normal conditions. No backend changes - both surfaces query the existing `/api/generation/heat-risk` endpoint.
