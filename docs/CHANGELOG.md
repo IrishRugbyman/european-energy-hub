@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 80: Renewable merit order cannibalization curve on /spreads
+
+**Built:** `GET /api/spreads/re-merit-order` returning `ReMeritOrderResponse` with per-zone Pearson correlation and per-10pp RE bucket mean/p25/p75 prices. Frontend: `ReMeritOrderSection` on /spreads with correlation stat cards, multi-line price-vs-RE% chart, and a zone detail table. 128 tests.
+
+**Findings:** DE-LU: corr = -0.80, price range 37-171 EUR/MWh. FR: corr = -0.64, price at 40-50% RE = 12 EUR/MWh (nuclear + solar saturation). IT-NORD: corr = -0.65, but price floor at 70%+ RE = 83 EUR/MWh vs DE-LU 37 EUR/MWh -- the 46 EUR/MWh structural gap is the FR-IT-NORD congestion premium (Phase 78) expressed as a merit order floor: Italy cannot clear renewable surplus via French nuclear imports because the NTC cable is full. BE: corr = -0.48 (weaker - limited inland RE). This is market integration evidence: a larger IT-NORD NTC would compress the 46 EUR/MWh gap.
+
 ## 2026-06-28 - Phase 79: TTF winter premium history (gas-year seasonal spread) on /prices
 
 **Built:** `GET /api/prices/ttf-winter-premium` returning `TtfWinterPremiumResponse` with per-year winter/summer averages and premium on a gas-year basis (Nov-Mar vs Apr-Oct). Frontend: `TtfWinterPremiumSection` with 3 stat cards (pre-crisis baseline, current year, crisis range), bar chart with sign-colored cells and pre-crisis reference line, and a detail table with event narrative annotations. 127 tests.
