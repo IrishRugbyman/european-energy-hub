@@ -4111,6 +4111,26 @@ def market_pulse():
     im = db.query("SELECT today_mean FROM imbalance_latest LIMIT 1")
     rebap_today_mean = _float(im.iloc[0]["today_mean"]) if im is not None and not im.empty else None
 
+    # Fair-value z-score signal for each zone (OLS run; ~400ms total, cached 5min)
+    from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
+
+    signal: list[MarketPulseSignal] = []
+    for _z in FUNDAMENTAL_ZONES:
+        try:
+            _res = compute_fundamental_model(db.query, _z)
+            if not _res:
+                continue
+            _cur = _res["current"]
+            signal.append(
+                MarketPulseSignal(
+                    zone=_z,
+                    zscore=round(float(_cur["zscore"]), 2) if _cur.get("zscore") is not None else None,
+                    pct_rank_1yr=int(_cur["pct_rank_1yr"]) if _cur.get("pct_rank_1yr") is not None else None,
+                )
+            )
+        except Exception:
+            pass
+
     return MarketPulseResponse(
         as_of=as_of,
         ttf_eur_mwh=ttf_latest,
@@ -4123,7 +4143,7 @@ def market_pulse():
         de_lu_vs_30d_pct=de_lu_vs_30d_pct,
         spreads=spreads,
         rebap_today_mean=rebap_today_mean,
-        signal=[],
+        signal=signal,
     )
 
 

@@ -182,13 +182,17 @@ function PulseCard({
   return inner
 }
 
-function SpreadMiniCard({ sp }: { sp: MarketPulseSpread }) {
+function SpreadMiniCard({ sp, zscore, pctRank }: { sp: MarketPulseSpread; zscore?: number | null; pctRank?: number | null }) {
   const regimeColor =
     sp.regime === 'gas' ? 'text-blue-400' :
     sp.regime === 'coal' ? 'text-amber-400' :
     'text-muted-foreground'
+  const zColor =
+    zscore != null && Math.abs(zscore) >= 1.5 ? (zscore > 0 ? '#f87171' : '#4ade80') :
+    zscore != null && Math.abs(zscore) >= 0.75 ? (zscore > 0 ? '#fb923c' : '#86efac') :
+    '#64748b'
   return (
-    <div className="flex flex-col gap-1 px-3 py-2.5 rounded-md border bg-card border-border min-w-[88px]">
+    <div className="flex flex-col gap-1 px-3 py-2.5 rounded-md border bg-card border-border min-w-[92px]">
       <div className="flex items-center justify-between gap-1">
         <span className="text-[10px] font-mono uppercase tracking-[0.12em] text-muted-foreground/55 leading-none">
           {sp.zone}
@@ -209,6 +213,17 @@ function SpreadMiniCard({ sp }: { sp: MarketPulseSpread }) {
           {sp.cds != null ? fmt1(sp.cds) : '-'}
         </span>
       </div>
+      {zscore != null && (
+        <div className="flex items-baseline gap-1">
+          <span className="text-[10px] text-muted-foreground/55">z</span>
+          <span className="text-[11px] font-semibold tabular-nums leading-tight" style={{ color: zColor }}>
+            {zscore > 0 ? '+' : ''}{zscore.toFixed(2)}
+          </span>
+          {pctRank != null && (
+            <span className="text-[9px] text-muted-foreground/50 leading-tight">{pctRank}p</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -292,11 +307,14 @@ function MarketPulse() {
         />
 
         {/* Spreads */}
-        {data.spreads.map((sp) => (
-          <Link key={sp.zone} to="/spreads">
-            <SpreadMiniCard sp={sp} />
-          </Link>
-        ))}
+        {data.spreads.map((sp) => {
+          const sig = data.signal.find((s) => s.zone === sp.zone)
+          return (
+            <Link key={sp.zone} to="/spreads">
+              <SpreadMiniCard sp={sp} zscore={sig?.zscore} pctRank={sig?.pct_rank_1yr} />
+            </Link>
+          )
+        })}
 
         {/* Separator */}
         <div className="w-px bg-border/30 self-stretch mx-0.5" />
