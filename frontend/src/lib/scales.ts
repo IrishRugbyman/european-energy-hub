@@ -170,6 +170,24 @@ export const ZONE_SIBLINGS: Record<string, string[]> = {
   'DK-2': DK_SIBLINGS,
 }
 
+// Maps each bidding zone to its ENTSO-E country code for hydro reservoir data.
+// Countries without ENTSO-E hydro reservoir data (DE, PL, NL, etc.) are omitted.
+export const ZONE_TO_HYDRO_COUNTRY: Record<string, string> = {
+  'NO-1': 'NO', 'NO-2': 'NO', 'NO-3': 'NO', 'NO-4': 'NO', 'NO-5': 'NO',
+  'SE-1': 'SE', 'SE-2': 'SE', 'SE-3': 'SE', 'SE-4': 'SE',
+  'IT-NORD': 'IT', 'IT-CNOR': 'IT', 'IT-CSUD': 'IT', 'IT-SUD': 'IT',
+  'IT-SICI': 'IT', 'IT-SARD': 'IT',
+  'FR': 'FR',
+  'AT': 'AT',
+  'CH': 'CH',
+  'ES': 'ES',
+  'PT': 'PT',
+  'FI': 'FI',
+  'RO': 'RO',
+  'GR': 'GR',
+  'HR': 'HR',
+}
+
 // NTC utilization pct -> color. Sequential scale: green (free) -> yellow -> red (saturated).
 // Clipped at 150% (meshed flow models can exceed 100%). Null = grey.
 export function utilizationColor(pct: number | null | undefined): string {

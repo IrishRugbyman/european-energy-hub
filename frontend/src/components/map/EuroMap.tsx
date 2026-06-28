@@ -23,7 +23,7 @@ const CARTO_NOLABELS = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/
 const CARTO_LABELS   = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 const CARTO_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors'
 
-export type MapMetric = 'price' | 'range' | 'neg_hours' | 'pct_rank' | 'renewable' | 'dominant_fuel' | 'carbon_intensity' | 'wind_cf' | 'solar_cf'
+export type MapMetric = 'price' | 'range' | 'neg_hours' | 'pct_rank' | 'renewable' | 'dominant_fuel' | 'carbon_intensity' | 'wind_cf' | 'solar_cf' | 'hydro_fill'
 
 export function isPriceMetric(m: MapMetric): boolean {
   return m === 'price' || m === 'range' || m === 'neg_hours' || m === 'pct_rank'
@@ -57,6 +57,20 @@ function solarCfColor(cf: number | null | undefined): string {
   return '#fbbf24'                // > 24% - peak summer irradiance
 }
 
+// Hydro fill: diverging red (drought) -> grey (avg) -> blue (high fill)
+// Input: vs_avg5_pct (e.g. -15 means 15% below 5yr avg)
+function hydroFillColor(vsAvg: number | null | undefined): string {
+  if (vsAvg == null) return '#374151'  // no data
+  if (vsAvg <= -30) return '#7f1d1d'
+  if (vsAvg <= -20) return '#b91c1c'
+  if (vsAvg <= -10) return '#ef4444'
+  if (vsAvg <= -5)  return '#f87171'
+  if (vsAvg <   5)  return '#6b7280'  // near-average band
+  if (vsAvg <  10)  return '#60a5fa'
+  if (vsAvg <  20)  return '#3b82f6'
+  if (vsAvg <  30)  return '#1d4ed8'
+  return '#1e3a8a'  // > +30%
+}
 
 function computeDominantFuel(item: GenMapItem | undefined): string | null {
   if (!item) return null
@@ -75,17 +89,19 @@ export function zoneColor(
   metric: MapMetric,
   power: PowerLatestRow | undefined,
   gen: GenMapItem | undefined,
+  hydroVsAvg?: number | null,
 ): string {
   switch (metric) {
-    case 'price':        return powerPriceColor(power?.base_eur)
-    case 'range':        return dayRangeColor(power?.day_range_eur)
-    case 'neg_hours':    return negHoursColor(power?.neg_hours)
-    case 'pct_rank':     return pctRankColor(power?.pct_rank_2yr)
-    case 'renewable':          return renewablePctColor(gen?.renewable_pct)
-    case 'dominant_fuel':      return dominantFuelColor(computeDominantFuel(gen))
-    case 'carbon_intensity':   return carbonIntensityColor(computeCarbonIntensity(gen))
-    case 'wind_cf':      return windCfColor(gen?.wind_cf)
-    case 'solar_cf':     return solarCfColor(gen?.solar_cf)
+    case 'price':             return powerPriceColor(power?.base_eur)
+    case 'range':             return dayRangeColor(power?.day_range_eur)
+    case 'neg_hours':         return negHoursColor(power?.neg_hours)
+    case 'pct_rank':          return pctRankColor(power?.pct_rank_2yr)
+    case 'renewable':         return renewablePctColor(gen?.renewable_pct)
+    case 'dominant_fuel':     return dominantFuelColor(computeDominantFuel(gen))
+    case 'carbon_intensity':  return carbonIntensityColor(computeCarbonIntensity(gen))
+    case 'wind_cf':           return windCfColor(gen?.wind_cf)
+    case 'solar_cf':          return solarCfColor(gen?.solar_cf)
+    case 'hydro_fill':        return hydroFillColor(hydroVsAvg)
   }
 }
 
@@ -94,6 +110,7 @@ function tooltipContent(
   power: PowerLatestRow | undefined,
   gen: GenMapItem | undefined,
   metric: MapMetric,
+  hydroVsAvg?: number | null,
 ): string {
   const name = zoneName(zone)
   const price = power?.base_eur != null ? `${power.base_eur.toFixed(0)} €/MWh` : null
@@ -150,6 +167,10 @@ function tooltipContent(
         const actStr = actual != null ? `, ${actual.toFixed(0)} MW actual` : ''
         return `Solar CF: ${(cf * 100).toFixed(1)}%${actStr}${instStr}`
       }
+      case 'hydro_fill':
+        return hydroVsAvg != null
+          ? `Hydro: ${hydroVsAvg > 0 ? '+' : ''}${hydroVsAvg.toFixed(1)}% vs 5yr avg`
+          : 'Hydro: no data'
       default: return ''
     }
   })()
@@ -168,13 +189,14 @@ function tooltipContent(
 interface Props {
   powerByZone: Record<string, PowerLatestRow>
   genByZone: Record<string, GenMapItem>
+  hydroByZone?: Record<string, number | null>
   selected: string | null
   onSelect: (zone: string | null) => void
   metric: MapMetric
   children?: ReactNode
 }
 
-export function EuroMap({ powerByZone, genByZone, selected, onSelect, metric, children }: Props) {
+export function EuroMap({ powerByZone, genByZone, hydroByZone, selected, onSelect, metric, children }: Props) {
   return (
     <MapContainer
       center={[54, 15]}
@@ -187,6 +209,7 @@ export function EuroMap({ powerByZone, genByZone, selected, onSelect, metric, ch
       <EuroChoroLayer
         powerByZone={powerByZone}
         genByZone={genByZone}
+        hydroByZone={hydroByZone ?? {}}
         selected={selected}
         onSelect={onSelect}
         metric={metric}
@@ -202,12 +225,14 @@ export function EuroMap({ powerByZone, genByZone, selected, onSelect, metric, ch
 function EuroChoroLayer({
   powerByZone,
   genByZone,
+  hydroByZone,
   selected,
   onSelect,
   metric,
 }: {
   powerByZone: Record<string, PowerLatestRow>
   genByZone: Record<string, GenMapItem>
+  hydroByZone: Record<string, number | null>
   selected: string | null
   onSelect: (zone: string | null) => void
   metric: MapMetric
@@ -218,11 +243,13 @@ function EuroChoroLayer({
   const metricRef = useRef<MapMetric>(metric)
   const powerRef = useRef<Record<string, PowerLatestRow>>(powerByZone)
   const genRef = useRef<Record<string, GenMapItem>>(genByZone)
+  const hydroRef = useRef<Record<string, number | null>>(hydroByZone)
 
   useEffect(() => { selectedRef.current = selected }, [selected])
   useEffect(() => { metricRef.current = metric }, [metric])
   useEffect(() => { powerRef.current = powerByZone }, [powerByZone])
   useEffect(() => { genRef.current = genByZone }, [genByZone])
+  useEffect(() => { hydroRef.current = hydroByZone }, [hydroByZone])
 
   useEffect(() => {
     let cancelled = false
@@ -231,7 +258,7 @@ function EuroChoroLayer({
       .then((geo: GeoJsonObject) => {
         if (cancelled) return
         if (geoRef.current) map.removeLayer(geoRef.current)
-        const layer = createLayer(geo, powerRef, genRef, selectedRef, metricRef, onSelect)
+        const layer = createLayer(geo, powerRef, genRef, hydroRef, selectedRef, metricRef, onSelect)
         layer.addTo(map)
         geoRef.current = layer
       })
@@ -249,13 +276,13 @@ function EuroChoroLayer({
       const dataZone: string = f?.properties?.['displayAs'] ?? zone
       const isSelected = dataZone === selected
       ;(layer as L.Path).setStyle({
-        fillColor: zoneColor(metric, powerByZone[dataZone], genByZone[dataZone]),
+        fillColor: zoneColor(metric, powerByZone[dataZone], genByZone[dataZone], hydroByZone[dataZone] ?? null),
         fillOpacity: isSelected ? 0.95 : CHOROPLETH_FILL_OPACITY,
         color: isSelected ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: isSelected ? 2 : CHOROPLETH_STROKE_WIDTH,
       })
     })
-  }, [powerByZone, genByZone, selected, metric])
+  }, [powerByZone, genByZone, hydroByZone, selected, metric])
 
   return null
 }
@@ -264,6 +291,7 @@ function createLayer(
   geo: GeoJsonObject,
   powerRef: MutableRefObject<Record<string, PowerLatestRow>>,
   genRef: MutableRefObject<Record<string, GenMapItem>>,
+  hydroRef: MutableRefObject<Record<string, number | null>>,
   selectedRef: MutableRefObject<string | null>,
   metricRef: MutableRefObject<MapMetric>,
   onSelect: (zone: string | null) => void,
@@ -274,7 +302,12 @@ function createLayer(
       const dataZone = feature?.properties?.['displayAs'] ?? zone
       const sel = selectedRef.current
       return {
-        fillColor: zoneColor(metricRef.current, powerRef.current[dataZone], genRef.current[dataZone]),
+        fillColor: zoneColor(
+          metricRef.current,
+          powerRef.current[dataZone],
+          genRef.current[dataZone],
+          hydroRef.current[dataZone] ?? null,
+        ),
         fillOpacity: dataZone === sel ? 0.95 : CHOROPLETH_FILL_OPACITY,
         color: dataZone === sel ? '#38bdf8' : CHOROPLETH_STROKE,
         weight: dataZone === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
@@ -296,7 +329,7 @@ function createLayer(
           L.popup({ closeButton: false })
             .setLatLng(e.latlng)
             .setContent(
-              tooltipContent(zone, powerRef.current[dataZone], genRef.current[dataZone], metricRef.current),
+              tooltipContent(zone, powerRef.current[dataZone], genRef.current[dataZone], metricRef.current, hydroRef.current[dataZone] ?? null),
             )
             .openOn(m)
         },
