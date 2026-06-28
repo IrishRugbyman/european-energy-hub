@@ -342,6 +342,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 71 - Regime-conditional signal P&L split on /spreads [COMPLETE 2026-06-28]
 
+### Phase 72 - LNG arbitrage spread (TTF vs Henry Hub) on /prices [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,

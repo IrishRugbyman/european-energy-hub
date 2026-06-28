@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 72: LNG arbitrage spread (TTF vs Henry Hub) on /prices
+
+**Built:** `GET /api/prices/lng-arb` returning `LngArbResponse` with daily TTF/HH-EUR/arb_spread time series, summary stats (1yr and full-sample averages, % time economic), and current regime flag. Breakeven assumption: 12 EUR/MWh (liquefaction tolling + spot vessel freight + EU regasification). Frontend: `LngArbSection` with 4 stat cards, a `ComposedChart` showing TTF and HH lines on the left axis and the arb spread area on the right axis, plus a breakeven reference line. 120 tests.
+
+**Finding:** Current TTF-HH spread is +31 EUR/MWh vs 12 EUR/MWh breakeven, giving a +19 EUR/MWh net margin for US LNG exports to Europe. EU has been the economic destination for 100% of last year's observations. This closes the P69 analytical loop: TTF is 29 EUR/MWh below the pure storage-deficit OLS prediction because elevated LNG imports are absorbing the storage shortfall, anchoring the structural ceiling.
+
 ## 2026-06-28 - Phase 71: Regime-conditional signal P&L split on /spreads
 
 **Built:** `compute_regime_conditional_pnl()` in `fundamental.py` and `GET /api/spreads/regime-conditional-pnl`. Splits the FSS (from `spreads_daily`) into gas-marginal (FSS > +2), coal-marginal (FSS < -2), and transition zones, joins with the per-zone nonlinear OOS net P&L, and computes Sharpe/avg_daily/cum_pnl for each zone and portfolio level. Frontend: `RegimeConditionalPnlSection` with portfolio cards, grouped bar chart, and per-zone Sharpe table.
