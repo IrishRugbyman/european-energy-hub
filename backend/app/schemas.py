@@ -1874,6 +1874,30 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 72: LNG arbitrage spread (TTF vs Henry Hub)
+class LngArbPoint(BaseModel):
+    date: str
+    ttf: float
+    hh_eur: float
+    arb_spread: float   # ttf - hh_eur; positive = EU premium
+    arb_net: float      # arb_spread - breakeven_cost; positive = LNG to EU economic
+
+
+class LngArbResponse(BaseModel):
+    rows: list[LngArbPoint]
+    breakeven_cost: float   # EUR/MWh all-in LNG cost assumption
+    current_date: str
+    current_ttf: float
+    current_hh_eur: float
+    current_arb_spread: float
+    current_arb_net: float  # net economic margin above breakeven
+    current_lng_economic: bool
+    avg_arb_spread_1y: float
+    avg_arb_spread_full: float
+    pct_time_economic_1y: float     # % of last 365d where arb > breakeven
+    pct_time_economic_full: float
+
+
 # Phase 71: Regime-conditional signal P&L
 class RegimeStats(BaseModel):
     n: int

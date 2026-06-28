@@ -1634,6 +1634,23 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_prices_lng_arb(client):
+    r = client.get("/api/prices/lng-arb")
+    assert r.status_code == 200
+    data = r.json()
+    assert "rows" in data and len(data["rows"]) > 10
+    pt = data["rows"][0]
+    assert "date" in pt and "ttf" in pt and "hh_eur" in pt and "arb_spread" in pt
+    # arb_spread = ttf - hh_eur
+    assert abs(pt["arb_spread"] - (pt["ttf"] - pt["hh_eur"])) < 0.01
+    assert isinstance(data["current_arb_spread"], float)
+    assert isinstance(data["current_arb_net"], float)
+    assert isinstance(data["current_lng_economic"], bool)
+    assert 0.0 <= data["pct_time_economic_full"] <= 100.0
+    assert 0.0 <= data["pct_time_economic_1y"] <= 100.0
+    assert data["breakeven_cost"] == 12.0
+
+
 def test_spreads_regime_conditional_pnl(client):
     r = client.get("/api/spreads/regime-conditional-pnl")
     assert r.status_code == 200

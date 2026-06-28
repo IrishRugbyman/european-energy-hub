@@ -1218,6 +1218,31 @@ export const api = {
   spreadsRegimeConditionalPnl: () => get<RegimeConditionalResponse>('/spreads/regime-conditional-pnl'),
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
+  pricesLngArb: () => get<LngArbResponse>('/prices/lng-arb'),
+}
+
+// Phase 72: LNG arb spread
+export interface LngArbPoint {
+  date: string
+  ttf: number
+  hh_eur: number
+  arb_spread: number
+  arb_net: number
+}
+
+export interface LngArbResponse {
+  rows: LngArbPoint[]
+  breakeven_cost: number
+  current_date: string
+  current_ttf: number
+  current_hh_eur: number
+  current_arb_spread: number
+  current_arb_net: number
+  current_lng_economic: boolean
+  avg_arb_spread_1y: number
+  avg_arb_spread_full: number
+  pct_time_economic_1y: number
+  pct_time_economic_full: number
 }
 
 // Phase 71: Regime-conditional signal P&L

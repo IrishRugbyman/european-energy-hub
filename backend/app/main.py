@@ -262,6 +262,8 @@ from .schemas import (
     RegimeStats,
     RegimeConditionalZoneRow,
     RegimeConditionalResponse,
+    LngArbPoint,
+    LngArbResponse,
 )
 
 
@@ -2034,6 +2036,83 @@ def prices_storage_ttf():
         current_predicted_ttf=round(cur_pred, 2),
         current_residual=round(cur_resid, 2),
         corr_window=CORR_WINDOW,
+    )
+
+
+@app.get("/api/prices/lng-arb", response_model=LngArbResponse)
+def prices_lng_arb():
+    """TTF vs Henry Hub spread: the transatlantic LNG arbitrage indicator.
+
+    When EU TTF prices exceed US Henry Hub by more than the all-in LNG cost (liquefaction
+    + shipping + regasification, approximately 11-13 EUR/MWh or 3-4 USD/MMBtu), US LNG
+    exports to Europe are economic and LNG tankers divert to EU terminals. This is the
+    primary mechanism by which EU gas prices are capped (above breakeven, US exports
+    increase; below breakeven, LNG diverts to Asia).
+
+    The breakeven assumption (12 EUR/MWh) represents an approximate mid-estimate of
+    the full-chain cost: liquefaction contract + spot LNG vessel freight (~1 USD/MMBtu)
+    + EU regasification (~0.5 EUR/MWh). The actual breakeven depends on vessel availability,
+    contract type (tolling vs merchant), and port congestion; 12 EUR/MWh is a working
+    central estimate for order-of-magnitude analysis.
+
+    Henry Hub prices are converted to EUR/MWh using the daily EUR/USD FX rate (from NBP
+    conversion pipeline) and the gas energy conversion 1 MMBtu = 0.293 MWh.
+
+    This metric closes the P69 (storage-TTF) narrative loop: when the LNG arb spread is
+    wide, US LNG exports flow to EU in sufficient quantity to partially offset the storage
+    deficit, explaining why TTF has not spiked as much as pure storage OLS would imply.
+    """
+    _rate_limited()
+    BREAKEVEN_EUR_MWH = 12.0
+
+    df = db.query("""
+        SELECT price_date, ttf_eur_mwh,
+               hh_eur_mwh,
+               ttf_eur_mwh - hh_eur_mwh AS arb_spread,
+               ttf_eur_mwh - hh_eur_mwh - ? AS arb_net
+        FROM prices_daily
+        WHERE ttf_eur_mwh IS NOT NULL
+          AND hh_eur_mwh IS NOT NULL
+        ORDER BY price_date
+    """, [BREAKEVEN_EUR_MWH])
+
+    if df is None or len(df) < 30:
+        raise HTTPException(status_code=503, detail="Insufficient data for LNG arb indicator")
+
+    rows = [
+        LngArbPoint(
+            date=str(r.price_date),
+            ttf=round(float(r.ttf_eur_mwh), 2),
+            hh_eur=round(float(r.hh_eur_mwh), 2),
+            arb_spread=round(float(r.arb_spread), 2),
+            arb_net=round(float(r.arb_net), 2),
+        )
+        for r in df.itertuples()
+    ]
+
+    import numpy as np
+    full_arb = np.array([r.arb_spread for r in rows])
+    one_year_rows = rows[-365:] if len(rows) >= 365 else rows
+    one_year_arb = np.array([r.arb_spread for r in one_year_rows])
+
+    latest = rows[-1]
+    return LngArbResponse(
+        rows=rows,
+        breakeven_cost=BREAKEVEN_EUR_MWH,
+        current_date=latest.date,
+        current_ttf=latest.ttf,
+        current_hh_eur=latest.hh_eur,
+        current_arb_spread=latest.arb_spread,
+        current_arb_net=latest.arb_net,
+        current_lng_economic=bool(latest.arb_net > 0),
+        avg_arb_spread_1y=round(float(one_year_arb.mean()), 2),
+        avg_arb_spread_full=round(float(full_arb.mean()), 2),
+        pct_time_economic_1y=round(
+            float((one_year_arb > BREAKEVEN_EUR_MWH).mean() * 100), 1
+        ),
+        pct_time_economic_full=round(
+            float((full_arb > BREAKEVEN_EUR_MWH).mean() * 100), 1
+        ),
     )
 
 

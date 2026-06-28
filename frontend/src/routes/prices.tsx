@@ -17,8 +17,9 @@ import {
   ResponsiveContainer,
   ReferenceLine,
   Cell,
+  Area,
 } from 'recharts'
-import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint } from '@/lib/api'
+import { api, type PricesDailyPoint, type PriceRegimePoint, type TtfCurvePoint, type TtfSeasonalMonth, type TtfCurveSnapshotRow, type PowerMonthlyCell, type PowerMonthlyResponse, type StorageTtfFundamentalResponse, type FuelSwitchingEuaResponse, type FuelSwitchingEuaPoint, type LngArbResponse, type LngArbPoint } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1128,6 +1129,176 @@ const SEASON_COLORS: Record<string, string> = {
   autumn: '#a78bfa',
 }
 
+function LngArbSection() {
+  const { data, isLoading } = useQuery<LngArbResponse>({
+    queryKey: ['prices-lng-arb'],
+    queryFn: api.pricesLngArb,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  // Show last 3 years of data to avoid the 2022 spike dominating the y-axis
+  const displayRows = useMemo<LngArbPoint[]>(() => {
+    if (!data?.rows) return []
+    const cutoff = new Date()
+    cutoff.setFullYear(cutoff.getFullYear() - 3)
+    const cutStr = cutoff.toISOString().slice(0, 10)
+    return data.rows.filter((r) => r.date >= cutStr)
+  }, [data?.rows])
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          LNG Arbitrage: TTF vs Henry Hub (EUR/MWh)
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 72 - transatlantic LNG flow indicator; spread above breakeven = US exports to EU economic
+        </span>
+        {data && (
+          <span
+            className={`ml-auto text-xs font-semibold px-2 py-0.5 rounded border ${
+              data.current_lng_economic
+                ? 'text-green-400 border-green-400/40 bg-green-400/10'
+                : 'text-amber-400 border-amber-400/40 bg-amber-400/10'
+            }`}
+          >
+            {data.current_lng_economic ? 'LNG to EU economic' : 'LNG not economic'}
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Loading LNG arb data...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">TTF (EUR/MWh)</p>
+              <p className="text-sm font-semibold text-blue-400">
+                {data.current_ttf.toFixed(1)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Henry Hub (EUR eq.)</p>
+              <p className="text-sm font-semibold text-amber-400">
+                {data.current_hh_eur.toFixed(1)}
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Arb spread</p>
+              <p className="text-sm font-semibold text-green-400">
+                +{data.current_arb_spread.toFixed(1)} EUR/MWh
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                vs {data.avg_arb_spread_1y.toFixed(1)} 1yr avg
+              </p>
+            </div>
+            <div className="bg-muted/20 rounded-lg px-3 py-2">
+              <p className="text-[10px] text-muted-foreground mb-0.5">Net margin above breakeven</p>
+              <p
+                className={`text-sm font-semibold ${data.current_arb_net > 0 ? 'text-green-400' : 'text-red-400'}`}
+              >
+                {data.current_arb_net > 0 ? '+' : ''}{data.current_arb_net.toFixed(1)} EUR/MWh
+              </p>
+              <p className="text-[10px] text-muted-foreground">
+                breakeven: {data.breakeven_cost.toFixed(0)} EUR/MWh
+              </p>
+            </div>
+          </div>
+
+          {/* Time series chart: TTF vs HH vs arb spread */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              TTF vs Henry Hub equivalent (EUR/MWh) - last 3 years. Arb spread = TTF minus HH-EUR.
+            </p>
+            <ResponsiveContainer width="100%" height={200}>
+              <ComposedChart data={displayRows} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => v.slice(0, 7)}
+                  minTickGap={60}
+                />
+                <YAxis
+                  yAxisId="price"
+                  orientation="left"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => v.toFixed(0)}
+                />
+                <YAxis
+                  yAxisId="spread"
+                  orientation="right"
+                  tick={{ fontSize: 9, fill: '#64748b' }}
+                  tickLine={false}
+                  tickFormatter={(v) => v.toFixed(0)}
+                />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v) => (typeof v === 'number' ? v.toFixed(1) : v)}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Legend iconSize={8} wrapperStyle={{ fontSize: 9 }} />
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="ttf"
+                  stroke="#38bdf8"
+                  dot={false}
+                  name="TTF (EUR/MWh)"
+                  strokeWidth={1.5}
+                />
+                <Line
+                  yAxisId="price"
+                  type="monotone"
+                  dataKey="hh_eur"
+                  stroke="#fbbf24"
+                  dot={false}
+                  name="Henry Hub (EUR eq.)"
+                  strokeWidth={1.5}
+                />
+                <Area
+                  yAxisId="spread"
+                  type="monotone"
+                  dataKey="arb_spread"
+                  stroke="#4ade80"
+                  fill="#4ade8020"
+                  name="Arb spread (EUR/MWh, RHS)"
+                  strokeWidth={1}
+                  dot={false}
+                />
+                <ReferenceLine
+                  yAxisId="spread"
+                  y={data.breakeven_cost}
+                  stroke="#f87171"
+                  strokeDasharray="3 3"
+                  label={{ value: 'breakeven', fill: '#f87171', fontSize: 8 }}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            When the TTF-HH spread exceeds the all-in LNG cost (~{data.breakeven_cost.toFixed(0)} EUR/MWh:
+            liquefaction tolling, spot freight, EU regasification), US LNG exporters route cargos to
+            European terminals rather than Asian buyers. EU has been the premium destination for US
+            LNG for {data.pct_time_economic_full.toFixed(0)}% of the full history and {data.pct_time_economic_1y.toFixed(0)}%
+            of the last year. Current net margin: {data.current_arb_net.toFixed(1)} EUR/MWh above breakeven,
+            explaining elevated EU LNG sendout. This mechanism anchors a structural ceiling on TTF:
+            when prices rise too far above US supply cost, additional LNG flows suppress the spike
+            (see the P69 storage-TTF section where TTF is 29 EUR/MWh below the pure OLS
+            storage-deficit prediction, partly because LNG imports are absorbing the deficit).
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 function StorageTtfFundamentalSection() {
   const { data, isLoading } = useQuery<StorageTtfFundamentalResponse>({
     queryKey: ['prices-storage-ttf'],
@@ -1445,6 +1616,7 @@ function PricesDashboard() {
           <TtfEuaScatter rows={rows} />
           <TtfSeasonality months={seasonalityData?.months ?? []} />
           {powerMonthlyData && <PowerMonthlyHeatmap data={powerMonthlyData} />}
+          <LngArbSection />
           <FuelSwitchingEuaSection />
           <StorageTtfFundamentalSection />
         </div>
