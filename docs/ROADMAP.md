@@ -328,6 +328,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 64 - Signal posture synthesis endpoint + UI section on /spreads [COMPLETE 2026-06-28]
 
+### Phase 65 - reBAP vs DA z-score cross-signal correlation on /imbalance [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,
