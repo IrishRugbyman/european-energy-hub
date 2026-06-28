@@ -316,6 +316,8 @@ fabricate a series to "complete" a factor.
 
 ### Phase 58 - Live market pulse widget on landing page [COMPLETE 2026-06-28]
 
+### Phase 59 - Fuel cost decomposition chart on /spreads [COMPLETE 2026-06-28]
+
 ## 10. Deliberately NOT building (v1)
 
 - **Intraday/live power prices**: ENTSO-E DA only. This is a daily app; no websockets,
