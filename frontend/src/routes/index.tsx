@@ -14,7 +14,7 @@ import {
   TrendingDown,
   Minus,
 } from 'lucide-react'
-import { api, type MarketPulseResponse, type MarketPulseSpread } from '@/lib/api'
+import { api, type MarketPulseResponse, type MarketPulseSpread, type NuclearHeatRiskResponse } from '@/lib/api'
 
 export const Route = createFileRoute('/')({
   component: LandingPage,
@@ -221,6 +221,13 @@ function MarketPulse() {
     refetchOnWindowFocus: false,
   })
 
+  const { data: heatRisk } = useQuery<NuclearHeatRiskResponse>({
+    queryKey: ['gen-heat-risk'],
+    queryFn: api.genHeatRisk,
+    staleTime: 60 * 60_000,
+    refetchOnWindowFocus: false,
+  })
+
   if (isLoading || !data) {
     return (
       <div className="h-14 flex items-center">
@@ -303,6 +310,28 @@ function MarketPulse() {
             unit="EUR/MWh"
           />
         )}
+
+        {/* Nuclear heat risk - only shown when warning or critical */}
+        {heatRisk && (heatRisk.capacity_critical_mw > 0 || heatRisk.capacity_warning_mw > 0) && (() => {
+          const totalGw = ((heatRisk.capacity_critical_mw + heatRisk.capacity_warning_mw) / 1000).toFixed(1)
+          const isCritical = heatRisk.capacity_critical_mw > 0
+          return (
+            <>
+              <div className="w-px bg-border/30 self-stretch mx-0.5" />
+              <Link to="/generation">
+                <div className={`rounded-lg px-3 py-1.5 border cursor-pointer transition-opacity hover:opacity-80 ${isCritical ? 'bg-red-950/70 border-red-600/50' : 'bg-amber-950/70 border-amber-600/50'}`}>
+                  <div className="text-[10px] text-muted-foreground leading-tight">FR Nuclear</div>
+                  <div className={`text-xs font-semibold leading-tight ${isCritical ? 'text-red-300' : 'text-amber-300'}`}>
+                    {totalGw} GW at risk
+                  </div>
+                  <div className={`text-[10px] leading-tight ${isCritical ? 'text-red-400' : 'text-amber-400'}`}>
+                    {isCritical ? 'CRITICAL' : 'WARNING'}
+                  </div>
+                </div>
+              </Link>
+            </>
+          )
+        })()}
       </div>
     </section>
   )

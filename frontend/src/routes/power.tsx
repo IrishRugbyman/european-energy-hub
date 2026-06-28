@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { X } from 'lucide-react'
-import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow, type EuCfLatestResponse } from '@/lib/api'
+import { api, type PowerLatestRow, type GenMapItem, type DivergenceLatestRow, type CongestionRow, type EuCfLatestResponse, type NuclearHeatRiskResponse } from '@/lib/api'
 import { EuroMap, type MapMetric, isPriceMetric, zoneColor } from '@/components/map/EuroMap'
 import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
@@ -273,6 +273,13 @@ function MapDashboard() {
     queryFn: api.powerCfMap,
     staleTime: 6 * 60 * 60 * 1000,
     enabled: metric === 'wind_cf' || metric === 'solar_cf',
+  })
+
+  const { data: heatRiskData } = useQuery<NuclearHeatRiskResponse>({
+    queryKey: ['gen-heat-risk'],
+    queryFn: api.genHeatRisk,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
   })
 
   const powerByZone: Record<string, PowerLatestRow> = {}
@@ -575,6 +582,34 @@ function MapDashboard() {
       </div>
 
       <StaleBanner datasetKey="power" />
+
+      {/* Nuclear heat risk alert - shown when any FR plant is at warning or critical */}
+      {heatRiskData && (heatRiskData.capacity_critical_mw > 0 || heatRiskData.capacity_warning_mw > 0) && (() => {
+        const critPlants = heatRiskData.plants.filter((p) => p.alert_level === 'critical')
+        const warnPlants = heatRiskData.plants.filter((p) => p.alert_level === 'warning')
+        const totalAtRisk = heatRiskData.capacity_critical_mw + heatRiskData.capacity_warning_mw
+        const isCritical = heatRiskData.capacity_critical_mw > 0
+        const bgClass = isCritical
+          ? 'bg-red-950/80 border-red-600/60 text-red-200'
+          : 'bg-amber-950/80 border-amber-600/60 text-amber-200'
+        const label = isCritical ? 'CRITICAL' : 'WARNING'
+        const labelClass = isCritical ? 'text-red-400' : 'text-amber-400'
+        const plantSummary = critPlants.length > 0
+          ? critPlants.slice(0, 3).map((p) => `${p.plant_name} (${p.temp_max_c?.toFixed(1)}°C)`).join(', ')
+          : warnPlants.slice(0, 3).map((p) => `${p.plant_name} (${p.temp_max_c?.toFixed(1)}°C)`).join(', ')
+        return (
+          <a
+            href="/generation"
+            className={`absolute top-2 left-1/2 -translate-x-1/2 z-[999] flex items-center gap-2 px-3 py-1.5 rounded-lg border backdrop-blur-sm text-xs cursor-pointer hover:opacity-90 transition-opacity whitespace-nowrap ${bgClass}`}
+          >
+            <span className={`font-bold text-[11px] ${labelClass}`}>FR NUCLEAR {label}</span>
+            <span className="text-muted-foreground hidden sm:inline">|</span>
+            <span className="hidden sm:inline">{(totalAtRisk / 1000).toFixed(1)} GW at risk</span>
+            <span className="text-muted-foreground hidden md:inline">|</span>
+            <span className="hidden md:inline">{plantSummary}</span>
+          </a>
+        )
+      })()}
 
       {/* Side panel */}
       {panelOpen && (
