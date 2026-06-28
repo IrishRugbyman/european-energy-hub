@@ -1,5 +1,11 @@
 # Energy Hub Changelog
 
+## 2026-06-28 - Phase 69: EU gas storage deviation vs TTF fundamental scatter on /prices
+
+**Built:** `GET /api/prices/storage-ttf` returning 1953 daily observations of EU storage deviation (fill_pct minus 5yr DOY-adjusted average from `storage_seasonal`) joined to TTF front-month, with full-sample OLS regression and rolling 90d Pearson correlation. Added `StorageTtfFundamentalSection` on the /prices page with season-colored scatter (winter/spring/summer/autumn), current-point highlight, rolling correlation chart, OLS coefficient display, and current residual analysis.
+
+**Finding:** OLS slope = -1.686 EUR/MWh per pp of storage deviation (full sample Pearson = -0.437). When storage is 10.9pp below 5yr avg (current state), OLS implies TTF should be 70.0 EUR/MWh - but actual TTF is 40.8 EUR/MWh (residual = -29.2, i.e., TTF is 29 EUR/MWh below the linear prediction). This reflects the market's revised pricing of scarcity risk post-2022: improved LNG access and demand destruction mean the 2022 crisis-level panic premium is no longer being fully repriced for equivalent storage deficits. The 2022 outlier dominates the OLS slope; recent 2024-2026 data form a distinct lower cluster. The OLS sensitivity is the marginal price for intrinsic gas storage value: a 1pp round-trip injection/withdrawal cycle would yield ~1.69 EUR/MWh gross (before operating costs). 117 tests.
+
 ## 2026-06-28 - Phase 68: Zone signal correlation heatmap + portfolio concentration risk on /spreads
 
 **Built:** `GET /api/spreads/zone-signal-correlations` and `ZoneSignalCorrelationSection` on /spreads. Measures pairwise Pearson correlations between the 5 fundamental zone OOS z-scores (computed by running `_nonlinear_signal_pnl` for each zone). Returns full-sample matrix, last-30d matrix, rolling 30d average pairwise concentration metric, and top 6 pairs ranked by largest full-sample vs 30d divergence. Alert fires when average pairwise 30d correlation exceeds 0.65.
