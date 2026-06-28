@@ -1215,8 +1215,35 @@ export const api = {
   spreadsStorageFactorTest: (zone?: string) => get<StorageFactorTestResponse>(`/spreads/storage-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsLoadErrorFactorTest: (zone?: string) => get<LoadErrorFactorTestResponse>(`/spreads/load-error-factor-test${zone ? `?zone=${zone}` : ''}`),
   spreadsZoneSignalCorrelations: () => get<ZoneSignalCorrelationResponse>('/spreads/zone-signal-correlations'),
+  spreadsRegimeConditionalPnl: () => get<RegimeConditionalResponse>('/spreads/regime-conditional-pnl'),
   pricesStorageTtf: () => get<StorageTtfFundamentalResponse>('/prices/storage-ttf'),
   pricesFuelSwitchingEua: () => get<FuelSwitchingEuaResponse>('/prices/fuel-switching-eua'),
+}
+
+// Phase 71: Regime-conditional signal P&L
+export interface RegimeStats {
+  n: number
+  sharpe: number
+  avg_daily: number
+  cum_pnl: number
+}
+
+export interface RegimeConditionalZoneRow {
+  zone: string
+  gas?: RegimeStats
+  coal?: RegimeStats
+  transition?: RegimeStats
+}
+
+export interface RegimeConditionalResponse {
+  as_of: string
+  current_regime: string
+  current_fss: number
+  fss_threshold: number
+  zones: RegimeConditionalZoneRow[]
+  portfolio_gas?: RegimeStats
+  portfolio_coal?: RegimeStats
+  portfolio_transition?: RegimeStats
 }
 
 // Phase 70: Fuel-switching EUA indicator

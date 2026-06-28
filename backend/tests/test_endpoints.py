@@ -1634,6 +1634,27 @@ def test_spreads_storage_factor_test(client):
     assert data["corr_window"] == 60
 
 
+def test_spreads_regime_conditional_pnl(client):
+    r = client.get("/api/spreads/regime-conditional-pnl")
+    assert r.status_code == 200
+    data = r.json()
+    assert "current_regime" in data
+    assert data["current_regime"] in ("gas", "coal", "transition")
+    assert isinstance(data["current_fss"], float)
+    assert "zones" in data and len(data["zones"]) >= 1
+    z = data["zones"][0]
+    assert "zone" in z
+    for regime_key in ("gas", "coal"):
+        if z.get(regime_key):
+            rs = z[regime_key]
+            assert "n" in rs and "sharpe" in rs and "avg_daily" in rs
+            assert rs["n"] > 0
+    # Portfolio keys
+    if data.get("portfolio_coal"):
+        assert data["portfolio_coal"]["sharpe"] > 0
+    assert isinstance(data["fss_threshold"], float)
+
+
 def test_prices_fuel_switching_eua(client):
     r = client.get("/api/prices/fuel-switching-eua")
     assert r.status_code == 200

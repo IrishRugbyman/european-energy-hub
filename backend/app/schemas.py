@@ -1874,6 +1874,32 @@ class LoadErrorFactorTestResponse(BaseModel):
     corr_window: int
 
 
+# Phase 71: Regime-conditional signal P&L
+class RegimeStats(BaseModel):
+    n: int
+    sharpe: float
+    avg_daily: float
+    cum_pnl: float
+
+
+class RegimeConditionalZoneRow(BaseModel):
+    zone: str
+    gas: RegimeStats | None = None
+    coal: RegimeStats | None = None
+    transition: RegimeStats | None = None
+
+
+class RegimeConditionalResponse(BaseModel):
+    as_of: str
+    current_regime: str
+    current_fss: float
+    fss_threshold: float
+    zones: list[RegimeConditionalZoneRow]
+    portfolio_gas: RegimeStats | None = None
+    portfolio_coal: RegimeStats | None = None
+    portfolio_transition: RegimeStats | None = None
+
+
 # Phase 70: Fuel-switching EUA indicator
 class FuelSwitchingEuaPoint(BaseModel):
     date: str

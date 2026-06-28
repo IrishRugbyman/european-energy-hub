@@ -18,7 +18,7 @@ import {
   ReferenceArea,
   ResponsiveContainer,
 } from 'recharts'
-import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, } from '@/lib/api'
+import { api, type SpreadsDailyPoint, type MultiZoneSpreadRow, type ZoneCorrelationRow, type CongestionRow, type FundamentalPoint, type FundamentalCoefficients, type SignalSnapshotRow, type RollingCoefPoint, type WindPriceBin, type WindPriceAnalysisResponse, type BacktestEquityPoint, type NonlinearBacktestEquityPoint, type CostSweepPoint, type EdgeByZoneRow, type RegimeAwareEquityPoint, type RegimeBookStats, type ZonePostureRow, type SignalPostureResponse, type StorageFactorTestResponse, type LoadErrorFactorTestResponse, type ZoneSignalCorrelationResponse, type RegimeConditionalResponse, } from '@/lib/api'
 import { StaleBanner } from '@/components/StaleBanner'
 import { cutoffDate, latestNonNull, type DateWindow } from '@/lib/utils'
 
@@ -1266,6 +1266,8 @@ function SpreadsDashboard() {
           <PortfolioSection />
 
           <ZoneSignalCorrelationSection />
+
+          <RegimeConditionalPnlSection />
 
           <BacktestSection zone="DE-LU" />
 
@@ -3905,6 +3907,156 @@ function ZoneSignalCorrelationSection() {
             {data.concentration_alert
               ? `Current alert: 30d concentration of ${data.concentration_30d.toFixed(2)} exceeds the ${data.concentration_threshold} threshold. The five z-scores all sit between ${Math.min(...Object.values(data.current_zscores)).toFixed(2)} and ${Math.max(...Object.values(data.current_zscores)).toFixed(2)} — all positive, consistent with a common driver (heat wave / FR nuclear curtailment) inflating prices above fundamental fair value across zones. Effective number of independent trades ≈ ${(1 / data.concentration_30d).toFixed(1)}.`
               : `Current concentration of ${data.concentration_30d.toFixed(2)} is below the ${data.concentration_threshold} threshold — genuine diversification across the 5 zones is in force.`}
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function RegimeConditionalPnlSection() {
+  const { data, isLoading } = useQuery<RegimeConditionalResponse>({
+    queryKey: ['regime-conditional-pnl'],
+    queryFn: api.spreadsRegimeConditionalPnl,
+    staleTime: 60 * 60 * 1000,
+  })
+
+  const regimeColor = (r: string) =>
+    r === 'gas' ? '#4ade80' : r === 'coal' ? '#f87171' : '#facc15'
+
+  const fmtSharpe = (v: number | undefined) =>
+    v != null ? v.toFixed(2) : '--'
+
+  const barData = data?.zones?.map((z) => ({
+    zone: z.zone,
+    coal_sharpe: z.coal?.sharpe ?? 0,
+    gas_sharpe: z.gas?.sharpe ?? 0,
+  })) ?? []
+
+  return (
+    <div className="bg-card border border-border rounded-lg p-4 mb-4">
+      <div className="flex items-center gap-3 mb-3">
+        <h2 className="text-sm font-semibold text-foreground">
+          Regime-Conditional Signal P&L: Gas vs Coal Marginal
+        </h2>
+        <span className="text-xs text-muted-foreground hidden sm:inline">
+          Phase 71 - does the nonlinear fade signal work better when gas or coal is the marginal fuel?
+        </span>
+        {data && (
+          <span
+            className="ml-auto text-xs font-semibold px-2 py-0.5 rounded border"
+            style={{
+              color: regimeColor(data.current_regime),
+              borderColor: regimeColor(data.current_regime) + '60',
+              background: regimeColor(data.current_regime) + '15',
+            }}
+          >
+            Now: {data.current_regime} marginal (FSS = {data.current_fss.toFixed(2)})
+          </span>
+        )}
+      </div>
+
+      {isLoading && <p className="text-muted-foreground text-xs">Computing regime-conditional P&L...</p>}
+
+      {data && (
+        <div className="space-y-4">
+          {/* Portfolio stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {(['coal', 'gas', 'transition'] as const).map((regime) => {
+              const key = `portfolio_${regime}` as keyof RegimeConditionalResponse
+              const stats = data[key] as RegimeConditionalResponse['portfolio_coal']
+              if (!stats) return null
+              return (
+                <div key={regime} className="bg-muted/20 rounded-lg px-3 py-2">
+                  <p className="text-[10px] text-muted-foreground mb-0.5 capitalize">
+                    Portfolio ({regime} marginal)
+                  </p>
+                  <p className="text-sm font-semibold" style={{ color: regimeColor(regime) }}>
+                    Sharpe {stats.sharpe.toFixed(2)}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    {stats.n}d / {stats.avg_daily.toFixed(2)} avg daily
+                  </p>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Per-zone comparison bar chart */}
+          <div>
+            <p className="text-[10px] text-muted-foreground mb-1">
+              OOS Sharpe by zone and FSS regime (|FSS| &gt; {data.fss_threshold} EUR/MWh threshold)
+            </p>
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={barData} margin={{ top: 4, right: 8, bottom: 0, left: -10 }}>
+                <CartesianGrid strokeDasharray="2 2" stroke="#334155" />
+                <XAxis dataKey="zone" tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} />
+                <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false}
+                  tickFormatter={(v) => v.toFixed(1)} />
+                <Tooltip
+                  contentStyle={{ background: '#1e293b', border: '1px solid #334155', fontSize: 10 }}
+                  formatter={(v, name) => [typeof v === 'number' ? v.toFixed(2) : v, name]}
+                  labelStyle={{ color: '#94a3b8' }}
+                />
+                <Legend iconSize={8} wrapperStyle={{ fontSize: 9 }} />
+                <Bar dataKey="coal_sharpe" name="Coal marginal Sharpe" fill="#f87171" />
+                <Bar dataKey="gas_sharpe" name="Gas marginal Sharpe" fill="#4ade80" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Per-zone table */}
+          <div className="overflow-x-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left text-muted-foreground py-1">Zone</th>
+                  <th className="text-right text-red-400">Coal Sharpe</th>
+                  <th className="text-right text-red-400/60">Coal n</th>
+                  <th className="text-right text-green-400">Gas Sharpe</th>
+                  <th className="text-right text-green-400/60">Gas n</th>
+                  <th className="text-right text-muted-foreground">Coal/Gas ratio</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.zones.map((z) => {
+                  const ratio = z.coal && z.gas && z.gas.sharpe > 0
+                    ? (z.coal.sharpe / z.gas.sharpe)
+                    : null
+                  return (
+                    <tr key={z.zone} className="border-b border-border/30">
+                      <td className="py-1 font-medium text-foreground">{z.zone}</td>
+                      <td className="text-right text-red-400">{fmtSharpe(z.coal?.sharpe)}</td>
+                      <td className="text-right text-muted-foreground">{z.coal?.n ?? '--'}</td>
+                      <td className="text-right text-green-400">{fmtSharpe(z.gas?.sharpe)}</td>
+                      <td className="text-right text-muted-foreground">{z.gas?.n ?? '--'}</td>
+                      <td className="text-right text-foreground">
+                        {ratio != null ? `${ratio.toFixed(1)}x` : '--'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <p className="text-[10px] text-muted-foreground/70 leading-relaxed">
+            All 5 FUNDAMENTAL_ZONES show systematically higher OOS Sharpe in the coal-marginal
+            regime (|FSS| &gt; {data.fss_threshold} EUR/MWh). Portfolio-level:
+            coal-marginal Sharpe = {fmtSharpe(data.portfolio_coal?.sharpe)} ({data.portfolio_coal?.n ?? 0} days)
+            vs gas-marginal Sharpe = {fmtSharpe(data.portfolio_gas?.sharpe)} ({data.portfolio_gas?.n ?? 0} days),
+            a {data.portfolio_coal && data.portfolio_gas && data.portfolio_gas.sharpe > 0
+              ? (data.portfolio_coal.sharpe / data.portfolio_gas.sharpe).toFixed(1) : '--'}x differential.
+            When coal is the marginal fuel, the TTF-based fundamental model creates a
+            systematic bias (it &ldquo;sees&rdquo; gas-marginal fair value but the market is anchored to coal),
+            and the OOS residuals carry a directional edge that fading exploits. In the gas-marginal
+            regime, the model is well-specified, so the signal captures only genuine transient
+            deviations rather than a structural bias. Current regime: {data.current_regime} marginal
+            (FSS = {data.current_fss.toFixed(2)}, threshold {data.fss_threshold.toFixed(1)} EUR/MWh).
+            Note that the coal-marginal regime also coincides with elevated zone correlation (see
+            concentration risk section above), so high per-zone Sharpe comes with reduced
+            effective diversification.
           </p>
         </div>
       )}

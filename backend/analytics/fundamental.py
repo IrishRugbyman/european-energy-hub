@@ -3276,3 +3276,101 @@ def compute_zone_signal_correlations(query_fn: Callable) -> dict:
         "pairs": top_pairs,
         "current_zscores": current_zscores,
     }
+
+
+_FSS_GAS_THRESHOLD = 2.0    # EUR/MWh: FSS > 2 = gas marginal, FSS < -2 = coal marginal
+
+
+def compute_regime_conditional_pnl(query_fn: Callable) -> dict:
+    """Signal P&L split by fuel-switching regime (gas marginal vs coal marginal).
+
+    The FSS (fuel-switching spread = CSS - CDS) from spreads_daily determines the
+    marginal fuel for power generation. The OOS nonlinear fade signal's performance
+    varies by this regime:
+
+    - Coal marginal (FSS < -2): power prices anchor to coal+carbon cost, which
+      deviates systematically from the TTF-based fundamental model. This systematic
+      bias creates stronger fade opportunities.
+    - Gas marginal (FSS > +2): power prices track TTF tightly; fundamental model
+      is well-specified but there is less mispricing to exploit.
+    - Transition (|FSS| <= 2): fuel-switching is economically near-neutral.
+
+    Returns per-zone and portfolio-level Sharpe, avg daily P&L, and observation counts
+    for each regime, plus the current regime (from latest available FSS in the DB).
+    """
+    import duckdb as _duckdb
+
+    fss_raw = query_fn(
+        "SELECT price_date, fss FROM spreads_daily WHERE fss IS NOT NULL ORDER BY price_date"
+    )
+    if fss_raw is None or len(fss_raw) < 30:
+        return {}
+
+    fss_s = pd.Series(
+        fss_raw["fss"].to_numpy(),
+        index=pd.to_datetime(fss_raw["price_date"].astype(str)),
+    )
+
+    def _fss_regime(v: float) -> str:
+        if v > _FSS_GAS_THRESHOLD:
+            return "gas"
+        if v < -_FSS_GAS_THRESHOLD:
+            return "coal"
+        return "transition"
+
+    fss_regime = fss_s.map(_fss_regime)
+    current_regime = _fss_regime(float(fss_s.iloc[-1]))
+    current_fss = float(fss_s.iloc[-1])
+
+    zone_results: list[dict] = []
+    portfolio_pnl_by_regime: dict[str, list[float]] = {"gas": [], "coal": [], "transition": []}
+
+    for zone in FUNDAMENTAL_ZONES:
+        sig = _nonlinear_signal_pnl(query_fn, zone, FUNDAMENTAL_SOURCE)
+        if sig is None or len(sig["gross_nl"]) < 30:
+            continue
+        net = pd.Series(
+            [g - EDGE_NET_COST * t for g, t in zip(sig["gross_nl"], sig["to_nl"])],
+            index=pd.to_datetime(sig["dates"]),
+        )
+        aligned_regime = fss_regime.reindex(net.index).fillna("transition")
+        zone_row: dict = {"zone": zone, "regimes": {}}
+        for regime in ["gas", "coal", "transition"]:
+            mask = aligned_regime == regime
+            subset = net[mask]
+            if len(subset) < 5:
+                continue
+            sharpe = float(subset.mean() / subset.std() * np.sqrt(252)) if subset.std() > 0 else 0.0
+            zone_row["regimes"][regime] = {
+                "n": int(mask.sum()),
+                "sharpe": round(sharpe, 2),
+                "avg_daily": round(float(subset.mean()), 3),
+                "cum_pnl": round(float(subset.sum()), 2),
+            }
+            portfolio_pnl_by_regime[regime].extend(subset.tolist())
+        zone_results.append(zone_row)
+
+    if not zone_results:
+        return {}
+
+    portfolio_regime: dict[str, dict] = {}
+    for regime, vals in portfolio_pnl_by_regime.items():
+        if not vals:
+            continue
+        arr = np.array(vals)
+        sharpe = float(arr.mean() / arr.std() * np.sqrt(252)) if arr.std() > 0 else 0.0
+        portfolio_regime[regime] = {
+            "n": len(vals),
+            "sharpe": round(sharpe, 2),
+            "avg_daily": round(float(arr.mean()), 3),
+            "cum_pnl": round(float(arr.sum()), 2),
+        }
+
+    return {
+        "as_of": fss_s.index[-1].strftime("%Y-%m-%d"),
+        "current_regime": current_regime,
+        "current_fss": round(current_fss, 2),
+        "fss_threshold": _FSS_GAS_THRESHOLD,
+        "zones": zone_results,
+        "portfolio": portfolio_regime,
+    }
