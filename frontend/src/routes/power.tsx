@@ -546,7 +546,7 @@ function MapDashboard() {
               <StatChip label="EU carbon intensity" value={`${weightedCI} gCO₂/kWh`} />
             )}
             {metric === 'hydro_fill' && hydroData && (
-              <>
+              <div className="flex flex-wrap gap-3 items-center text-xs text-muted-foreground px-3 py-2">
                 <span className="font-semibold text-foreground text-xs">Hydro vs 5yr avg</span>
                 {['NO', 'SE', 'ES', 'FR'].map((cc) => {
                   const row = hydroData.countries.find((c) => c.country === cc)
@@ -573,7 +573,7 @@ function MapDashboard() {
                     </span>
                   )
                 })()}
-              </>
+              </div>
             )}
             {priceDate && !isHistorical && (
               <span className="text-muted-foreground text-xs">{priceDate}</span>
