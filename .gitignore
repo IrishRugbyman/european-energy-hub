@@ -15,3 +15,6 @@ frontend/.vite/
 
 .playwright-mcp/
 backend/.venv
+
+# Personal interview-prep notes: local only, never committed.
+docs/INTERVIEW_PREP_*.md
