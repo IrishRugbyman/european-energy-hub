@@ -344,7 +344,7 @@ function RegionPanel({
                 contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
                 formatter={(val: unknown, name: unknown) => {
                   const v = typeof val === 'number' ? val : null
-                  const n = String(name ?? '')
+                  const n = typeof name === 'string' ? name : ''
                   if (n === 'ng_mwh') return [v != null ? `${fmt(v)} MWh` : '--', 'Natural Gas']
                   return [v != null ? `${fmt(v)} MWh` : '--', n]
                 }}

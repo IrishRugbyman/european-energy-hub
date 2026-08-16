@@ -20,7 +20,6 @@ import logging
 import os
 import re
 import time
-import urllib.request
 from pathlib import Path
 
 import requests as req_lib
@@ -35,33 +34,109 @@ CLEANVIEW_BASE = "https://cleanview.co"
 OUTPUT_PATH = Path(__file__).parent.parent / "data" / "us_ng_plants.json"
 
 STATES = [
-    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
-    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
-    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
-    "maine", "maryland", "massachusetts", "michigan", "minnesota",
-    "mississippi", "missouri", "montana", "nebraska", "nevada",
-    "new-hampshire", "new-jersey", "new-mexico", "new-york",
-    "north-carolina", "north-dakota", "ohio", "oklahoma", "oregon",
-    "pennsylvania", "rhode-island", "south-carolina", "south-dakota",
-    "tennessee", "texas", "utah", "vermont", "virginia", "washington",
-    "west-virginia", "wisconsin", "wyoming",
+    "alabama",
+    "alaska",
+    "arizona",
+    "arkansas",
+    "california",
+    "colorado",
+    "connecticut",
+    "delaware",
+    "florida",
+    "georgia",
+    "hawaii",
+    "idaho",
+    "illinois",
+    "indiana",
+    "iowa",
+    "kansas",
+    "kentucky",
+    "louisiana",
+    "maine",
+    "maryland",
+    "massachusetts",
+    "michigan",
+    "minnesota",
+    "mississippi",
+    "missouri",
+    "montana",
+    "nebraska",
+    "nevada",
+    "new-hampshire",
+    "new-jersey",
+    "new-mexico",
+    "new-york",
+    "north-carolina",
+    "north-dakota",
+    "ohio",
+    "oklahoma",
+    "oregon",
+    "pennsylvania",
+    "rhode-island",
+    "south-carolina",
+    "south-dakota",
+    "tennessee",
+    "texas",
+    "utah",
+    "vermont",
+    "virginia",
+    "washington",
+    "west-virginia",
+    "wisconsin",
+    "wyoming",
 ]
 
 STATE_SLUG_TO_ABBR = {
-    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
-    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
-    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
-    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
-    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
-    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN",
-    "mississippi": "MS", "missouri": "MO", "montana": "MT", "nebraska": "NE",
-    "nevada": "NV", "new-hampshire": "NH", "new-jersey": "NJ",
-    "new-mexico": "NM", "new-york": "NY", "north-carolina": "NC",
-    "north-dakota": "ND", "ohio": "OH", "oklahoma": "OK", "oregon": "OR",
-    "pennsylvania": "PA", "rhode-island": "RI", "south-carolina": "SC",
-    "south-dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
-    "vermont": "VT", "virginia": "VA", "washington": "WA",
-    "west-virginia": "WV", "wisconsin": "WI", "wyoming": "WY",
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new-hampshire": "NH",
+    "new-jersey": "NJ",
+    "new-mexico": "NM",
+    "new-york": "NY",
+    "north-carolina": "NC",
+    "north-dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode-island": "RI",
+    "south-carolina": "SC",
+    "south-dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west-virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
 }
 
 PLANT_URL_RE = re.compile(
@@ -84,7 +159,7 @@ def fetch_html(url: str) -> str:
         except Exception as exc:
             if attempt == 2:
                 logger.warning(f"  fetch {url}: {exc!r}")
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     return ""
 
 
@@ -101,13 +176,15 @@ def scrape_cleanview_state(state_slug: str) -> list[dict]:
             continue
         seen.add(plant_id)
         category = "largest" if len(results) < 9 else "recent"
-        results.append({
-            "plant_id": int(plant_id),
-            "slug": slug,
-            "state_slug": state_slug,
-            "state_abbr": STATE_SLUG_TO_ABBR.get(state_slug, ""),
-            "category": category,
-        })
+        results.append(
+            {
+                "plant_id": int(plant_id),
+                "slug": slug,
+                "state_slug": state_slug,
+                "state_abbr": STATE_SLUG_TO_ABBR.get(state_slug, ""),
+                "category": category,
+            }
+        )
     logger.info(f"  {state_slug}: {len(results)} plants")
     return results
 
@@ -126,8 +203,13 @@ def eia_get_all_ng_plants() -> dict[int, dict]:
             f"{EIA_BASE}/electricity/operating-generator-capacity/data/",
             params={
                 "api_key": EIA_KEY,
-                "data[]": ["nameplate-capacity-mw", "latitude", "longitude",
-                           "county", "operating-year-month"],
+                "data[]": [
+                    "nameplate-capacity-mw",
+                    "latitude",
+                    "longitude",
+                    "county",
+                    "operating-year-month",
+                ],
                 "frequency": "monthly",
                 "facets[energy_source_code][]": "NG",
                 "facets[status][]": "OP",
@@ -273,36 +355,42 @@ def main() -> None:
             continue
         cv = cv_by_id[pid]
         gen_gwh = generation.get(pid)
-        plants.append({
-            "plant_id": pid,
-            "name": loc["plant_name"] or cv["slug"].replace("-", " ").title(),
-            "state": loc["state"],
-            "county": loc["county"],
-            "lat": loc["lat"],
-            "lon": loc["lon"],
-            "nameplate_mw": loc["nameplate_mw"],
-            "entity_name": loc["entity_name"],
-            "ba_code": loc["ba_code"],
-            "op_year": loc["op_year"],
-            "gen_gwh": gen_gwh,  # annual net generation (GWh)
-            "category": cv["category"],  # 'largest' or 'recent' (cleanview curation)
-            "cleanview_url": (
-                f"https://cleanview.co/power-projects/operating/"
-                f"natural-gas-power-plants/{cv['state_slug']}/{pid}/{cv['slug']}"
-            ),
-        })
+        plants.append(
+            {
+                "plant_id": pid,
+                "name": loc["plant_name"] or cv["slug"].replace("-", " ").title(),
+                "state": loc["state"],
+                "county": loc["county"],
+                "lat": loc["lat"],
+                "lon": loc["lon"],
+                "nameplate_mw": loc["nameplate_mw"],
+                "entity_name": loc["entity_name"],
+                "ba_code": loc["ba_code"],
+                "op_year": loc["op_year"],
+                "gen_gwh": gen_gwh,  # annual net generation (GWh)
+                "category": cv["category"],  # 'largest' or 'recent' (cleanview curation)
+                "cleanview_url": (
+                    f"https://cleanview.co/power-projects/operating/"
+                    f"natural-gas-power-plants/{cv['state_slug']}/{pid}/{cv['slug']}"
+                ),
+            }
+        )
 
     plants.sort(key=lambda p: p.get("nameplate_mw") or 0, reverse=True)
-    logger.info(f"Final: {len(plants)} plants with coordinates ({no_coords} skipped - no EIA coords)")
+    logger.info(
+        f"Final: {len(plants)} plants with coordinates ({no_coords} skipped - no EIA coords)"
+    )
 
     OUTPUT_PATH.parent.mkdir(exist_ok=True)
     OUTPUT_PATH.write_text(json.dumps({"plants": plants, "count": len(plants)}, indent=2))
     logger.info(f"Written to {OUTPUT_PATH}")
 
-    print(f"\nTop 10 by nameplate capacity:")
+    print("\nTop 10 by nameplate capacity:")
     for p in plants[:10]:
         gen_s = f"{p['gen_gwh']:,} GWh" if p["gen_gwh"] else "n/a"
-        print(f"  {p['name']:<40} {p['state']}  {p['nameplate_mw']:6.0f} MW  {gen_s}  [{p['ba_code']}]")
+        print(
+            f"  {p['name']:<40} {p['state']}  {p['nameplate_mw']:6.0f} MW  {gen_s}  [{p['ba_code']}]"
+        )
 
 
 if __name__ == "__main__":

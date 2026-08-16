@@ -1010,7 +1010,7 @@ function SpreadMonthlySeasonalityChart({ rows }: { rows: SpreadsDailyPoint[] }) 
         const months = Object.keys(sums[yr]).length
         return months >= 3
       })
-      .sort()
+      .sort((a, b) => a - b)
 
     const data = MONTH_ABBR.map((abbr, i) => {
       const mo = i + 1
@@ -1082,7 +1082,6 @@ function SpreadMonthlySeasonalityChart({ rows }: { rows: SpreadsDailyPoint[] }) 
               stroke={SPREAD_YOY_YEAR_COLORS[yr] ?? '#94a3b8'}
               strokeWidth={yr === curYear ? 2 : 1.5}
               dot={false}
-              strokeDasharray={yr === curYear ? undefined : undefined}
               connectNulls
             />
           ))}
@@ -5481,7 +5480,7 @@ function NegPriceAnnualSection() {
   // Build chart rows: one entry per zone, with year columns
   const years = Array.from(
     new Set(zones.flatMap((z: NegPriceAnnualZone) => z.years.map((y: NegPriceAnnualYear) => y.year)))
-  ).sort() as number[]
+  ).sort((a, b) => a - b) as number[]
 
   // Grouped bar chart: x = zone, bars = one per year
   type ChartRow = Record<string, number | string | null>
@@ -5817,7 +5816,10 @@ function PeakOffpeakSection() {
   if (isLoading || !data) return null
 
   const zones = data.zones
-  const allMonths = Array.from(new Set(data.data.map((p: PeakOffpeakPoint) => p.month))).sort() as string[]
+  // month is 'YYYY-MM', so lexicographic order is chronological order.
+  const allMonths = Array.from(new Set(data.data.map((p: PeakOffpeakPoint) => p.month))).sort((a, b) =>
+    a.localeCompare(b)
+  ) as string[]
 
   // Build recharts-compatible rows: one entry per month
   type ChartRow = Record<string, number | string | null>

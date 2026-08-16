@@ -11,7 +11,7 @@ Queries energy_hub.duckdb read-only via db.query() -- no refresh dependency.
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 import numpy as np
 import pandas as pd
@@ -36,7 +36,9 @@ OLS_WINDOW = 365
 ZSCORE_WINDOW = 30
 
 
-def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_fundamental_model(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Compute OLS fundamental value model for a zone.
 
     Joins power_daily + prices_daily + generation_forecast_daily, fits:
@@ -71,13 +73,15 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
 
     # Fit OLS on the most recent OLS_WINDOW rows
     fit_df = df.tail(OLS_WINDOW)
-    X = np.column_stack([
-        np.ones(len(fit_df)),
-        fit_df["ttf_eur_mwh"].values,
-        fit_df["eua_eur_t"].values,
-        fit_df["wind_pct"].values,
-        fit_df["solar_pct"].values,
-    ])
+    X = np.column_stack(
+        [
+            np.ones(len(fit_df)),
+            fit_df["ttf_eur_mwh"].values,
+            fit_df["eua_eur_t"].values,
+            fit_df["wind_pct"].values,
+            fit_df["solar_pct"].values,
+        ]
+    )
     y = fit_df["base_eur"].values
     coefs, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
     b0, b1_ttf, b2_eua, b3_wind, b4_solar = coefs
@@ -89,20 +93,22 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
     r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
 
     # Compute fitted + residual for the full series (out-of-sample before fit window)
-    X_all = np.column_stack([
-        np.ones(len(df)),
-        df["ttf_eur_mwh"].values,
-        df["eua_eur_t"].values,
-        df["wind_pct"].values,
-        df["solar_pct"].values,
-    ])
+    X_all = np.column_stack(
+        [
+            np.ones(len(df)),
+            df["ttf_eur_mwh"].values,
+            df["eua_eur_t"].values,
+            df["wind_pct"].values,
+            df["solar_pct"].values,
+        ]
+    )
     fitted = X_all @ coefs
     residual = df["base_eur"].values - fitted
 
     # Rolling 30-day z-score of residual (standardized by rolling mean + std)
     res_series = pd.Series(residual)
     roll_mean = res_series.rolling(ZSCORE_WINDOW, min_periods=10).mean()
-    roll_std  = res_series.rolling(ZSCORE_WINDOW, min_periods=10).std()
+    roll_std = res_series.rolling(ZSCORE_WINDOW, min_periods=10).std()
     zscore = ((res_series - roll_mean) / roll_std.replace(0, np.nan)).fillna(0)
 
     series = [
@@ -124,7 +130,7 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
     latest_fitted = float(fitted[-1]) if len(fitted) else 0.0
 
     # Percentile rank of residual in the trailing 365-day window
-    trail = residual[max(0, len(residual) - OLS_WINDOW):]
+    trail = residual[max(0, len(residual) - OLS_WINDOW) :]
     if len(trail) > 1:
         pct_rank = int(round(100 * np.mean(trail < latest_residual)))
     else:
@@ -132,7 +138,7 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
 
     # AR(1) half-life of residual: fit residual(t) = a + b * residual(t-1)
     # Use the fit-window residuals (last OLS_WINDOW rows)
-    fit_res = residual[max(0, len(residual) - OLS_WINDOW):]
+    fit_res = residual[max(0, len(residual) - OLS_WINDOW) :]
     half_life_days: float | None = None
     if len(fit_res) > 20:
         y_ar = fit_res[1:]
@@ -150,30 +156,34 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
     two_yr_df = df.tail(OLS_WINDOW * 2)
     rolling_coefs = []
     for end in range(ROLL_WIN, len(two_yr_df) + 1, STEP):
-        win = two_yr_df.iloc[end - ROLL_WIN:end]
+        win = two_yr_df.iloc[end - ROLL_WIN : end]
         if win.empty or win["base_eur"].isna().any():
             continue
-        Xw = np.column_stack([
-            np.ones(len(win)),
-            win["ttf_eur_mwh"].values,
-            win["eua_eur_t"].values,
-            win["wind_pct"].values,
-            win["solar_pct"].values,
-        ])
+        Xw = np.column_stack(
+            [
+                np.ones(len(win)),
+                win["ttf_eur_mwh"].values,
+                win["eua_eur_t"].values,
+                win["wind_pct"].values,
+                win["solar_pct"].values,
+            ]
+        )
         yw = win["base_eur"].values
         cw, _, _, _ = np.linalg.lstsq(Xw, yw, rcond=None)
         yw_pred = Xw @ cw
         ss_r = np.sum((yw - yw_pred) ** 2)
         ss_t = np.sum((yw - yw.mean()) ** 2)
         r2w = float(1 - ss_r / ss_t) if ss_t > 0 else 0.0
-        rolling_coefs.append({
-            "date": two_yr_df.iloc[end - 1]["price_date"].strftime("%Y-%m-%d"),
-            "ttf_eur_mwh": round(float(cw[1]), 4),
-            "eua_eur_t": round(float(cw[2]), 4),
-            "wind_pct": round(float(cw[3]), 4),
-            "solar_pct": round(float(cw[4]), 4),
-            "r2": round(r2w, 4),
-        })
+        rolling_coefs.append(
+            {
+                "date": two_yr_df.iloc[end - 1]["price_date"].strftime("%Y-%m-%d"),
+                "ttf_eur_mwh": round(float(cw[1]), 4),
+                "eua_eur_t": round(float(cw[2]), 4),
+                "wind_pct": round(float(cw[3]), 4),
+                "solar_pct": round(float(cw[4]), 4),
+                "r2": round(r2w, 4),
+            }
+        )
 
     return {
         "zone": zone,
@@ -201,17 +211,19 @@ def compute_fundamental_model(query_fn: Callable, zone: str = "DE-LU", source: s
 
 # Wind bin breakpoints and labels (ascending wind_pct)
 _WIND_BINS = [
-    (0,   5,  "0-5%",   1),
-    (5,   10, "5-10%",  2),
-    (10,  15, "10-15%", 3),
-    (15,  20, "15-20%", 4),
-    (20,  25, "20-25%", 5),
-    (25,  35, "25-35%", 6),
-    (35, 100, "35%+",   7),
+    (0, 5, "0-5%", 1),
+    (5, 10, "5-10%", 2),
+    (10, 15, "10-15%", 3),
+    (15, 20, "15-20%", 4),
+    (20, 25, "20-25%", 5),
+    (25, 35, "25-35%", 6),
+    (35, 100, "35%+", 7),
 ]
 
 
-def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_wind_price_analysis(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Compute wind-price nonlinearity analysis: per-bin price stats and OLS residuals.
 
     Bins days by wind penetration, shows median/mean/std price per bin, then computes
@@ -251,8 +263,16 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU", source:
     if rows is None or rows.empty:
         return {}
 
-    df = rows.copy().dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"])
-    df["fitted"] = b0 + b1 * df["ttf_eur_mwh"] + b2 * df["eua_eur_t"] + b3 * df["wind_pct"] + b4 * df["solar_pct"]
+    df = rows.copy().dropna(
+        subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct"]
+    )
+    df["fitted"] = (
+        b0
+        + b1 * df["ttf_eur_mwh"]
+        + b2 * df["eua_eur_t"]
+        + b3 * df["wind_pct"]
+        + b4 * df["solar_pct"]
+    )
     df["residual"] = df["base_eur"] - df["fitted"]
 
     result_bins = []
@@ -261,18 +281,20 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU", source:
         sub = df[mask]
         if sub.empty:
             continue
-        result_bins.append({
-            "wind_bin": label,
-            "bin_order": order,
-            "wind_lo": lo,
-            "wind_hi": hi,
-            "n": int(len(sub)),
-            "median_price": round(float(sub["base_eur"].median()), 1),
-            "mean_price": round(float(sub["base_eur"].mean()), 1),
-            "std_price": round(float(sub["base_eur"].std()), 1),
-            "mean_residual": round(float(sub["residual"].mean()), 1),
-            "median_residual": round(float(sub["residual"].median()), 1),
-        })
+        result_bins.append(
+            {
+                "wind_bin": label,
+                "bin_order": order,
+                "wind_lo": lo,
+                "wind_hi": hi,
+                "n": int(len(sub)),
+                "median_price": round(float(sub["base_eur"].median()), 1),
+                "mean_price": round(float(sub["base_eur"].mean()), 1),
+                "std_price": round(float(sub["base_eur"].std()), 1),
+                "mean_residual": round(float(sub["residual"].mean()), 1),
+                "median_residual": round(float(sub["residual"].median()), 1),
+            }
+        )
 
     # Key metrics for interpretation
     low_bin = next((b for b in result_bins if b["wind_lo"] < 5), None)
@@ -300,7 +322,9 @@ def compute_wind_price_analysis(query_fn: Callable, zone: str = "DE-LU", source:
     }
 
 
-def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_fundamental_backtest(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Backtest of the z-score mean-reversion signal.
 
     Strategy: continuous position = -zscore(t-1) (short when overbought, long when
@@ -404,8 +428,9 @@ def compute_fundamental_backtest(query_fn: Callable, zone: str = "DE-LU", source
 LOW_WIND_KNOT_PCT = 8.0
 
 # Walk-forward settings for the nonlinear vs linear comparison.
-WF_MIN_TRAIN = 250   # minimum training rows before the first OOS prediction
-WF_MAX_OOS = 730     # cap OOS evaluation window (days) to bound response + compute
+WF_MIN_TRAIN = 250  # minimum training rows before the first OOS prediction
+WF_MAX_OOS = 730  # cap OOS evaluation window (days) to bound response + compute
+
 
 def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE):
     """Load the daily fair-value design inputs for one zone from energy_hub.duckdb.
@@ -425,7 +450,8 @@ def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUN
     else:
         raise ValueError(f"unknown feature source {source!r}")
     try:
-        return query_fn(f"""
+        return query_fn(
+            f"""
             SELECT
                 p.price_date,
                 p.base_eur,
@@ -445,7 +471,9 @@ def _fetch_fundamental_features(query_fn: Callable, zone: str, source: str = FUN
               AND g.{wind_col} IS NOT NULL
               AND g.{solar_col} IS NOT NULL
             ORDER BY p.price_date
-        """, [zone])
+        """,
+            [zone],
+        )
     except Exception as exc:
         logger.warning(f"fundamental feature fetch failed for {zone} ({source}): {exc!r}")
         return None
@@ -460,13 +488,24 @@ def _design_nonlinear(ttf, eua, wind, solar):
     """Nonlinear design matrix: linear terms plus a low-wind hinge, wind^2, solar^2,
     and a TTF x wind interaction. Captures the convexity OLS misses at low wind."""
     hinge = np.maximum(0.0, LOW_WIND_KNOT_PCT - wind)
-    return np.column_stack([
-        np.ones(len(ttf)), ttf, eua, wind, solar,
-        hinge, wind ** 2, solar ** 2, (ttf * wind) / 100.0,
-    ])
+    return np.column_stack(
+        [
+            np.ones(len(ttf)),
+            ttf,
+            eua,
+            wind,
+            solar,
+            hinge,
+            wind**2,
+            solar**2,
+            (ttf * wind) / 100.0,
+        ]
+    )
 
 
-def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_nonlinear_model(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Walk-forward comparison of a linear vs a nonlinear (basis-expansion) fair-value model.
 
     Both models regress the daily DA base price on TTF, EUA, wind%, solar%. The nonlinear
@@ -530,12 +569,16 @@ def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU", source: str
         if len(a) == 0:
             return {"rmse": None, "mae": None, "r2": None, "n": 0}
         err = a - p
-        rmse = float(np.sqrt(np.mean(err ** 2)))
+        rmse = float(np.sqrt(np.mean(err**2)))
         mae = float(np.mean(np.abs(err)))
         ss_tot = float(np.sum((a - a.mean()) ** 2))
-        r2 = float(1 - np.sum(err ** 2) / ss_tot) if ss_tot > 0 else None
-        return {"rmse": round(rmse, 2), "mae": round(mae, 2),
-                "r2": round(r2, 4) if r2 is not None else None, "n": int(len(a))}
+        r2 = float(1 - np.sum(err**2) / ss_tot) if ss_tot > 0 else None
+        return {
+            "rmse": round(rmse, 2),
+            "mae": round(mae, 2),
+            "r2": round(r2, 4) if r2 is not None else None,
+            "n": int(len(a)),
+        }
 
     low = w_oos < LOW_WIND_KNOT_PCT
     high = ~low
@@ -559,9 +602,11 @@ def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU", source: str
     improvement = {
         "rmse_pct": pct_drop(lin["overall"]["rmse"], nl["overall"]["rmse"]),
         "low_wind_rmse_pct": pct_drop(lin["low_wind"]["rmse"], nl["low_wind"]["rmse"]),
-        "r2_delta": (round(nl["overall"]["r2"] - lin["overall"]["r2"], 4)
-                     if lin["overall"]["r2"] is not None and nl["overall"]["r2"] is not None
-                     else None),
+        "r2_delta": (
+            round(nl["overall"]["r2"] - lin["overall"]["r2"], 4)
+            if lin["overall"]["r2"] is not None and nl["overall"]["r2"] is not None
+            else None
+        ),
     }
 
     # Full-sample fit of the nonlinear hinge coefficient: the EUR/MWh of extra price per
@@ -599,7 +644,9 @@ def compute_nonlinear_model(query_fn: Callable, zone: str = "DE-LU", source: str
 WF_SIGNAL_WINDOW = 30
 
 
-def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_nonlinear_backtest(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Trade the linear vs nonlinear residual signals out-of-sample and compare P&L.
 
     Phase 42 showed the nonlinear (hinge/polynomial) fair-value model recovers the
@@ -743,12 +790,14 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU", source: 
     # Always include the final point so the curve ends on the reported cum P&L.
     if equity and equity[-1]["date"] != eval_dates[-1]:
         last = len(pnl_lin) - 1
-        equity.append({
-            "date": eval_dates[last + 1],
-            "cum_linear": round(float(cum_lin[last]), 2),
-            "cum_nonlinear": round(float(cum_nl[last]), 2),
-            "wind_pct": round(float(w_pnl[last]), 1),
-        })
+        equity.append(
+            {
+                "date": eval_dates[last + 1],
+                "cum_linear": round(float(cum_lin[last]), 2),
+                "cum_nonlinear": round(float(cum_nl[last]), 2),
+                "wind_pct": round(float(w_pnl[last]), 1),
+            }
+        )
 
     # Look-ahead premium: re-run the same signal on REALISED generation (the old, peeking
     # feature set) and report how much of the gross nonlinear Sharpe was hindsight. The
@@ -765,8 +814,11 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU", source: 
                 "actual_nonlinear_sharpe": act_nl_sharpe,
                 "actual_linear_sharpe": act_lin_sharpe,
                 "forecast_nonlinear_sharpe": fc_nl_sharpe,
-                "premium_sharpe": (round(act_nl_sharpe - fc_nl_sharpe, 3)
-                                   if act_nl_sharpe is not None and fc_nl_sharpe is not None else None),
+                "premium_sharpe": (
+                    round(act_nl_sharpe - fc_nl_sharpe, 3)
+                    if act_nl_sharpe is not None and fc_nl_sharpe is not None
+                    else None
+                ),
             }
 
     return {
@@ -791,7 +843,9 @@ def compute_nonlinear_backtest(query_fn: Callable, zone: str = "DE-LU", source: 
 COST_GRID = [0.0, 0.02, 0.05, 0.075, 0.10, 0.15, 0.20, 0.30, 0.40, 0.50, 0.75, 1.0]
 
 
-def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_nonlinear_cost_robustness(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Charge transaction costs against the linear vs nonlinear residual signals.
 
     Phase 43 showed the nonlinear signal earns a higher *gross* Sharpe than the linear
@@ -870,7 +924,7 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU", s
     # price change), so we take the turnover of pos over the same [0 .. m-2] slice.
     def turnover(pos: np.ndarray) -> np.ndarray:
         d = np.abs(np.diff(pos, prepend=0.0))  # length m
-        return d[:-1]                          # align to pnl days (pos[:-1])
+        return d[:-1]  # align to pnl days (pos[:-1])
 
     to_lin = turnover(pos_lin)
     to_nl = turnover(pos_nl)
@@ -890,15 +944,19 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU", s
         s_nl = sharpe(net_nl)
         cum_lin = round(float(net_lin.sum()), 2)
         cum_nl = round(float(net_nl.sum()), 2)
-        sweep.append({
-            "cost": round(c, 3),
-            "linear_sharpe": s_lin,
-            "nonlinear_sharpe": s_nl,
-            "linear_cum_pnl": cum_lin,
-            "nonlinear_cum_pnl": cum_nl,
-            "sharpe_delta": round(s_nl - s_lin, 3) if s_lin is not None and s_nl is not None else None,
-            "cum_pnl_delta": round(cum_nl - cum_lin, 2),
-        })
+        sweep.append(
+            {
+                "cost": round(c, 3),
+                "linear_sharpe": s_lin,
+                "nonlinear_sharpe": s_nl,
+                "linear_cum_pnl": cum_lin,
+                "nonlinear_cum_pnl": cum_nl,
+                "sharpe_delta": round(s_nl - s_lin, 3)
+                if s_lin is not None and s_nl is not None
+                else None,
+                "cum_pnl_delta": round(cum_nl - cum_lin, 2),
+            }
+        )
 
     # Cumulative-P&L break-even is closed-form: net edge(c) = (G_nl - G_lin) - c(T_nl - T_lin).
     # It crosses zero at c* = (G_nl - G_lin) / (T_nl - T_lin) when the nonlinear signal both
@@ -913,7 +971,7 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU", s
     # Sharpe break-even: finest cost on the grid at which the nonlinear net Sharpe first
     # drops to or below the linear net Sharpe (scan a dense grid for the crossing).
     be_sharpe = None
-    fine = [round(0.0 + 0.01 * k, 3) for k in range(0, 101)]  # 0.00 .. 1.00 step 0.01
+    fine = [round(0.0 + 0.01 * k, 3) for k in range(101)]  # 0.00 .. 1.00 step 0.01
     for c in fine:
         s_lin = sharpe(gross_lin - c * to_lin)
         s_nl = sharpe(gross_nl - c * to_nl)
@@ -946,7 +1004,9 @@ def compute_nonlinear_cost_robustness(query_fn: Callable, zone: str = "DE-LU", s
 EDGE_NET_COST = 0.10
 
 
-def _nonlinear_signal_pnl(query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE) -> dict | None:
+def _nonlinear_signal_pnl(
+    query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE
+) -> dict | None:
     """Walk-forward both fair-value signals for one zone, return aligned P&L arrays.
 
     Shared core of the nonlinear backtest: refits the linear and nonlinear OLS models
@@ -1023,7 +1083,9 @@ def _nonlinear_signal_pnl(query_fn: Callable, zone: str, source: str = FUNDAMENT
     }
 
 
-def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_COST, source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_nonlinear_edge_by_zone(
+    query_fn: Callable, cost: float = EDGE_NET_COST, source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Cross-zone dose-response: does the nonlinear edge scale with wind penetration?
 
     The whole nonlinear arc rests on one claim - the nonlinear fair-value basis adds
@@ -1059,16 +1121,20 @@ def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_CO
         s_lin_n, s_nl_n = sharpe(gl - cost * tl), sharpe(gn - cost * tn)
         if s_lin_g is None or s_nl_g is None:
             continue
-        zones.append({
-            "zone": zone,
-            "mean_wind_pct": round(float(sig["w_pnl"].mean()), 2),
-            "n_eval": int(len(gl)),
-            "sharpe_lin": s_lin_g,
-            "sharpe_nl": s_nl_g,
-            "sharpe_delta_gross": round(s_nl_g - s_lin_g, 3),
-            "sharpe_delta_net": round(s_nl_n - s_lin_n, 3) if s_lin_n is not None and s_nl_n is not None else None,
-            "cum_pnl_delta_gross": round(float(gn.sum() - gl.sum()), 2),
-        })
+        zones.append(
+            {
+                "zone": zone,
+                "mean_wind_pct": round(float(sig["w_pnl"].mean()), 2),
+                "n_eval": int(len(gl)),
+                "sharpe_lin": s_lin_g,
+                "sharpe_nl": s_nl_g,
+                "sharpe_delta_gross": round(s_nl_g - s_lin_g, 3),
+                "sharpe_delta_net": round(s_nl_n - s_lin_n, 3)
+                if s_lin_n is not None and s_nl_n is not None
+                else None,
+                "cum_pnl_delta_gross": round(float(gn.sum() - gl.sum()), 2),
+            }
+        )
 
     if len(zones) < 2:
         return {}
@@ -1092,7 +1158,9 @@ def compute_nonlinear_edge_by_zone(query_fn: Callable, cost: float = EDGE_NET_CO
         "slope": slope,
         "intercept": intercept,
         "corr": corr,
-        "dose_response_holds": bool(slope is not None and slope > 0 and corr is not None and corr > 0),
+        "dose_response_holds": bool(
+            slope is not None and slope > 0 and corr is not None and corr > 0
+        ),
     }
 
 
@@ -1109,7 +1177,9 @@ WF_MOM_WINDOW = 10
 DROUGHT_PCTILE = 25.0
 
 
-def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_regime_aware_backtest(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Condition the fade on the live wind regime: fade in normal wind, ride trend in drought.
 
     The nonlinear arc (P42-P45) established that the contrarian residual fade earns alpha
@@ -1260,10 +1330,10 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU", sourc
     # loss? Yes if the regime-aware sub-knot Sharpe is materially less negative (or positive)
     # than both fade books, while not wrecking the normal-wind edge.
     ra_sub = ra_stats["sharpe_sub_knot"]
-    fade_subs = [s for s in (lin_stats["sharpe_sub_knot"], nl_stats["sharpe_sub_knot"]) if s is not None]
-    recovers_drought = bool(
-        ra_sub is not None and fade_subs and ra_sub > max(fade_subs) + 0.1
-    )
+    fade_subs = [
+        s for s in (lin_stats["sharpe_sub_knot"], nl_stats["sharpe_sub_knot"]) if s is not None
+    ]
+    recovers_drought = bool(ra_sub is not None and fade_subs and ra_sub > max(fade_subs) + 0.1)
 
     cum_lin = np.cumsum(pnl_lin)
     cum_nl = np.cumsum(pnl_nl)
@@ -1281,13 +1351,15 @@ def compute_regime_aware_backtest(query_fn: Callable, zone: str = "DE-LU", sourc
     ]
     if equity and equity[-1]["date"] != eval_dates[-1]:
         last = len(pnl_lin) - 1
-        equity.append({
-            "date": eval_dates[last + 1],
-            "cum_linear": round(float(cum_lin[last]), 2),
-            "cum_nonlinear": round(float(cum_nl[last]), 2),
-            "cum_regime_aware": round(float(cum_ra[last]), 2),
-            "wind_pct": round(float(w_pnl[last]), 1),
-        })
+        equity.append(
+            {
+                "date": eval_dates[last + 1],
+                "cum_linear": round(float(cum_lin[last]), 2),
+                "cum_nonlinear": round(float(cum_nl[last]), 2),
+                "cum_regime_aware": round(float(cum_ra[last]), 2),
+                "wind_pct": round(float(w_pnl[last]), 1),
+            }
+        )
 
     return {
         "zone": zone,
@@ -1329,7 +1401,9 @@ def _design_nonlinear_enriched(ttf, eua, wind, solar, resid_gw, dttf, nuclear_gw
     return np.column_stack([base, resid_gw, dttf, nuclear_gw])
 
 
-def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_enriched_model(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Walk-forward: does enriching the nonlinear fair value with residual demand + dTTF help?
 
     Phase 47 fixed the look-ahead by driving the fair value off day-ahead forecasts. This
@@ -1353,7 +1427,9 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
 
     df = rows.copy()
     df["price_date"] = pd.to_datetime(df["price_date"])
-    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"])
+    df = df.dropna(
+        subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"]
+    )
     df = df.reset_index(drop=True)
     if len(df) < WF_MIN_TRAIN + 40:
         logger.warning(f"enriched model: insufficient data for {zone} after dropna")
@@ -1364,7 +1440,11 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
     wind = df["wind_pct"].to_numpy(float)
     solar = df["solar_pct"].to_numpy(float)
     load_mw = df["load_mw"].to_numpy(float)
-    nuclear_gw = df["nuclear_lag1_gw"].to_numpy(float) if "nuclear_lag1_gw" in df.columns else np.zeros(len(df))
+    nuclear_gw = (
+        df["nuclear_lag1_gw"].to_numpy(float)
+        if "nuclear_lag1_gw" in df.columns
+        else np.zeros(len(df))
+    )
     y = df["base_eur"].to_numpy(float)
     dates = df["price_date"]
     n = len(y)
@@ -1458,8 +1538,11 @@ def compute_enriched_model(query_fn: Callable, zone: str = "DE-LU", source: str 
         m = float(np.mean(col))
         sd = float(np.std(col))
         cv = float(abs(sd / m)) if m != 0 else None
-        return {"mean": round(m, 4), "std": round(sd, 4),
-                "cv": round(cv, 3) if cv is not None else None}
+        return {
+            "mean": round(m, 4),
+            "std": round(sd, 4),
+            "cv": round(cv, 3) if cv is not None else None,
+        }
 
     coef = {
         "residual_demand_gw": stability(enr_coefs[:, 0]),
@@ -1651,7 +1734,11 @@ def compute_nuclear_wind_interaction(
         "enriched": enriched_stats,
         "interaction": interaction_stats,
         "improvement": improvement,
-        "coef": {"mean": round(m, 4), "std": round(sd, 4), "cv": round(cv, 3) if cv is not None else None},
+        "coef": {
+            "mean": round(m, 4),
+            "std": round(sd, 4),
+            "cv": round(cv, 3) if cv is not None else None,
+        },
         "aic_delta_mean": aic_delta_mean,
         "bic_delta_mean": bic_delta_mean,
         "justified": justified,
@@ -1678,15 +1765,25 @@ def _fit_gbm(X, y):
     import lightgbm as lgb
 
     params = {
-        "objective": "regression", "learning_rate": 0.05, "num_leaves": 15, "max_depth": 4,
-        "min_child_samples": 20, "bagging_fraction": 0.8, "bagging_freq": 1,
-        "feature_fraction": 0.9, "lambda_l2": 1.0, "verbosity": -1, "num_threads": 1,
+        "objective": "regression",
+        "learning_rate": 0.05,
+        "num_leaves": 15,
+        "max_depth": 4,
+        "min_child_samples": 20,
+        "bagging_fraction": 0.8,
+        "bagging_freq": 1,
+        "feature_fraction": 0.9,
+        "lambda_l2": 1.0,
+        "verbosity": -1,
+        "num_threads": 1,
     }
     dtrain = lgb.Dataset(X, label=y, feature_name=list(GBM_FEATURES))
     return lgb.train(params, dtrain, num_boost_round=200)
 
 
-def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE) -> dict:
+def compute_gbm_model(
+    query_fn: Callable, zone: str = "DE-LU", source: str = FUNDAMENTAL_SOURCE
+) -> dict:
     """Walk-forward gradient-boosted fair value vs the hinge OLS and the linear baseline.
 
     Tests honestly whether a nonparametric learner (LightGBM) on the raw factor set beats
@@ -1708,7 +1805,9 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
 
     df = rows.copy()
     df["price_date"] = pd.to_datetime(df["price_date"])
-    df = df.dropna(subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"])
+    df = df.dropna(
+        subset=["base_eur", "ttf_eur_mwh", "eua_eur_t", "wind_pct", "solar_pct", "load_mw"]
+    )
     df = df.reset_index(drop=True)
     if len(df) < WF_MIN_TRAIN + 40:
         return {}
@@ -1718,7 +1817,11 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
     wind = df["wind_pct"].to_numpy(float)
     solar = df["solar_pct"].to_numpy(float)
     load_mw = df["load_mw"].to_numpy(float)
-    nuclear_gw = df["nuclear_lag1_gw"].to_numpy(float) if "nuclear_lag1_gw" in df.columns else np.zeros(len(df))
+    nuclear_gw = (
+        df["nuclear_lag1_gw"].to_numpy(float)
+        if "nuclear_lag1_gw" in df.columns
+        else np.zeros(len(df))
+    )
     y = df["base_eur"].to_numpy(float)
     dates = df["price_date"]
     n = len(y)
@@ -1796,7 +1899,10 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
         imp = np.asarray(last_gbm.feature_importance(importance_type="gain"), float)
         tot = imp.sum()
         importance = [
-            {"feature": GBM_FEATURES[i], "importance_pct": round(float(100 * imp[i] / tot), 1) if tot > 0 else 0.0}
+            {
+                "feature": GBM_FEATURES[i],
+                "importance_pct": round(float(100 * imp[i] / tot), 1) if tot > 0 else 0.0,
+            }
             for i in range(len(GBM_FEATURES))
         ]
         importance.sort(key=lambda r: r["importance_pct"], reverse=True)
@@ -1809,8 +1915,13 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
             row = med.copy()
             row[2] = wv  # wind is feature index 2
             p = float(last_gbm.predict(row.reshape(1, -1))[0])
-            partial_wind.append({"wind_pct": round(float(wv), 1), "pred": round(p, 2),
-                                 "pred_centered": round(p - base_pred, 2)})
+            partial_wind.append(
+                {
+                    "wind_pct": round(float(wv), 1),
+                    "pred": round(p, 2),
+                    "pred_centered": round(p - base_pred, 2),
+                }
+            )
 
     return {
         "zone": zone,
@@ -1831,8 +1942,8 @@ def compute_gbm_model(query_fn: Callable, zone: str = "DE-LU", source: str = FUN
 # realised per-zone P&L, lagged one day so the weight for day t uses only information
 # through t-1. This makes the portfolio construction genuinely out-of-sample, unlike the
 # full-sample inverse-vol overlay (which is an ex-post illustration kept as a reference).
-PORTFOLIO_ROLL_WIN = 252   # trailing window (days) for the rolling vol estimate
-PORTFOLIO_ROLL_MIN = 20    # minimum real observations before a zone earns a weight
+PORTFOLIO_ROLL_WIN = 252  # trailing window (days) for the rolling vol estimate
+PORTFOLIO_ROLL_MIN = 20  # minimum real observations before a zone earns a weight
 
 # Multiple-testing trial count for the deflated Sharpe. The per-zone signal feeding the
 # portfolio was selected from the arc's model ladder - five fundamental zones
@@ -1846,7 +1957,7 @@ PORTFOLIO_N_TRIALS = 25
 # contiguous blocks preserves that serial structure. Block ~ two trading weeks.
 PORTFOLIO_BOOT_BLOCK = 10
 PORTFOLIO_BOOT_N = 2000
-PORTFOLIO_BOOT_SEED = 0   # fixed so the reported CI is reproducible
+PORTFOLIO_BOOT_SEED = 0  # fixed so the reported CI is reproducible
 
 
 def _block_bootstrap_sharpe_ci(r: np.ndarray, alpha: float = 0.10) -> dict | None:
@@ -2037,18 +2148,22 @@ def compute_portfolio_backtest(query_fn: Callable, cost: float = EDGE_NET_COST) 
 
     zone_rows = []
     for i, z in enumerate(zones):
-        zone_rows.append({
-            "zone": z,
-            "weight": round(float(weights[z]), 3),
-            "vol": round(float(vols[z]), 3),
-            "sharpe_standalone": standalone_sharpe(z),
-            "risk_contribution_pct": round(float(rc_pct[i]), 1),
-            "cum_pnl": round(float(pnl[z].sum()), 2),
-        })
+        zone_rows.append(
+            {
+                "zone": z,
+                "weight": round(float(weights[z]), 3),
+                "vol": round(float(vols[z]), 3),
+                "sharpe_standalone": standalone_sharpe(z),
+                "risk_contribution_pct": round(float(rc_pct[i]), 1),
+                "cum_pnl": round(float(pnl[z].sum()), 2),
+            }
+        )
     zone_rows.sort(key=lambda r: r["risk_contribution_pct"], reverse=True)
 
     de_lu_pnl = pnl["DE-LU"] if "DE-LU" in pnl.columns else None
-    diversification_ratio = round(float((weights * vols).sum() / port_vol), 3) if port_vol > 0 else None
+    diversification_ratio = (
+        round(float((weights * vols).sum() / port_vol), 3) if port_vol > 0 else None
+    )
 
     portfolio = {
         "sharpe": sharpe(port),
@@ -2197,16 +2312,18 @@ def compute_residual_mean_reversion(query_fn: Callable) -> dict:
         def _r(v, nd):
             return round(float(v), nd) if v is not None and np.isfinite(v) else None
 
-        rows.append({
-            "zone": zone,
-            "n_obs": int(len(res)),
-            "half_life_days": _r(half_life, 1),
-            "ou_mu": _r(mu, 2),
-            "vr": _r(vr, 3),
-            "vr_pvalue": _r(vr_p, 4),
-            "hurst": _r(hurst, 3),
-            "mean_reverting": mean_reverting,
-        })
+        rows.append(
+            {
+                "zone": zone,
+                "n_obs": int(len(res)),
+                "half_life_days": _r(half_life, 1),
+                "ou_mu": _r(mu, 2),
+                "vr": _r(vr, 3),
+                "vr_pvalue": _r(vr_p, 4),
+                "hurst": _r(hurst, 3),
+                "mean_reverting": mean_reverting,
+            }
+        )
 
     rows.sort(key=lambda r: (r["half_life_days"] is None, r["half_life_days"] or 1e9))
     return {
@@ -2268,7 +2385,6 @@ def compute_holding_period_sensitivity(
     wind = df["wind_pct"].to_numpy(float)
     solar = df["solar_pct"].to_numpy(float)
     y = df["base_eur"].to_numpy(float)
-    dates = df["price_date"]
     n = len(y)
 
     Xnl = _design_nonlinear(ttf, eua, wind, solar)
@@ -2321,15 +2437,17 @@ def compute_holding_period_sensitivity(
         if sh_net is not None and (best_net is None or sh_net > best_net):
             best_net = sh_net
             best_k = k
-        period_results.append({
-            "k": k,
-            "n_periods": int(m),
-            "sharpe_gross": sh_gross,
-            "sharpe_net": sh_net,
-            "avg_daily_gross": round(float(daily_gross.mean()), 4),
-            "avg_daily_net": round(float(daily_net.mean()), 4),
-            "max_dd": _maxdd(daily_net),
-        })
+        period_results.append(
+            {
+                "k": k,
+                "n_periods": int(m),
+                "sharpe_gross": sh_gross,
+                "sharpe_net": sh_net,
+                "avg_daily_gross": round(float(daily_gross.mean()), 4),
+                "avg_daily_net": round(float(daily_net.mean()), 4),
+                "max_dd": _maxdd(daily_net),
+            }
+        )
 
     return {
         "zone": zone,
@@ -2387,7 +2505,9 @@ def compute_signal_posture(query_fn: Callable, nuclear_critical_mw: float = 0.0)
             posture_detail = "no signal"
         elif is_drought:
             posture = "TREND"
-            posture_detail = f"wind {wind_today:.1f}% < {LOW_WIND_KNOT_PCT}% knot - momentum, not fade"
+            posture_detail = (
+                f"wind {wind_today:.1f}% < {LOW_WIND_KNOT_PCT}% knot - momentum, not fade"
+            )
         elif abs(zscore) < 0.5:
             posture = "NEUTRAL"
             posture_detail = f"|z|={abs(zscore):.2f} < 0.5 - too weak to trade"
@@ -2414,18 +2534,22 @@ def compute_signal_posture(query_fn: Callable, nuclear_critical_mw: float = 0.0)
         best_k = hp.get("best_k") if hp else None
         best_sharpe = hp.get("best_sharpe_net") if hp else None
 
-        results.append({
-            "zone": zone,
-            "zscore": round(float(zscore), 2) if zscore is not None else None,
-            "pct_rank_1yr": int(pct_rank) if pct_rank is not None else None,
-            "wind_today": round(float(wind_today), 1) if wind_today is not None else None,
-            "is_drought": is_drought,
-            "posture": posture,
-            "posture_detail": posture_detail,
-            "best_k": best_k,
-            "best_sharpe_net": round(float(best_sharpe), 2) if best_sharpe is not None else None,
-            "caveat": caveat,
-        })
+        results.append(
+            {
+                "zone": zone,
+                "zscore": round(float(zscore), 2) if zscore is not None else None,
+                "pct_rank_1yr": int(pct_rank) if pct_rank is not None else None,
+                "wind_today": round(float(wind_today), 1) if wind_today is not None else None,
+                "is_drought": is_drought,
+                "posture": posture,
+                "posture_detail": posture_detail,
+                "best_k": best_k,
+                "best_sharpe_net": round(float(best_sharpe), 2)
+                if best_sharpe is not None
+                else None,
+                "caveat": caveat,
+            }
+        )
 
     n_fade = sum(1 for r in results if "FADE" in r["posture"])
     n_trend = sum(1 for r in results if r["posture"] == "TREND")
@@ -2441,7 +2565,8 @@ def compute_signal_posture(query_fn: Callable, nuclear_critical_mw: float = 0.0)
         "systematic": systematic,
         "systematic_note": (
             "All zones aligned - likely a common systematic factor (nuclear, weather event)."
-            if systematic else None
+            if systematic
+            else None
         ),
     }
 
@@ -2510,14 +2635,13 @@ def compute_rebap_zscore_correlation(query_fn: Callable) -> dict:
     pearson_r = float(joined["zscore"].corr(joined["rebap"]))
 
     from scipy.stats import spearmanr  # type: ignore
+
     sp_r, _ = spearmanr(joined["zscore"].values, joined["rebap"].values)
     spearman_r = float(sp_r)
 
     # Rolling correlation
     rolling_corr = (
-        joined["zscore"].rolling(_REBAP_CORR_WINDOW, min_periods=20)
-        .corr(joined["rebap"])
-        .dropna()
+        joined["zscore"].rolling(_REBAP_CORR_WINDOW, min_periods=20).corr(joined["rebap"]).dropna()
     )
     rolling = [
         {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
@@ -2528,8 +2652,11 @@ def compute_rebap_zscore_correlation(query_fn: Callable) -> dict:
     cutoff = joined.index.max() - pd.Timedelta(days=730)
     scatter_df = joined[joined.index >= cutoff]
     scatter = [
-        {"date": d.strftime("%Y-%m-%d"), "zscore": round(float(row["zscore"]), 2),
-         "rebap": round(float(row["rebap"]), 1)}
+        {
+            "date": d.strftime("%Y-%m-%d"),
+            "zscore": round(float(row["zscore"]), 2),
+            "rebap": round(float(row["rebap"]), 1),
+        }
         for d, row in scatter_df.iterrows()
     ]
 
@@ -2540,14 +2667,16 @@ def compute_rebap_zscore_correlation(query_fn: Callable) -> dict:
     for label, grp in joined.groupby("z_bin", observed=True):
         q_lo = float(grp["zscore"].min())
         q_hi = float(grp["zscore"].max())
-        dose.append({
-            "bucket": str(label),
-            "z_lo": round(q_lo, 2),
-            "z_hi": round(q_hi, 2),
-            "n": int(len(grp)),
-            "mean_rebap": round(float(grp["rebap"].mean()), 1),
-            "med_rebap": round(float(grp["rebap"].median()), 1),
-        })
+        dose.append(
+            {
+                "bucket": str(label),
+                "z_lo": round(q_lo, 2),
+                "z_hi": round(q_hi, 2),
+                "n": int(len(grp)),
+                "mean_rebap": round(float(grp["rebap"].mean()), 1),
+                "med_rebap": round(float(grp["rebap"].median()), 1),
+            }
+        )
 
     return {
         "n": int(len(joined)),
@@ -2563,7 +2692,9 @@ def compute_rebap_zscore_correlation(query_fn: Callable) -> dict:
 _STORAGE_CORR_WINDOW = 60  # days for rolling Pearson between storage_dev and residual
 
 
-def _fetch_fundamental_features_with_storage(query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE):
+def _fetch_fundamental_features_with_storage(
+    query_fn: Callable, zone: str, source: str = FUNDAMENTAL_SOURCE
+):
     """Like _fetch_fundamental_features but also joins EU gas storage deviation.
 
     Adds eu_storage_dev_pct = storage fill% - 5yr seasonal average at the same DOY.
@@ -2577,7 +2708,8 @@ def _fetch_fundamental_features_with_storage(query_fn: Callable, zone: str, sour
     else:
         raise ValueError(f"unknown feature source {source!r}")
     try:
-        return query_fn(f"""
+        return query_fn(
+            f"""
             SELECT
                 p.price_date,
                 p.base_eur,
@@ -2601,9 +2733,13 @@ def _fetch_fundamental_features_with_storage(query_fn: Callable, zone: str, sour
               AND g.{wind_col} IS NOT NULL
               AND g.{solar_col} IS NOT NULL
             ORDER BY p.price_date
-        """, [zone])
+        """,
+            [zone],
+        )
     except Exception as exc:
-        logger.warning(f"fundamental feature fetch (with storage) failed for {zone} ({source}): {exc!r}")
+        logger.warning(
+            f"fundamental feature fetch (with storage) failed for {zone} ({source}): {exc!r}"
+        )
         return None
 
 
@@ -2759,7 +2895,9 @@ def compute_storage_factor_test(
 
     improvement = {
         "rmse_pct": pct_drop(enriched_stats["rmse_overall"], extended_stats["rmse_overall"]),
-        "low_wind_rmse_pct": pct_drop(enriched_stats["rmse_low_wind"], extended_stats["rmse_low_wind"]),
+        "low_wind_rmse_pct": pct_drop(
+            enriched_stats["rmse_low_wind"], extended_stats["rmse_low_wind"]
+        ),
         "sharpe_delta": delta(enriched_stats["sharpe_net"], extended_stats["sharpe_net"]),
     }
 
@@ -2782,11 +2920,7 @@ def compute_storage_factor_test(
     if has_storage_oos.sum() >= 30:
         s_dev = pd.Series(storage_dev_oos, index=oos_dates)
         s_res = pd.Series(res_enr_arr, index=oos_dates)
-        rolling_corr = (
-            s_dev.rolling(_STORAGE_CORR_WINDOW, min_periods=20)
-            .corr(s_res)
-            .dropna()
-        )
+        rolling_corr = s_dev.rolling(_STORAGE_CORR_WINDOW, min_periods=20).corr(s_res).dropna()
         rolling = [
             {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
             for d, v in rolling_corr.items()
@@ -2806,8 +2940,10 @@ def compute_storage_factor_test(
             "residual": round(float(rv), 1),
         }
         for d, sd_v, rv, ok in zip(
-            oos_dates[mask_cut], storage_dev_oos[mask_cut],
-            res_enr_arr[mask_cut], has_storage_oos[mask_cut]
+            oos_dates[mask_cut],
+            storage_dev_oos[mask_cut],
+            res_enr_arr[mask_cut],
+            has_storage_oos[mask_cut],
         )
         if ok
     ]
@@ -2866,7 +3002,8 @@ def _fetch_fundamental_features_with_load_err(
     else:
         raise ValueError(f"unknown feature source {source!r}")
     try:
-        return query_fn(f"""
+        return query_fn(
+            f"""
             WITH gf AS (
                 SELECT
                     zone,
@@ -2900,9 +3037,13 @@ def _fetch_fundamental_features_with_load_err(
               AND g.wind_pct IS NOT NULL
               AND g.solar_pct IS NOT NULL
             ORDER BY p.price_date
-        """, [zone, zone])
+        """,
+            [zone, zone],
+        )
     except Exception as exc:
-        logger.warning(f"fundamental feature fetch (with load err) failed for {zone} ({source}): {exc!r}")
+        logger.warning(
+            f"fundamental feature fetch (with load err) failed for {zone} ({source}): {exc!r}"
+        )
         return None
 
 
@@ -3050,7 +3191,9 @@ def compute_load_error_factor_test(
 
     improvement = {
         "rmse_pct": pct_drop(enriched_stats["rmse_overall"], extended_stats["rmse_overall"]),
-        "low_wind_rmse_pct": pct_drop(enriched_stats["rmse_low_wind"], extended_stats["rmse_low_wind"]),
+        "low_wind_rmse_pct": pct_drop(
+            enriched_stats["rmse_low_wind"], extended_stats["rmse_low_wind"]
+        ),
         "sharpe_delta": delta(enriched_stats["sharpe_net"], extended_stats["sharpe_net"]),
     }
 
@@ -3072,11 +3215,7 @@ def compute_load_error_factor_test(
     if has_load_err_oos.sum() >= 30:
         s_le = pd.Series(load_err_oos, index=oos_dates)
         s_res = pd.Series(res_enr_arr, index=oos_dates)
-        rolling_corr = (
-            s_le.rolling(_LOAD_ERR_CORR_WINDOW, min_periods=20)
-            .corr(s_res)
-            .dropna()
-        )
+        rolling_corr = s_le.rolling(_LOAD_ERR_CORR_WINDOW, min_periods=20).corr(s_res).dropna()
         rolling = [
             {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
             for d, v in rolling_corr.items()
@@ -3096,14 +3235,15 @@ def compute_load_error_factor_test(
             "residual": round(float(rv), 1),
         }
         for d, le_v, rv, ok in zip(
-            oos_dates[mask_cut], load_err_oos[mask_cut],
-            res_enr_arr[mask_cut], has_load_err_oos[mask_cut]
+            oos_dates[mask_cut],
+            load_err_oos[mask_cut],
+            res_enr_arr[mask_cut],
+            has_load_err_oos[mask_cut],
         )
         if ok
     ]
 
     # Current snapshot
-    last_idx_pos = len(idx) - 1
     current_load_err = round(float(load_err_oos[-1]), 2) if has_load_err_oos[-1] else None
     current_residual = round(float(res_enr_arr[-1]), 1)
 
@@ -3132,8 +3272,8 @@ def compute_load_error_factor_test(
     }
 
 
-_SIGNAL_CORR_WINDOW = 30      # days for rolling pairwise Pearson between zone z-scores
-_SIGNAL_CONC_ALERT = 0.65     # average pairwise correlation threshold: portfolio ~= 1 bet
+_SIGNAL_CORR_WINDOW = 30  # days for rolling pairwise Pearson between zone z-scores
+_SIGNAL_CONC_ALERT = 0.65  # average pairwise correlation threshold: portfolio ~= 1 bet
 
 
 def compute_zone_signal_correlations(query_fn: Callable) -> dict:
@@ -3248,16 +3388,17 @@ def compute_zone_signal_correlations(query_fn: Callable) -> dict:
         zb = df.iloc[:, j]
         roll = za.rolling(ROLLING_PAIR_WINDOW, min_periods=15).corr(zb).dropna()
         series = [
-            {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)}
-            for d, v in roll.items()
+            {"date": d.strftime("%Y-%m-%d"), "corr": round(float(v), 3)} for d, v in roll.items()
         ]
-        top_pairs.append({
-            "zone_a": zones[i],
-            "zone_b": zones[j],
-            "full_pearson": round(float(corr_full_df.iloc[i, j]), 3),
-            "current_30d": round(float(corr_30d_df.iloc[i, j]), 3),
-            "series": series,
-        })
+        top_pairs.append(
+            {
+                "zone_a": zones[i],
+                "zone_b": zones[j],
+                "full_pearson": round(float(corr_full_df.iloc[i, j]), 3),
+                "current_30d": round(float(corr_30d_df.iloc[i, j]), 3),
+                "series": series,
+            }
+        )
 
     # Current z-scores for each zone
     current_zscores = {z: round(float(df[z].iloc[-1]), 3) for z in zones}
@@ -3278,7 +3419,7 @@ def compute_zone_signal_correlations(query_fn: Callable) -> dict:
     }
 
 
-_FSS_GAS_THRESHOLD = 2.0    # EUR/MWh: FSS > 2 = gas marginal, FSS < -2 = coal marginal
+_FSS_GAS_THRESHOLD = 2.0  # EUR/MWh: FSS > 2 = gas marginal, FSS < -2 = coal marginal
 
 
 def compute_regime_conditional_pnl(query_fn: Callable) -> dict:
@@ -3298,7 +3439,6 @@ def compute_regime_conditional_pnl(query_fn: Callable) -> dict:
     Returns per-zone and portfolio-level Sharpe, avg daily P&L, and observation counts
     for each regime, plus the current regime (from latest available FSS in the DB).
     """
-    import duckdb as _duckdb
 
     fss_raw = query_fn(
         "SELECT price_date, fss FROM spreads_daily WHERE fss IS NOT NULL ORDER BY price_date"

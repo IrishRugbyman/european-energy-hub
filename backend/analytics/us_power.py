@@ -11,11 +11,11 @@ Produces two DuckDB tables:
 
 from __future__ import annotations
 
-import urllib.parse
-import urllib.request
 import json
 import logging
-from datetime import datetime, timezone
+import urllib.parse
+import urllib.request
+from datetime import UTC, datetime
 
 import pandas as pd
 
@@ -70,10 +70,15 @@ def _fetch_eia(eia_key: str, respondents: list[str], hours: int = 48) -> list[di
         "length": "5000",
     }
     for i, r in enumerate(respondents):
-        params[f"facets[respondent][]"] = r  # will be overwritten; build manually
+        params["facets[respondent][]"] = r  # will be overwritten; build manually
     # Build query string manually to support repeated keys
-    parts = [f"api_key={urllib.parse.quote(eia_key)}", "data[]=value",
-             "sort[0][column]=period", "sort[0][direction]=desc", "length=5000"]
+    parts = [
+        f"api_key={urllib.parse.quote(eia_key)}",
+        "data[]=value",
+        "sort[0][column]=period",
+        "sort[0][direction]=desc",
+        "length=5000",
+    ]
     for r in respondents:
         parts.append(f"facets[respondent][]={urllib.parse.quote(r)}")
     url = EIA_API_BASE + "?" + "&".join(parts)
@@ -105,20 +110,22 @@ def build_us_power_tables(eia_key: str) -> dict[str, pd.DataFrame]:
         return {"us_power_hourly": empty, "us_power_latest": empty}
 
     df = pd.DataFrame(rows)
-    df = df.rename(columns={
-        "period": "period",
-        "respondent": "region",
-        "respondent-name": "region_name",
-        "fueltype": "fueltype",
-        "type-name": "fuel_name",
-        "value": "value_mwh",
-    })
+    df = df.rename(
+        columns={
+            "period": "period",
+            "respondent": "region",
+            "respondent-name": "region_name",
+            "fueltype": "fueltype",
+            "type-name": "fuel_name",
+            "value": "value_mwh",
+        }
+    )
     df["value_mwh"] = pd.to_numeric(df["value_mwh"], errors="coerce").fillna(0.0)
     df["period"] = pd.to_datetime(df["period"], format="%Y-%m-%dT%H", utc=True)
 
     # Keep only known regions and last 48h
     df = df[df["region"].isin(REGIONS)]
-    now_utc = datetime.now(timezone.utc)
+    now_utc = datetime.now(UTC)
     cutoff = now_utc - pd.Timedelta(hours=48)
     df = df[df["period"] >= cutoff].copy()
 
@@ -135,10 +142,9 @@ def build_us_power_tables(eia_key: str) -> dict[str, pd.DataFrame]:
     df["fuel_name"] = df["fueltype"].map(FUEL_NAMES).fillna("Other")
 
     # Aggregate after normalization (sum collapsed fuels)
-    df = (
-        df.groupby(["period", "region", "region_name", "fueltype", "fuel_name"], as_index=False)
-        ["value_mwh"].sum()
-    )
+    df = df.groupby(["period", "region", "region_name", "fueltype", "fuel_name"], as_index=False)[
+        "value_mwh"
+    ].sum()
 
     # us_power_hourly: all 48h data
     hourly = df[["period", "region", "region_name", "fueltype", "fuel_name", "value_mwh"]].copy()
@@ -159,6 +165,8 @@ def build_us_power_tables(eia_key: str) -> dict[str, pd.DataFrame]:
         latest_df = df.copy()
 
     latest_df["period"] = latest_df["period"].dt.strftime("%Y-%m-%dT%H:%M:%S")
-    latest = latest_df[["period", "region", "region_name", "fueltype", "fuel_name", "value_mwh"]].copy()
+    latest = latest_df[
+        ["period", "region", "region_name", "fueltype", "fuel_name", "value_mwh"]
+    ].copy()
 
     return {"us_power_hourly": hourly, "us_power_latest": latest}

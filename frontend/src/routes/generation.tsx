@@ -1294,7 +1294,10 @@ const ZONE_PROFILE_COLORS: Record<string, string> = {
 const ZONE_PROFILE_DEFAULT = ['DE-LU', 'FR', 'ES', 'NO-2']
 
 function ZoneHourlyComparisonChart({ rows }: { rows: ZoneHourlyProfileRow[] }) {
-  const allZones = useMemo(() => [...new Set(rows.map((r) => r.zone))].sort(), [rows])
+  const allZones = useMemo(
+    () => [...new Set(rows.map((r) => r.zone))].sort((a, b) => a.localeCompare(b)),
+    [rows]
+  )
   const [selected, setSelected] = useState<string[]>(ZONE_PROFILE_DEFAULT)
 
   const byZone = useMemo(() => {
@@ -1446,9 +1449,11 @@ function HeatRiskSection({
   }
   // Dates sorted (last 60 obs + forecast)
   const allDates = [...new Set(trend.filter((t) => !t.is_forecast).map((t) => t.obs_date))]
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .slice(-60)
-  const fcDates = [...new Set(trend.filter((t) => t.is_forecast).map((t) => t.obs_date))].sort()
+  const fcDates = [...new Set(trend.filter((t) => t.is_forecast).map((t) => t.obs_date))].sort((a, b) =>
+    a.localeCompare(b)
+  )
   const chartDates = [...allDates, ...fcDates]
   const chartData = chartDates.map((d) => {
     const row: Record<string, string | number | null | boolean> = {

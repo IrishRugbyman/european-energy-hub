@@ -45,7 +45,7 @@ const IMPLIED_FILL_LEGEND = [
 
 function fmt(v: number | null | undefined, dec = 0, suffix = ''): string {
   if (v == null) return '--'
-  return `${v >= 0 ? '' : ''}${v.toFixed(dec)}${suffix}`
+  return `${v.toFixed(dec)}${suffix}`
 }
 
 function fmtSigned(v: number | null | undefined, dec = 0, suffix = ''): string {
