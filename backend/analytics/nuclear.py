@@ -32,6 +32,7 @@ INSTALLED_MW: dict[str, int] = {
 
 def _float(v) -> float | None:
     import math
+
     if v is None:
         return None
     try:
@@ -41,7 +42,7 @@ def _float(v) -> float | None:
         return None
 
 
-def nuclear_country_latest(db: "DbModule") -> list[dict[str, Any]]:
+def nuclear_country_latest(db: DbModule) -> list[dict[str, Any]]:
     """Latest nuclear generation per country with 5yr seasonal context at today's DOY."""
     today = datetime.date.today()
     doy = today.timetuple().tm_yday
@@ -95,26 +96,26 @@ def nuclear_country_latest(db: "DbModule") -> list[dict[str, Any]]:
         installed = INSTALLED_MW.get(zone)
         util_pct = round(nuclear_mw / installed * 100, 1) if installed and installed > 0 else None
         vs_avg5 = (
-            round((nuclear_mw - avg5_mw) / avg5_mw * 100, 1)
-            if avg5_mw and avg5_mw > 0
-            else None
+            round((nuclear_mw - avg5_mw) / avg5_mw * 100, 1) if avg5_mw and avg5_mw > 0 else None
         )
-        result.append({
-            "zone": zone,
-            "gen_date": str(row.gen_date),
-            "nuclear_mw": round(nuclear_mw, 0),
-            "avg5_mw": round(avg5_mw, 0) if avg5_mw is not None else None,
-            "min5_mw": round(min5_mw, 0) if min5_mw is not None else None,
-            "max5_mw": round(max5_mw, 0) if max5_mw is not None else None,
-            "vs_avg5_pct": vs_avg5,
-            "util_pct": util_pct,
-            "installed_mw": installed,
-        })
+        result.append(
+            {
+                "zone": zone,
+                "gen_date": str(row.gen_date),
+                "nuclear_mw": round(nuclear_mw, 0),
+                "avg5_mw": round(avg5_mw, 0) if avg5_mw is not None else None,
+                "min5_mw": round(min5_mw, 0) if min5_mw is not None else None,
+                "max5_mw": round(max5_mw, 0) if max5_mw is not None else None,
+                "vs_avg5_pct": vs_avg5,
+                "util_pct": util_pct,
+                "installed_mw": installed,
+            }
+        )
     result.sort(key=lambda x: -(x["nuclear_mw"] or 0))
     return result
 
 
-def nuclear_fr_trend(db: "DbModule") -> list[dict[str, Any]]:
+def nuclear_fr_trend(db: DbModule) -> list[dict[str, Any]]:
     """FR nuclear MW + 5yr seasonal avg + FR-DE price spread, last 365 days."""
     band_years = list(range(datetime.date.today().year - 5, datetime.date.today().year))
 
@@ -150,14 +151,16 @@ def nuclear_fr_trend(db: "DbModule") -> list[dict[str, Any]]:
         {
             "gen_date": str(row.gen_date),
             "nuclear_mw": round(_float(row.nuclear_mw) or 0.0, 0),
-            "avg5_nuclear_mw": round(v, 0) if (v := _float(row.avg5_nuclear_mw)) is not None else None,
+            "avg5_nuclear_mw": round(v, 0)
+            if (v := _float(row.avg5_nuclear_mw)) is not None
+            else None,
             "fr_de_spread": round(s, 2) if (s := _float(row.fr_de_spread)) is not None else None,
         }
         for row in df.itertuples(index=False)
     ]
 
 
-def nuclear_fr_scatter(db: "DbModule") -> list[dict[str, Any]]:
+def nuclear_fr_scatter(db: DbModule) -> list[dict[str, Any]]:
     """FR nuclear MW vs FR-DE spread, 730-day scatter dataset."""
     df = db.query(
         """

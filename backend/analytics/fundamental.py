@@ -2944,6 +2944,7 @@ def compute_storage_factor_test(
             storage_dev_oos[mask_cut],
             res_enr_arr[mask_cut],
             has_storage_oos[mask_cut],
+            strict=True,
         )
         if ok
     ]
@@ -3239,6 +3240,7 @@ def compute_load_error_factor_test(
             load_err_oos[mask_cut],
             res_enr_arr[mask_cut],
             has_load_err_oos[mask_cut],
+            strict=True,
         )
         if ok
     ]
@@ -3470,7 +3472,7 @@ def compute_regime_conditional_pnl(query_fn: Callable) -> dict:
         if sig is None or len(sig["gross_nl"]) < 30:
             continue
         net = pd.Series(
-            [g - EDGE_NET_COST * t for g, t in zip(sig["gross_nl"], sig["to_nl"])],
+            [g - EDGE_NET_COST * t for g, t in zip(sig["gross_nl"], sig["to_nl"], strict=True)],
             index=pd.to_datetime(sig["dates"]),
         )
         aligned_regime = fss_regime.reindex(net.index).fillna("transition")

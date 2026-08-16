@@ -10,6 +10,7 @@ thread last connected, we reopen to pick up the new snapshot.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 import time
 from pathlib import Path
@@ -38,10 +39,8 @@ def _get_conn(path: Path) -> duckdb.DuckDBPyConnection:
     current_mtime = _ts_mtime(path)
     if conn is None or conn_path != path or current_mtime > conn_mtime:
         if conn is not None:
-            try:
+            with contextlib.suppress(Exception):
                 conn.close()
-            except Exception:
-                pass
         _local.conn = duckdb.connect(str(path), read_only=True)
         _local.conn_path = path
         _local.conn_mtime = current_mtime
@@ -51,16 +50,20 @@ def _get_conn(path: Path) -> duckdb.DuckDBPyConnection:
 def _reset_local_conn() -> None:
     conn: duckdb.DuckDBPyConnection | None = getattr(_local, "conn", None)
     if conn is not None:
-        try:
+        with contextlib.suppress(Exception):
             conn.close()
-        except Exception:
-            pass
     _local.conn = None
     _local.conn_path = None
     _local.conn_mtime = 0.0
 
 
-def query(sql: str, params: list | None = None, retries: int = 20, db: Path | None = None) -> pd.DataFrame:
+def query(
+    sql: str, params: list | None = None, retries: int = 20, db: Path | None = None
+) -> pd.DataFrame:
+    """Run a read-only query, returning an empty frame if the DB or table is missing.
+
+    Retries while the refresh job is swapping the snapshot file. Never raises.
+    """
     path = db if db is not None else energy_db_path()
     if not path.exists():
         return pd.DataFrame()
@@ -85,6 +88,7 @@ def query(sql: str, params: list | None = None, retries: int = 20, db: Path | No
 
 
 def scalar(sql: str, params: list | None = None, default=None):
+    """Return the first cell of a query, or `default` when empty or NULL."""
     df = query(sql, params)
     if df.empty:
         return default

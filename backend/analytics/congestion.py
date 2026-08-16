@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import pandas as pd
-
-from loaders._base import get_read_conn, _query
-
+from loaders._base import _query, get_read_conn
 
 # Border pairs with centroids in FlowArrowsLayer - restrict to these for map rendering.
 # All pairs are stored in the DB tables; non-mappable pairs are still queryable via the API.
@@ -15,6 +13,7 @@ TRAILING_DAYS = 400
 
 
 def build_congestion_tables() -> dict[str, pd.DataFrame]:
+    """Build the cross-border NTC, scheduled-flow and utilisation tables."""
     empty = pd.DataFrame(
         columns=["from_zone", "to_zone", "price_date", "ntc_mw", "scheduled_mw", "utilization_pct"]
     )
@@ -58,8 +57,8 @@ def build_congestion_tables() -> dict[str, pd.DataFrame]:
     mask = merged["ntc_mw"] > 0
     merged["utilization_pct"] = 0.0
     merged.loc[mask, "utilization_pct"] = (
-        merged.loc[mask, "scheduled_mw"] / merged.loc[mask, "ntc_mw"] * 100
-    ).clip(0, 150).round(1)
+        (merged.loc[mask, "scheduled_mw"] / merged.loc[mask, "ntc_mw"] * 100).clip(0, 150).round(1)
+    )
 
     # Ensure date column is python date for DuckDB
     merged["price_date"] = pd.to_datetime(merged["price_date"]).dt.date
@@ -75,9 +74,7 @@ def build_congestion_tables() -> dict[str, pd.DataFrame]:
     )[col_order]
 
     # Daily: trailing TRAILING_DAYS per pair; restrict to zones with map centroids
-    mapped_mask = (
-        merged["from_zone"].isin(MAPPED_ZONES) & merged["to_zone"].isin(MAPPED_ZONES)
-    )
+    mapped_mask = merged["from_zone"].isin(MAPPED_ZONES) & merged["to_zone"].isin(MAPPED_ZONES)
     daily = (
         merged[mapped_mask]
         .sort_values(["from_zone", "to_zone", "price_date"])

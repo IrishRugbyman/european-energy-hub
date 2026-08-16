@@ -10,7 +10,6 @@ import json
 from pathlib import Path
 
 import pandas as pd
-
 from loaders._base import _query, get_read_conn
 from loaders.gas import load_facility_latest
 from loaders.worldmonitor import load_storage_facilities
@@ -21,23 +20,95 @@ _WM_TO_AGSI_PATH = Path(__file__).resolve().parent / "wm_to_agsi.json"
 # Fields: id, name, operator, country, lat, lon, capacity_twh, agsi_eic
 _AGSI_NATIVE_FACILITIES = [
     # Romania - 6 additional Romgaz/Depomures sites beyond Targu Mures
-    ("urziceni",        "Urziceni Gas Storage",       "Romgaz",             "RO",  44.71,  26.63,  1.5,  "21Z0000000003103"),
-    ("bilciuresti",     "Bilciuresti Gas Storage",    "Depomures",          "RO",  44.83,  25.43,  3.2,  "21Z000000000313Y"),
-    ("balaceanca",      "Balaceanca Gas Storage",     "Depomures",          "RO",  44.37,  26.17,  0.8,  "21Z0000000003111"),
-    ("sarmashel",       "Sarmashel Gas Storage",      "Romgaz",             "RO",  46.78,  24.12,  2.4,  "21Z000000000314W"),
-    ("ghercesti",       "Ghercesti Gas Storage",      "Romgaz",             "RO",  44.13,  23.82,  1.7,  "21Z000000000315U"),
-    ("cetatea-de-balta","Cetatea de Balta Gas Storage","Romgaz",            "RO",  46.22,  24.15,  0.8,  "21Z000000000316S"),
+    ("urziceni", "Urziceni Gas Storage", "Romgaz", "RO", 44.71, 26.63, 1.5, "21Z0000000003103"),
+    (
+        "bilciuresti",
+        "Bilciuresti Gas Storage",
+        "Depomures",
+        "RO",
+        44.83,
+        25.43,
+        3.2,
+        "21Z000000000313Y",
+    ),
+    (
+        "balaceanca",
+        "Balaceanca Gas Storage",
+        "Depomures",
+        "RO",
+        44.37,
+        26.17,
+        0.8,
+        "21Z0000000003111",
+    ),
+    ("sarmashel", "Sarmashel Gas Storage", "Romgaz", "RO", 46.78, 24.12, 2.4, "21Z000000000314W"),
+    ("ghercesti", "Ghercesti Gas Storage", "Romgaz", "RO", 44.13, 23.82, 1.7, "21Z000000000315U"),
+    (
+        "cetatea-de-balta",
+        "Cetatea de Balta Gas Storage",
+        "Romgaz",
+        "RO",
+        46.22,
+        24.15,
+        0.8,
+        "21Z000000000316S",
+    ),
     # Hungary - Szorek-1 (MOL) separate from the MFGT VGS pool
-    ("szorek-1",        "Szorek-1 Gas Storage",       "MOL",                "HU",  46.20,  20.23,  3.5,  "21W000000000086O"),
+    ("szorek-1", "Szorek-1 Gas Storage", "MOL", "HU", 46.20, 20.23, 3.5, "21W000000000086O"),
     # Poland - Wierzchowice, large depleted-field facility (PGNiG)
-    ("wierzchowice",    "Wierzchowice Gas Storage",   "PGNiG",              "PL",  51.56,  17.03,  8.6,  "21Z000000000381H"),
+    (
+        "wierzchowice",
+        "Wierzchowice Gas Storage",
+        "PGNiG",
+        "PL",
+        51.56,
+        17.03,
+        8.6,
+        "21Z000000000381H",
+    ),
     # Germany - Uniper facilities near Munich not in WM
-    ("breitbrunn",      "Breitbrunn Gas Storage",     "Uniper",             "DE",  48.08,  12.25,  7.2,  "21W0000000000605"),
-    ("wolfersberg",     "Wolfersberg Gas Storage",    "Uniper",             "DE",  48.12,  12.27,  1.8,  "21W0000000000184"),
-    ("inzenham-west",   "Inzenham-West Gas Storage",  "Uniper",             "DE",  48.05,  12.32,  3.0,  "21W0000000000192"),
-    ("schmidhausen",    "Schmidhausen Gas Storage",   "Erdgas Sudbayern",   "DE",  48.35,  12.43,  2.0,  "21W000000000089I"),
+    ("breitbrunn", "Breitbrunn Gas Storage", "Uniper", "DE", 48.08, 12.25, 7.2, "21W0000000000605"),
+    (
+        "wolfersberg",
+        "Wolfersberg Gas Storage",
+        "Uniper",
+        "DE",
+        48.12,
+        12.27,
+        1.8,
+        "21W0000000000184",
+    ),
+    (
+        "inzenham-west",
+        "Inzenham-West Gas Storage",
+        "Uniper",
+        "DE",
+        48.05,
+        12.32,
+        3.0,
+        "21W0000000000192",
+    ),
+    (
+        "schmidhausen",
+        "Schmidhausen Gas Storage",
+        "Erdgas Sudbayern",
+        "DE",
+        48.35,
+        12.43,
+        2.0,
+        "21W000000000089I",
+    ),
     # Czech Republic - Dolni Bojanovice (MND), not in WM
-    ("dolni-bojanovice","Dolni Bojanovice Gas Storage","MND Energy Storage", "CZ",  48.85,  17.08,  0.8,  "21W000000000074V"),
+    (
+        "dolni-bojanovice",
+        "Dolni Bojanovice Gas Storage",
+        "MND Energy Storage",
+        "CZ",
+        48.85,
+        17.08,
+        0.8,
+        "21W000000000074V",
+    ),
 ]
 
 
@@ -79,7 +150,9 @@ def build_storage_tables() -> dict[str, pd.DataFrame]:
     eu = _build_eu_aggregate(raw)
     combined = pd.concat([raw, eu], ignore_index=True)
 
-    history = combined[["country", "gas_day", "full_pct", "injection", "withdrawal", "working_gas_volume"]].copy()
+    history = combined[
+        ["country", "gas_day", "full_pct", "injection", "withdrawal", "working_gas_volume"]
+    ].copy()
 
     seasonal = _build_seasonal(combined)
     latest = _build_latest(combined, seasonal)
@@ -103,15 +176,19 @@ def _build_eu_aggregate(df: pd.DataFrame) -> pd.DataFrame:
     for day, g in grp:
         wgv_total = g["working_gas_volume"].sum()
         # full_pct is already a 0-100 percentage of capacity; compute capacity-weighted mean
-        weighted_full = (g["full_pct"] * g["working_gas_volume"]).sum() / wgv_total if wgv_total > 0 else None
-        eu_rows.append({
-            "country": "EU",
-            "gas_day": day,
-            "full_pct": weighted_full,
-            "injection": g["injection"].sum(),
-            "withdrawal": g["withdrawal"].sum(),
-            "working_gas_volume": wgv_total,
-        })
+        weighted_full = (
+            (g["full_pct"] * g["working_gas_volume"]).sum() / wgv_total if wgv_total > 0 else None
+        )
+        eu_rows.append(
+            {
+                "country": "EU",
+                "gas_day": day,
+                "full_pct": weighted_full,
+                "injection": g["injection"].sum(),
+                "withdrawal": g["withdrawal"].sum(),
+                "working_gas_volume": wgv_total,
+            }
+        )
     return pd.DataFrame(eu_rows)
 
 
@@ -141,8 +218,7 @@ def _build_seasonal(df: pd.DataFrame) -> pd.DataFrame:
         .agg(avg5="mean", min5="min", max5="max")
         .reset_index()
     )
-    seasonal = seasonal.dropna(subset=["avg5"])
-    return seasonal
+    return seasonal.dropna(subset=["avg5"])
 
 
 def _build_injection_seasonal(df: pd.DataFrame) -> pd.DataFrame:
@@ -182,8 +258,7 @@ def _build_injection_seasonal(df: pd.DataFrame) -> pd.DataFrame:
         )
         .reset_index()
     )
-    seasonal = seasonal.dropna(subset=["avg_gwh_d"])
-    return seasonal
+    return seasonal.dropna(subset=["avg_gwh_d"])
 
 
 def _build_latest(df: pd.DataFrame, seasonal: pd.DataFrame) -> pd.DataFrame:
@@ -213,17 +288,19 @@ def _build_latest(df: pd.DataFrame, seasonal: pd.DataFrame) -> pd.DataFrame:
         sea = seasonal[(seasonal["country"] == country) & (seasonal["doy"] == doy)]
         vs_avg5_pct = (latest_full - float(sea["avg5"].iloc[0])) if not sea.empty else None
 
-        rows.append({
-            "country": country,
-            "gas_day": latest_day.date(),
-            "full_pct": latest_full,
-            "d7_pct": d7_pct,
-            "vs_avg5_pct": vs_avg5_pct,
-            "yoy_pct": yoy_pct,
-            "injection": latest_row["injection"],
-            "withdrawal": latest_row["withdrawal"],
-            "working_gas_volume": latest_row["working_gas_volume"],
-        })
+        rows.append(
+            {
+                "country": country,
+                "gas_day": latest_day.date(),
+                "full_pct": latest_full,
+                "d7_pct": d7_pct,
+                "vs_avg5_pct": vs_avg5_pct,
+                "yoy_pct": yoy_pct,
+                "injection": latest_row["injection"],
+                "withdrawal": latest_row["withdrawal"],
+                "working_gas_volume": latest_row["working_gas_volume"],
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -252,8 +329,14 @@ def build_facilities_table() -> pd.DataFrame:
     # Append AGSI-native facilities absent from WM (hardcoded with coordinates)
     native_rows = [
         {
-            "id": r[0], "name": r[1], "operator": r[2], "country": r[3],
-            "lat": r[4], "lon": r[5], "capacity_twh": r[6], "agsi_eic": r[7],
+            "id": r[0],
+            "name": r[1],
+            "operator": r[2],
+            "country": r[3],
+            "lat": r[4],
+            "lon": r[5],
+            "capacity_twh": r[6],
+            "agsi_eic": r[7],
         }
         for r in _AGSI_NATIVE_FACILITIES
         if r[0] not in df["id"].values

@@ -26,9 +26,8 @@ import datetime
 
 import numpy as np
 import pandas as pd
-from loguru import logger
-
 from loaders._base import _query, get_read_conn
+from loguru import logger
 
 # Hydro reporting country -> its day-ahead bidding zones. Country price is the
 # simple cross-zone mean (no public demand weights), aligned to the weekly

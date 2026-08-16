@@ -46,15 +46,96 @@ from loguru import logger
 NUCLEAR_PLANTS: list[dict[str, Any]] = [
     # river_limit_c: ASN normal permit limit for river water temperature (°C).
     # summer_limit_c: summer derogation limit (granted by ASN during heat waves).
-    {"code": "TRICASTIN",   "name": "Tricastin",     "river": "Rhone",   "lat": 44.332, "lon": 4.732,  "capacity_mw": 3600, "river_limit_c": 24.0, "summer_limit_c": 27.0},
-    {"code": "CRUAS",       "name": "Cruas-Meysse",  "river": "Rhone",   "lat": 44.638, "lon": 4.755,  "capacity_mw": 3700, "river_limit_c": 24.0, "summer_limit_c": 27.0},
-    {"code": "SAINT_ALBAN", "name": "Saint-Alban",   "river": "Rhone",   "lat": 45.408, "lon": 4.805,  "capacity_mw": 1500, "river_limit_c": 24.0, "summer_limit_c": 27.0},
-    {"code": "BUGEY",       "name": "Bugey",         "river": "Rhone",   "lat": 45.797, "lon": 5.270,  "capacity_mw": 1850, "river_limit_c": 24.0, "summer_limit_c": 27.0},
-    {"code": "GOLFECH",     "name": "Golfech",       "river": "Garonne", "lat": 44.107, "lon": 0.851,  "capacity_mw": 1400, "river_limit_c": 24.0, "summer_limit_c": 28.0},
-    {"code": "DAMPIERRE",   "name": "Dampierre",     "river": "Loire",   "lat": 47.734, "lon": 2.514,  "capacity_mw": 3700, "river_limit_c": 24.0, "summer_limit_c": 27.0},
-    {"code": "BELLEVILLE",  "name": "Belleville",    "river": "Loire",   "lat": 47.510, "lon": 2.868,  "capacity_mw": 2600, "river_limit_c": 24.0, "summer_limit_c": 27.0},
-    {"code": "CATTENOM",    "name": "Cattenom",      "river": "Moselle", "lat": 49.400, "lon": 6.218,  "capacity_mw": 5400, "river_limit_c": 24.0, "summer_limit_c": 28.0},
-    {"code": "CHINON",      "name": "Chinon",        "river": "Loire",   "lat": 47.231, "lon": 0.164,  "capacity_mw": 1900, "river_limit_c": 24.0, "summer_limit_c": 27.0},
+    {
+        "code": "TRICASTIN",
+        "name": "Tricastin",
+        "river": "Rhone",
+        "lat": 44.332,
+        "lon": 4.732,
+        "capacity_mw": 3600,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
+    {
+        "code": "CRUAS",
+        "name": "Cruas-Meysse",
+        "river": "Rhone",
+        "lat": 44.638,
+        "lon": 4.755,
+        "capacity_mw": 3700,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
+    {
+        "code": "SAINT_ALBAN",
+        "name": "Saint-Alban",
+        "river": "Rhone",
+        "lat": 45.408,
+        "lon": 4.805,
+        "capacity_mw": 1500,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
+    {
+        "code": "BUGEY",
+        "name": "Bugey",
+        "river": "Rhone",
+        "lat": 45.797,
+        "lon": 5.270,
+        "capacity_mw": 1850,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
+    {
+        "code": "GOLFECH",
+        "name": "Golfech",
+        "river": "Garonne",
+        "lat": 44.107,
+        "lon": 0.851,
+        "capacity_mw": 1400,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 28.0,
+    },
+    {
+        "code": "DAMPIERRE",
+        "name": "Dampierre",
+        "river": "Loire",
+        "lat": 47.734,
+        "lon": 2.514,
+        "capacity_mw": 3700,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
+    {
+        "code": "BELLEVILLE",
+        "name": "Belleville",
+        "river": "Loire",
+        "lat": 47.510,
+        "lon": 2.868,
+        "capacity_mw": 2600,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
+    {
+        "code": "CATTENOM",
+        "name": "Cattenom",
+        "river": "Moselle",
+        "lat": 49.400,
+        "lon": 6.218,
+        "capacity_mw": 5400,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 28.0,
+    },
+    {
+        "code": "CHINON",
+        "name": "Chinon",
+        "river": "Loire",
+        "lat": 47.231,
+        "lon": 0.164,
+        "capacity_mw": 1900,
+        "river_limit_c": 24.0,
+        "summer_limit_c": 27.0,
+    },
 ]
 
 # River temperature thresholds -> alert level.
@@ -62,8 +143,8 @@ NUCLEAR_PLANTS: list[dict[str, Any]] = [
 # Limits are per ASN regulations; summer derogation requires EDF application to ASN.
 RIVER_THRESHOLDS = [
     (29.0, "critical"),  # above summer derogation limit for all plants
-    (27.0, "warning"),   # at summer derogation limit (24-28C depending on plant)
-    (24.0, "watch"),     # at normal permit limit
+    (27.0, "warning"),  # at summer derogation limit (24-28C depending on plant)
+    (24.0, "watch"),  # at normal permit limit
 ]
 
 # Thermal risk is only meaningful in summer - permit limits don't bind in winter.
@@ -74,12 +155,22 @@ SUMMER_MONTHS = {5, 6, 7, 8, 9}
 # Roquemaure is downstream of Tricastin/Cruas - upstream plants run slightly cooler,
 # so these offsets are conservative (overestimate river temp at plant sites).
 _MONTHLY_RIVER_OFFSET: dict[int, float] = {
-    1: -1.5, 2: -2.8, 3: -3.4, 4: -3.5,  5: -4.9, 6: -6.7,
-    7: -6.8, 8: -6.0, 9: -2.9, 10: -2.1, 11: -1.4, 12: -1.5,
+    1: -1.5,
+    2: -2.8,
+    3: -3.4,
+    4: -3.5,
+    5: -4.9,
+    6: -6.7,
+    7: -6.8,
+    8: -6.0,
+    9: -2.9,
+    10: -2.1,
+    11: -1.4,
+    12: -1.5,
 }
 
 _FORECAST_API = "https://api.open-meteo.com/v1/forecast"
-_ARCHIVE_API  = "https://archive-api.open-meteo.com/v1/archive"
+_ARCHIVE_API = "https://archive-api.open-meteo.com/v1/archive"
 _COMMON_PARAMS = "daily=temperature_2m_max&timezone=Europe/Paris"
 
 
@@ -103,7 +194,7 @@ def _get(url: str, params: dict, retries: int = 3) -> dict:
             if attempt == retries - 1:
                 raise
             logger.warning(f"Open-Meteo retry {attempt + 1}: {exc}")
-            time.sleep(2 ** attempt)
+            time.sleep(2**attempt)
     return {}
 
 
@@ -111,7 +202,7 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
     """Fetch Open-Meteo data for all plants and return three DataFrames."""
     today = datetime.date.today()
     band_start = datetime.date(today.year - 5, 1, 1)
-    band_end   = datetime.date(today.year - 1, 12, 31)
+    band_end = datetime.date(today.year - 1, 12, 31)
 
     trend_rows: list[dict] = []
     seasonal_rows: list[dict] = []
@@ -126,38 +217,54 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
 
         # 1. Current: 90-day trailing history + 10-day forecast
         try:
-            current = _get(_FORECAST_API, {
-                "latitude": lat, "longitude": lon,
-                "daily": "temperature_2m_max",
-                "timezone": "Europe/Paris",
-                "past_days": 90,
-                "forecast_days": 10,
-            })
+            current = _get(
+                _FORECAST_API,
+                {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "daily": "temperature_2m_max",
+                    "timezone": "Europe/Paris",
+                    "past_days": 90,
+                    "forecast_days": 10,
+                },
+            )
             times = current["daily"]["time"]
             temps = current["daily"]["temperature_2m_max"]
-            for dt_str, t in zip(times, temps):
+            for dt_str, t in zip(times, temps, strict=False):
                 is_fc = dt_str > today.isoformat()
-                trend_rows.append({
-                    "plant_code": code, "plant_name": name, "river": river,
-                    "obs_date": dt_str, "temp_max_c": t, "is_forecast": is_fc,
-                })
+                trend_rows.append(
+                    {
+                        "plant_code": code,
+                        "plant_name": name,
+                        "river": river,
+                        "obs_date": dt_str,
+                        "temp_max_c": t,
+                        "is_forecast": is_fc,
+                    }
+                )
         except Exception as exc:
             logger.error(f"heat_risk: failed to fetch current for {code}: {exc}")
             times, temps = [], []
 
         # 2. Seasonal baseline: 5 prior full calendar years
         try:
-            archive = _get(_ARCHIVE_API, {
-                "latitude": lat, "longitude": lon,
-                "start_date": band_start.isoformat(),
-                "end_date": band_end.isoformat(),
-                "daily": "temperature_2m_max",
-                "timezone": "Europe/Paris",
-            })
-            df_arch = pd.DataFrame({
-                "date": pd.to_datetime(archive["daily"]["time"]),
-                "temp": archive["daily"]["temperature_2m_max"],
-            }).dropna()
+            archive = _get(
+                _ARCHIVE_API,
+                {
+                    "latitude": lat,
+                    "longitude": lon,
+                    "start_date": band_start.isoformat(),
+                    "end_date": band_end.isoformat(),
+                    "daily": "temperature_2m_max",
+                    "timezone": "Europe/Paris",
+                },
+            )
+            df_arch = pd.DataFrame(
+                {
+                    "date": pd.to_datetime(archive["daily"]["time"]),
+                    "temp": archive["daily"]["temperature_2m_max"],
+                }
+            ).dropna()
             df_arch["doy"] = df_arch["date"].dt.dayofyear
             seasonal = (
                 df_arch.groupby("doy")["temp"]
@@ -165,20 +272,29 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
                 .reset_index()
             )
             for _, row in seasonal.iterrows():
-                seasonal_rows.append({
-                    "plant_code": code, "doy": int(row["doy"]),
-                    "avg5": round(float(row["avg5"]), 1),
-                    "min5": round(float(row["min5"]), 1),
-                    "max5": round(float(row["max5"]), 1),
-                })
+                seasonal_rows.append(
+                    {
+                        "plant_code": code,
+                        "doy": int(row["doy"]),
+                        "avg5": round(float(row["avg5"]), 1),
+                        "min5": round(float(row["min5"]), 1),
+                        "max5": round(float(row["max5"]), 1),
+                    }
+                )
         except Exception as exc:
             logger.error(f"heat_risk: failed to fetch archive for {code}: {exc}")
             seasonal = pd.DataFrame()
 
         # 3. Latest summary for this plant
         today_str = today.isoformat()
-        obs_temps = [(dt, t) for dt, t in zip(times, temps) if dt <= today_str and t is not None]
-        fc_temps  = [(dt, t) for dt, t in zip(times, temps) if dt >  today_str and t is not None]
+        obs_temps = [
+            (dt, t)
+            for dt, t in zip(times, temps, strict=False)
+            if dt <= today_str and t is not None
+        ]
+        fc_temps = [
+            (dt, t) for dt, t in zip(times, temps, strict=False) if dt > today_str and t is not None
+        ]
         latest_temp = obs_temps[-1][1] if obs_temps else None
         latest_date = obs_temps[-1][0] if obs_temps else None
 
@@ -186,16 +302,28 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
         # so the alert adapts if the forecast window spans a month boundary.
         fc_rivers: list[tuple[str, float, float]] = []  # (date, air_temp, river_temp)
         for dt_str, t in fc_temps:
-            fc_month  = datetime.date.fromisoformat(dt_str).month
+            fc_month = datetime.date.fromisoformat(dt_str).month
             fc_offset = _MONTHLY_RIVER_OFFSET[fc_month]
             fc_rivers.append((dt_str, t, round(t + fc_offset, 1)))
 
         # Peak forecast values: air temp for display, river temp for alert level.
         peak_fc_temp = max((t for _, t, _ in fc_rivers), default=None)
-        peak_fc_date = next((dt for dt, t, _ in fc_rivers if t == peak_fc_temp), None) if peak_fc_temp else None
+        peak_fc_date = (
+            next((dt for dt, t, _ in fc_rivers if t == peak_fc_temp), None)
+            if peak_fc_temp
+            else None
+        )
         peak_fc_river = max((r for _, _, r in fc_rivers), default=None)
-        peak_fc_river_date = next((dt for dt, _, r in fc_rivers if r == peak_fc_river), None) if peak_fc_river else None
-        fc_month = datetime.date.fromisoformat(peak_fc_river_date).month if peak_fc_river_date else today.month
+        peak_fc_river_date = (
+            next((dt for dt, _, r in fc_rivers if r == peak_fc_river), None)
+            if peak_fc_river
+            else None
+        )
+        fc_month = (
+            datetime.date.fromisoformat(peak_fc_river_date).month
+            if peak_fc_river_date
+            else today.month
+        )
 
         # 5yr avg at today's DOY
         doy = today.timetuple().tm_yday
@@ -207,35 +335,43 @@ def build_heat_risk_tables() -> dict[str, pd.DataFrame]:
 
         # Days in the last 5 where implied river exceeded the watch threshold (24C).
         recent5_rivers = [
-            round(t + _MONTHLY_RIVER_OFFSET[today.month], 1)
-            for _, t in obs_temps[-5:]
+            round(t + _MONTHLY_RIVER_OFFSET[today.month], 1) for _, t in obs_temps[-5:]
         ]
         days_above_35 = sum(1 for r in recent5_rivers if r >= 24.0)
 
-        month_offset  = _MONTHLY_RIVER_OFFSET[today.month]
+        month_offset = _MONTHLY_RIVER_OFFSET[today.month]
         implied_river = round(latest_temp + month_offset, 1) if latest_temp is not None else None
-        latest_rows.append({
-            "plant_code": code, "plant_name": name, "river": river,
-            "capacity_mw": cap, "lat": lat, "lon": lon,
-            "obs_date": latest_date, "temp_max_c": latest_temp,
-            "avg5_temp_c": avg5,
-            "anomaly_c": round(latest_temp - avg5, 1) if latest_temp is not None and avg5 is not None else None,
-            "alert_level": _alert(implied_river, today.month),
-            "days_above_35_last5": days_above_35,
-            "peak_fc_temp_c": peak_fc_temp,
-            "peak_fc_date": peak_fc_date,
-            "fc_alert_level": _alert(peak_fc_river, fc_month),
-            "implied_river_c": implied_river,
-            "river_limit_c": plant["river_limit_c"],
-            "summer_limit_c": plant["summer_limit_c"],
-        })
+        latest_rows.append(
+            {
+                "plant_code": code,
+                "plant_name": name,
+                "river": river,
+                "capacity_mw": cap,
+                "lat": lat,
+                "lon": lon,
+                "obs_date": latest_date,
+                "temp_max_c": latest_temp,
+                "avg5_temp_c": avg5,
+                "anomaly_c": round(latest_temp - avg5, 1)
+                if latest_temp is not None and avg5 is not None
+                else None,
+                "alert_level": _alert(implied_river, today.month),
+                "days_above_35_last5": days_above_35,
+                "peak_fc_temp_c": peak_fc_temp,
+                "peak_fc_date": peak_fc_date,
+                "fc_alert_level": _alert(peak_fc_river, fc_month),
+                "implied_river_c": implied_river,
+                "river_limit_c": plant["river_limit_c"],
+                "summer_limit_c": plant["summer_limit_c"],
+            }
+        )
 
-    df_latest   = pd.DataFrame(latest_rows)
-    df_trend    = pd.DataFrame(trend_rows)
+    df_latest = pd.DataFrame(latest_rows)
+    df_trend = pd.DataFrame(trend_rows)
     df_seasonal = pd.DataFrame(seasonal_rows)
 
     return {
-        "nuclear_heat_risk_latest":   df_latest,
-        "nuclear_heat_risk_trend":    df_trend,
+        "nuclear_heat_risk_latest": df_latest,
+        "nuclear_heat_risk_trend": df_trend,
         "nuclear_heat_risk_seasonal": df_seasonal,
     }

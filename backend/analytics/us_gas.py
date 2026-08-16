@@ -10,7 +10,6 @@ Produces three DuckDB tables:
 from __future__ import annotations
 
 import pandas as pd
-
 from loaders._base import _query, get_read_conn
 
 # EIA series ID -> display region name
@@ -129,19 +128,21 @@ def _build_latest(raw: pd.DataFrame) -> pd.DataFrame:
         # Implied fill: current vs 5yr max at same week (proxy for % full)
         implied_fill_pct = float(value_bcf / max5_bcf * 100) if max5_bcf else None
 
-        results.append({
-            "region": str(region),
-            "week_date": week_date.date(),
-            "value_bcf": float(value_bcf),
-            "week_change_bcf": week_change_bcf,
-            "yoy_bcf": yoy_bcf,
-            "vs_avg5_bcf": vs_avg5_bcf,
-            "vs_avg5_pct": vs_avg5_pct,
-            "implied_fill_pct": implied_fill_pct,
-            "avg5_bcf": avg5_bcf,
-            "min5_bcf": min5_bcf,
-            "max5_bcf": max5_bcf,
-        })
+        results.append(
+            {
+                "region": str(region),
+                "week_date": week_date.date(),
+                "value_bcf": float(value_bcf),
+                "week_change_bcf": week_change_bcf,
+                "yoy_bcf": yoy_bcf,
+                "vs_avg5_bcf": vs_avg5_bcf,
+                "vs_avg5_pct": vs_avg5_pct,
+                "implied_fill_pct": implied_fill_pct,
+                "avg5_bcf": avg5_bcf,
+                "min5_bcf": min5_bcf,
+                "max5_bcf": max5_bcf,
+            }
+        )
 
     return pd.DataFrame(results)
 
@@ -163,5 +164,4 @@ def _build_history(raw: pd.DataFrame) -> pd.DataFrame:
     """Long-format weekly series per region for the drill-down chart (all history)."""
     df = raw[["region", "week_date", "value_bcf"]].copy()
     df["week_date"] = df["week_date"].dt.date
-    df = df.sort_values(["region", "week_date"])
-    return df
+    return df.sort_values(["region", "week_date"])

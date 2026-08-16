@@ -11,12 +11,24 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+from loaders._base import _query, get_read_conn
 from loguru import logger
 
-from loaders._base import _query, get_read_conn
-
 HYDRO_COUNTRIES = [
-    "NO", "SE", "ES", "FI", "RO", "IT", "CH", "PT", "FR", "GR", "AT", "HR", "RS", "ME",
+    "NO",
+    "SE",
+    "ES",
+    "FI",
+    "RO",
+    "IT",
+    "CH",
+    "PT",
+    "FR",
+    "GR",
+    "AT",
+    "HR",
+    "RS",
+    "ME",
 ]
 
 
@@ -77,12 +89,11 @@ def _build_seasonal(df: pd.DataFrame) -> pd.DataFrame:
     if band_df.empty:
         return pd.DataFrame(columns=["country", "week_of_year", "avg5_twh", "min5_twh", "max5_twh"])
 
-    seasonal = (
+    return (
         band_df.groupby(["country", "week_of_year"])["stored_twh"]
         .agg(avg5_twh="mean", min5_twh="min", max5_twh="max")
         .reset_index()
     )
-    return seasonal
 
 
 def _build_latest(df: pd.DataFrame, seasonal: pd.DataFrame) -> pd.DataFrame:
@@ -140,7 +151,9 @@ def _build_latest(df: pd.DataFrame, seasonal: pd.DataFrame) -> pd.DataFrame:
     def _rank(row) -> float | None:
         woy = row["week_of_year"]
         cc = row["country"]
-        vals = hist_band[(hist_band["country"] == cc) & (hist_band["week_of_year"] == woy)]["stored_twh"]
+        vals = hist_band[(hist_band["country"] == cc) & (hist_band["week_of_year"] == woy)][
+            "stored_twh"
+        ]
         if vals.empty:
             return None
         below = (vals < row["stored_twh"]).sum()

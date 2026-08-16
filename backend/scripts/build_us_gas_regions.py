@@ -7,28 +7,51 @@ downloads Natural Earth 50m state boundaries, and dissolves into 5 region polygo
 
 Output: frontend/public/geo/us_gas_regions.geojson
 """
+
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 import urllib.request
 from pathlib import Path
 
-try:
-    import shapely
-    from shapely.geometry import shape, mapping
-    from shapely.ops import unary_union
-    HAS_SHAPELY = True
-except ImportError:
-    HAS_SHAPELY = False
+# Availability probe only. build_with_shapely imports what it needs locally.
+HAS_SHAPELY = importlib.util.find_spec("shapely") is not None
 
 # EIA gas storage region -> list of USPS 2-letter state codes.
 # Source: EIA Form 912 / WNGSR region definitions (consuming + producing regions).
 EIA_REGIONS: dict[str, list[str]] = {
     "East": [
-        "CT", "DC", "DE", "FL", "GA", "IL", "IN", "KY", "ME", "MD", "MA",
-        "MI", "MN", "MO", "NH", "NJ", "NY", "NC", "OH", "PA", "RI", "SC",
-        "TN", "VA", "VT", "WI", "WV", "AL", "MS",
+        "CT",
+        "DC",
+        "DE",
+        "FL",
+        "GA",
+        "IL",
+        "IN",
+        "KY",
+        "ME",
+        "MD",
+        "MA",
+        "MI",
+        "MN",
+        "MO",
+        "NH",
+        "NJ",
+        "NY",
+        "NC",
+        "OH",
+        "PA",
+        "RI",
+        "SC",
+        "TN",
+        "VA",
+        "VT",
+        "WI",
+        "WV",
+        "AL",
+        "MS",
     ],
     "South Central": ["AR", "LA", "OK", "TX"],
     "Midwest": ["IA", "KS", "ND", "NE", "SD"],
@@ -56,7 +79,9 @@ NE_STATES_URL = (
     "master/geojson/ne_50m_admin_1_states_provinces.geojson"
 )
 
-OUT_PATH = Path(__file__).resolve().parents[2] / "frontend" / "public" / "geo" / "us_gas_regions.geojson"
+OUT_PATH = (
+    Path(__file__).resolve().parents[2] / "frontend" / "public" / "geo" / "us_gas_regions.geojson"
+)
 
 
 def iso_to_usps(props: dict) -> str | None:
@@ -71,7 +96,8 @@ def iso_to_usps(props: dict) -> str | None:
 
 
 def build_with_shapely(features_us: list[dict]) -> dict:
-    from shapely.geometry import shape, mapping
+    """Dissolve state polygons into the five EIA gas storage regions."""
+    from shapely.geometry import mapping, shape
     from shapely.ops import unary_union
 
     by_region: dict[str, list] = {r: [] for r in EIA_REGIONS}
@@ -87,15 +113,17 @@ def build_with_shapely(features_us: list[dict]) -> dict:
             print(f"WARNING: no geometries for region {region}", file=sys.stderr)
             continue
         dissolved = unary_union(geoms)
-        out_features.append({
-            "type": "Feature",
-            "properties": {
-                "region": region,
-                "series_id": REGION_SERIES[region],
-                "state_count": len(geoms),
-            },
-            "geometry": mapping(dissolved),
-        })
+        out_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "region": region,
+                    "series_id": REGION_SERIES[region],
+                    "state_count": len(geoms),
+                },
+                "geometry": mapping(dissolved),
+            }
+        )
 
     return {"type": "FeatureCollection", "features": out_features}
 
@@ -111,28 +139,30 @@ def build_without_shapely(features_us: list[dict]) -> dict:
         region = STATE_REGION.get(state or "")
         if not region:
             continue
-        out_features.append({
-            "type": "Feature",
-            "properties": {
-                "region": region,
-                "state_abbr": state,
-                "state_name": f["properties"].get("name", ""),
-                "series_id": REGION_SERIES[region],
-            },
-            "geometry": f["geometry"],
-        })
+        out_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "region": region,
+                    "state_abbr": state,
+                    "state_name": f["properties"].get("name", ""),
+                    "series_id": REGION_SERIES[region],
+                },
+                "geometry": f["geometry"],
+            }
+        )
     return {"type": "FeatureCollection", "features": out_features}
 
 
 def main() -> None:
+    """Fetch Natural Earth state polygons and write us_gas_regions.geojson."""
     print("Downloading Natural Earth 50m state boundaries...")
     req = urllib.request.Request(NE_STATES_URL, headers={"User-Agent": "energy-hub-build"})
     with urllib.request.urlopen(req, timeout=60) as r:
         raw = json.load(r)
 
     features_us = [
-        f for f in raw["features"]
-        if f["properties"].get("admin") == "United States of America"
+        f for f in raw["features"] if f["properties"].get("admin") == "United States of America"
     ]
     print(f"  Found {len(features_us)} US state features")
 

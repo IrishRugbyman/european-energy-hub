@@ -69,7 +69,7 @@ def _fetch_eia(eia_key: str, respondents: list[str], hours: int = 48) -> list[di
         "sort[0][direction]": "desc",
         "length": "5000",
     }
-    for i, r in enumerate(respondents):
+    for r in respondents:
         params["facets[respondent][]"] = r  # will be overwritten; build manually
     # Build query string manually to support repeated keys
     parts = [

@@ -8,7 +8,6 @@ Peak hours: 08-19 local time (standard European market convention, hour-beginnin
 from __future__ import annotations
 
 import pandas as pd
-
 from loaders._base import _query, get_read_conn
 
 
@@ -38,10 +37,37 @@ def build_power_tables() -> dict[str, pd.DataFrame]:
         conn.close()
 
     if raw.empty:
-        empty_daily = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "offpeak_eur", "day_range_eur", "neg_hours", "min_eur", "max_eur"])
+        empty_daily = pd.DataFrame(
+            columns=[
+                "zone",
+                "price_date",
+                "base_eur",
+                "peak_eur",
+                "offpeak_eur",
+                "day_range_eur",
+                "neg_hours",
+                "min_eur",
+                "max_eur",
+            ]
+        )
         empty_hourly = pd.DataFrame(columns=["zone", "ts", "price_eur_mwh"])
-        empty_latest = pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "vs_30d_pct", "day_range_eur", "neg_hours", "pct_rank_2yr"])
-        return {"power_daily": empty_daily, "power_hourly_recent": empty_hourly, "power_latest": empty_latest}
+        empty_latest = pd.DataFrame(
+            columns=[
+                "zone",
+                "price_date",
+                "base_eur",
+                "peak_eur",
+                "vs_30d_pct",
+                "day_range_eur",
+                "neg_hours",
+                "pct_rank_2yr",
+            ]
+        )
+        return {
+            "power_daily": empty_daily,
+            "power_hourly_recent": empty_hourly,
+            "power_latest": empty_latest,
+        }
 
     raw["ts"] = pd.to_datetime(raw["ts"])
 
@@ -78,9 +104,11 @@ def _build_daily(df: pd.DataFrame) -> pd.DataFrame:
     key = ["zone", "price_date"]
 
     # Base, min, max, range - all rows
-    base = df.groupby(key)["price_eur_mwh"].agg(
-        count="count", base_eur="mean", min_eur="min", max_eur="max"
-    ).reset_index()
+    base = (
+        df.groupby(key)["price_eur_mwh"]
+        .agg(count="count", base_eur="mean", min_eur="min", max_eur="max")
+        .reset_index()
+    )
     base["day_range_eur"] = (base["max_eur"] - base["min_eur"]).round(2)
     base["min_eur"] = base["min_eur"].round(2)
     base["max_eur"] = base["max_eur"].round(2)
@@ -92,13 +120,19 @@ def _build_daily(df: pd.DataFrame) -> pd.DataFrame:
 
     # Peak mean - filter first, then groupby
     peak_df = df[df["is_peak"]]
-    peak = peak_df.groupby(key)["price_eur_mwh"].agg(pk_count="count", peak_eur="mean").reset_index()
+    peak = (
+        peak_df.groupby(key)["price_eur_mwh"].agg(pk_count="count", peak_eur="mean").reset_index()
+    )
     peak.loc[peak["pk_count"] < 8, "peak_eur"] = None
     peak.drop(columns=["pk_count"], inplace=True)
 
     # Offpeak mean
     offpeak_df = df[~df["is_peak"]]
-    offpeak = offpeak_df.groupby(key)["price_eur_mwh"].agg(op_count="count", offpeak_eur="mean").reset_index()
+    offpeak = (
+        offpeak_df.groupby(key)["price_eur_mwh"]
+        .agg(op_count="count", offpeak_eur="mean")
+        .reset_index()
+    )
     offpeak.loc[offpeak["op_count"] < 8, "offpeak_eur"] = None
     offpeak.drop(columns=["op_count"], inplace=True)
 
@@ -107,8 +141,12 @@ def _build_daily(df: pd.DataFrame) -> pd.DataFrame:
     if not neg.empty:
         neg["neg_hour"] = neg["ts"].dt.floor("h")
         neg_cnt = (
-            neg.groupby(key + ["neg_hour"]).size().reset_index(name="_n")
-            .groupby(key).size().reset_index(name="neg_hours")
+            neg.groupby(key + ["neg_hour"])
+            .size()
+            .reset_index(name="_n")
+            .groupby(key)
+            .size()
+            .reset_index(name="neg_hours")
         )
     else:
         neg_cnt = base[key].copy()
@@ -132,7 +170,18 @@ def _build_hourly_recent(df: pd.DataFrame) -> pd.DataFrame:
 
 def _build_latest(daily: pd.DataFrame) -> pd.DataFrame:
     if daily.empty:
-        return pd.DataFrame(columns=["zone", "price_date", "base_eur", "peak_eur", "vs_30d_pct", "day_range_eur", "neg_hours", "pct_rank_2yr"])
+        return pd.DataFrame(
+            columns=[
+                "zone",
+                "price_date",
+                "base_eur",
+                "peak_eur",
+                "vs_30d_pct",
+                "day_range_eur",
+                "neg_hours",
+                "pct_rank_2yr",
+            ]
+        )
 
     daily["price_date"] = pd.to_datetime(daily["price_date"]).dt.date
 
@@ -161,16 +210,24 @@ def _build_latest(daily: pd.DataFrame) -> pd.DataFrame:
             else None
         )
 
-        rows.append({
-            "zone": zone,
-            "price_date": latest_date,
-            "base_eur": round(latest_base, 2),
-            "peak_eur": round(float(latest_row["peak_eur"]), 2) if latest_row.get("peak_eur") is not None else None,
-            "vs_30d_pct": round(float(vs_30d), 1) if vs_30d is not None else None,
-            "day_range_eur": round(float(latest_row["day_range_eur"]), 2) if latest_row.get("day_range_eur") is not None else None,
-            "neg_hours": int(latest_row["neg_hours"]) if latest_row.get("neg_hours") is not None else 0,
-            "pct_rank_2yr": pct_rank_2yr,
-        })
+        rows.append(
+            {
+                "zone": zone,
+                "price_date": latest_date,
+                "base_eur": round(latest_base, 2),
+                "peak_eur": round(float(latest_row["peak_eur"]), 2)
+                if latest_row.get("peak_eur") is not None
+                else None,
+                "vs_30d_pct": round(float(vs_30d), 1) if vs_30d is not None else None,
+                "day_range_eur": round(float(latest_row["day_range_eur"]), 2)
+                if latest_row.get("day_range_eur") is not None
+                else None,
+                "neg_hours": int(latest_row["neg_hours"])
+                if latest_row.get("neg_hours") is not None
+                else 0,
+                "pct_rank_2yr": pct_rank_2yr,
+            }
+        )
 
     return pd.DataFrame(rows)
 
@@ -187,7 +244,9 @@ def build_power_correlations(power_daily: pd.DataFrame) -> pd.DataFrame:
     # Use last 30 days of data (by latest date in the dataset)
     latest_date = power_daily["price_date"].max()
     cutoff = latest_date - pd.Timedelta(days=30)
-    recent = power_daily[power_daily["price_date"] >= cutoff][["zone", "price_date", "base_eur"]].dropna()
+    recent = power_daily[power_daily["price_date"] >= cutoff][
+        ["zone", "price_date", "base_eur"]
+    ].dropna()
 
     # Pivot: date x zone
     pivot = recent.pivot_table(index="price_date", columns="zone", values="base_eur")
@@ -229,13 +288,15 @@ def _build_hourly_profiles(df: pd.DataFrame) -> pd.DataFrame:
         p = grp["price_eur_mwh"].dropna()
         if p.empty:
             continue
-        rows.append({
-            "zone": zone,
-            "hour": int(hour),
-            "avg_eur": round(float(p.mean()), 2),
-            "p25_eur": round(float(p.quantile(0.25)), 2),
-            "p75_eur": round(float(p.quantile(0.75)), 2),
-            "neg_pct": round(float(grp["is_neg"].mean() * 100), 1),
-        })
+        rows.append(
+            {
+                "zone": zone,
+                "hour": int(hour),
+                "avg_eur": round(float(p.mean()), 2),
+                "p25_eur": round(float(p.quantile(0.25)), 2),
+                "p75_eur": round(float(p.quantile(0.75)), 2),
+                "neg_pct": round(float(grp["is_neg"].mean() * 100), 1),
+            }
+        )
 
     return pd.DataFrame(rows)

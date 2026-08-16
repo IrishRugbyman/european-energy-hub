@@ -8,7 +8,6 @@ Positive net_flow_mw means net electricity transfer from_zone -> to_zone.
 from __future__ import annotations
 
 import pandas as pd
-
 from loaders._base import _query, get_read_conn
 
 
@@ -69,12 +68,14 @@ def _build_borders_daily() -> pd.DataFrame:
             ab = flows.get((a, b), 0.0)
             ba = flows.get((b, a), 0.0)
             net = round(ab - ba, 1)
-            rows.append({
-                "price_date": date_val,
-                "from_zone": a,
-                "to_zone": b,
-                "net_flow_mw": net,
-            })
+            rows.append(
+                {
+                    "price_date": date_val,
+                    "from_zone": a,
+                    "to_zone": b,
+                    "net_flow_mw": net,
+                }
+            )
 
     if not rows:
         return empty

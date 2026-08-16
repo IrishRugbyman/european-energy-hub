@@ -44,10 +44,20 @@ def _build_spreads(start: date, end: date) -> pd.DataFrame:
     from loaders.spreads import load_spread_inputs
     from loaders.worldmonitor import load_capacity_offline_series
 
-    empty = pd.DataFrame(columns=[
-        "price_date", "power_de", "ttf", "eua", "coal_eur_mwh",
-        "css", "cds", "fss", "regime_threshold", "disruption_bcm",
-    ])
+    empty = pd.DataFrame(
+        columns=[
+            "price_date",
+            "power_de",
+            "ttf",
+            "eua",
+            "coal_eur_mwh",
+            "css",
+            "cds",
+            "fss",
+            "regime_threshold",
+            "disruption_bcm",
+        ]
+    )
 
     try:
         inputs = load_spread_inputs("DE-LU", start, end)
@@ -72,14 +82,28 @@ def _build_spreads(start: date, end: date) -> pd.DataFrame:
     except Exception:
         df["disruption_bcm"] = None
 
-    out = df.reset_index().rename(columns={
-        "index": "price_date",
-        "power_eur_mwh": "power_de",
-        "ttf_eur_mwh": "ttf",
-        "eua_eur_tco2": "eua",
-    })
-    return out[["price_date", "power_de", "ttf", "eua", "coal_eur_mwh",
-                "css", "cds", "fss", "regime_threshold", "disruption_bcm"]].copy()
+    out = df.reset_index().rename(
+        columns={
+            "index": "price_date",
+            "power_eur_mwh": "power_de",
+            "ttf_eur_mwh": "ttf",
+            "eua_eur_tco2": "eua",
+        }
+    )
+    return out[
+        [
+            "price_date",
+            "power_de",
+            "ttf",
+            "eua",
+            "coal_eur_mwh",
+            "css",
+            "cds",
+            "fss",
+            "regime_threshold",
+            "disruption_bcm",
+        ]
+    ].copy()
 
 
 _NBP_MWH_PER_MMBTU = 0.29307  # 1 MMBtu = 293.07 kWh = 0.29307 MWh
@@ -87,19 +111,27 @@ _NBP_MWH_PER_MMBTU = 0.29307  # 1 MMBtu = 293.07 kWh = 0.29307 MWh
 
 def _build_prices(start: date, end: date) -> pd.DataFrame:
     from loaders._base import _query, get_read_conn
-    from loaders.gas import load_ttf_daily, load_nbp_daily
-    from loaders.carbon import load_eua_daily, load_coal_daily
+    from loaders.carbon import load_coal_daily, load_eua_daily
     from loaders.fx import load_eur_usd_daily
+    from loaders.gas import load_nbp_daily, load_ttf_daily
 
-    empty = pd.DataFrame(columns=[
-        "price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh", "hh_eur_mwh",
-    ])
+    empty = pd.DataFrame(
+        columns=[
+            "price_date",
+            "ttf_eur_mwh",
+            "eua_eur_t",
+            "coal_usd_t",
+            "hh_usd_mmbtu",
+            "nbp_eur_mwh",
+            "hh_eur_mwh",
+        ]
+    )
 
     series: dict[str, pd.Series] = {}
     for name, loader in [
         ("ttf_eur_mwh", lambda: load_ttf_daily(start, end)),
-        ("eua_eur_t",   lambda: load_eua_daily(start, end)),
-        ("coal_usd_t",  lambda: load_coal_daily(start, end)),
+        ("eua_eur_t", lambda: load_eua_daily(start, end)),
+        ("coal_usd_t", lambda: load_coal_daily(start, end)),
     ]:
         try:
             s = loader()
@@ -154,18 +186,36 @@ def _build_prices(start: date, end: date) -> pd.DataFrame:
     df = pd.DataFrame(series).ffill().dropna(how="all")
     df.index = pd.to_datetime(df.index)
     out = df.reset_index().rename(columns={"index": "price_date"})
-    for col in ["ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh", "hh_eur_mwh"]:
+    for col in [
+        "ttf_eur_mwh",
+        "eua_eur_t",
+        "coal_usd_t",
+        "hh_usd_mmbtu",
+        "nbp_eur_mwh",
+        "hh_eur_mwh",
+    ]:
         if col not in out.columns:
             out[col] = None
-    return out[["price_date", "ttf_eur_mwh", "eua_eur_t", "coal_usd_t", "hh_usd_mmbtu", "nbp_eur_mwh", "hh_eur_mwh"]].copy()
+    return out[
+        [
+            "price_date",
+            "ttf_eur_mwh",
+            "eua_eur_t",
+            "coal_usd_t",
+            "hh_usd_mmbtu",
+            "nbp_eur_mwh",
+            "hh_eur_mwh",
+        ]
+    ].copy()
 
 
 def _build_multi_zone_spreads(start: date, end: date) -> pd.DataFrame:
     """CSS/CDS/FSS for each zone in SPREAD_ZONES using TTF as the common gas reference."""
     from loaders.spreads import load_spread_inputs
 
-    empty = pd.DataFrame(columns=["price_date", "zone", "power_eur_mwh",
-                                   "css", "cds", "fss", "regime_threshold"])
+    empty = pd.DataFrame(
+        columns=["price_date", "zone", "power_eur_mwh", "css", "cds", "fss", "regime_threshold"]
+    )
     frames: list[pd.DataFrame] = []
 
     for zone in SPREAD_ZONES:
@@ -183,15 +233,17 @@ def _build_multi_zone_spreads(start: date, end: date) -> pd.DataFrame:
         cds = df["power_eur_mwh"] - coal_eur_mwh / COAL_EFF - df["eua_eur_tco2"] * COAL_EF
         fss = css - cds
 
-        zone_df = pd.DataFrame({
-            "price_date": df.index,
-            "zone": zone,
-            "power_eur_mwh": df["power_eur_mwh"].values,
-            "css": css.round(4).values,
-            "cds": cds.round(4).values,
-            "fss": fss.round(4).values,
-            "regime_threshold": fss.apply(lambda x: "gas" if x > 0 else "coal").values,
-        })
+        zone_df = pd.DataFrame(
+            {
+                "price_date": df.index,
+                "zone": zone,
+                "power_eur_mwh": df["power_eur_mwh"].values,
+                "css": css.round(4).values,
+                "cds": cds.round(4).values,
+                "fss": fss.round(4).values,
+                "regime_threshold": fss.apply(lambda x: "gas" if x > 0 else "coal").values,
+            }
+        )
         frames.append(zone_df)
 
     if not frames:
@@ -204,8 +256,13 @@ def _build_multi_zone_spreads(start: date, end: date) -> pd.DataFrame:
 
 # Month offset within year for sorting contracts by delivery start
 _TENOR_MONTH = {
-    "Q1": 1, "Q2": 4, "Q3": 7, "Q4": 10,
-    "SUM": 4, "WIN": 10, "CAL": 1,
+    "Q1": 1,
+    "Q2": 4,
+    "Q3": 7,
+    "Q4": 10,
+    "SUM": 4,
+    "WIN": 10,
+    "CAL": 1,
 }
 
 
@@ -249,9 +306,7 @@ def _build_ttf_curve() -> pd.DataFrame:
         return empty
 
     df["sort_key"] = df["contract"].apply(_contract_sort_key)
-    df["tenor_type"] = df["contract"].apply(
-        lambda c: c.split("-")[0] if "-" in c else "OTHER"
-    )
+    df["tenor_type"] = df["contract"].apply(lambda c: c.split("-")[0] if "-" in c else "OTHER")
     df = df.sort_values("sort_key").reset_index(drop=True)
     return df[["contract", "settlement", "tenor_type", "sort_key"]].copy()
 
@@ -263,9 +318,12 @@ def _build_ttf_curve_snapshots() -> pd.DataFrame:
     Rows have (snapshot_label, contract, settlement, tenor_type, sort_key).
     """
     from datetime import timedelta
+
     from loaders._base import _query, get_read_conn
 
-    empty = pd.DataFrame(columns=["snapshot_label", "contract", "settlement", "tenor_type", "sort_key"])
+    empty = pd.DataFrame(
+        columns=["snapshot_label", "contract", "settlement", "tenor_type", "sort_key"]
+    )
     today = date.today()
     snapshots = [
         ("today", today),
@@ -300,7 +358,9 @@ def _build_ttf_curve_snapshots() -> pd.DataFrame:
             )
             # Only keep contracts that currently exist (avoid showing expired fronts)
             df = df[df["sort_key"] > 0]
-            frames.append(df[["snapshot_label", "contract", "settlement", "tenor_type", "sort_key"]])
+            frames.append(
+                df[["snapshot_label", "contract", "settlement", "tenor_type", "sort_key"]]
+            )
         conn.close()
     except Exception:
         return empty

@@ -11,13 +11,14 @@ Tables produced for energy_hub.duckdb:
 from __future__ import annotations
 
 import pandas as pd
-
 from loaders._base import _query, get_read_conn
 
 
 def build_gas_flows_tables() -> dict[str, pd.DataFrame]:
     """Return both gas-flows DataFrames ready for energy_hub.duckdb."""
-    empty = pd.DataFrame(columns=["country", "period_date", "entry_gwh_d", "exit_gwh_d", "net_gwh_d"])
+    empty = pd.DataFrame(
+        columns=["country", "period_date", "entry_gwh_d", "exit_gwh_d", "net_gwh_d"]
+    )
 
     conn = get_read_conn()
     try:

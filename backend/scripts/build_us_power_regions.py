@@ -12,6 +12,7 @@ AK, HI) are omitted - these territories are not represented in the Form 930 data
 
 Output: frontend/public/geo/us_power_regions.geojson
 """
+
 from __future__ import annotations
 
 import json
@@ -20,8 +21,9 @@ import urllib.request
 from pathlib import Path
 
 try:
-    from shapely.geometry import shape, mapping
+    from shapely.geometry import mapping, shape
     from shapely.ops import unary_union
+
     HAS_SHAPELY = True
 except ImportError:
     HAS_SHAPELY = False
@@ -74,9 +76,7 @@ EIA_POWER_REGIONS: dict[str, dict] = {
 
 # Reverse lookup: state -> region code
 STATE_REGION: dict[str, str] = {
-    state: region
-    for region, meta in EIA_POWER_REGIONS.items()
-    for state in meta["states"]
+    state: region for region, meta in EIA_POWER_REGIONS.items() for state in meta["states"]
 }
 
 NE_STATES_URL = (
@@ -90,6 +90,7 @@ OUT_PATH = (
 
 
 def iso_to_usps(props: dict) -> str | None:
+    """Extract a two-letter USPS state code from Natural Earth properties."""
     code = props.get("iso_3166_2") or props.get("postal") or ""
     if code.startswith("US-"):
         return code[3:]
@@ -99,6 +100,7 @@ def iso_to_usps(props: dict) -> str | None:
 
 
 def build_with_shapely(features_us: list[dict]) -> dict:
+    """Dissolve state polygons into the ten EIA Form 930 power regions."""
     by_region: dict[str, list] = {r: [] for r in EIA_POWER_REGIONS}
     assigned = set()
     for f in features_us:
@@ -109,12 +111,15 @@ def build_with_shapely(features_us: list[dict]) -> dict:
             assigned.add(state)
 
     unassigned = [
-        iso_to_usps(f["properties"]) for f in features_us
-        if iso_to_usps(f["properties"]) not in assigned
-        and iso_to_usps(f["properties"]) is not None
+        iso_to_usps(f["properties"])
+        for f in features_us
+        if iso_to_usps(f["properties"]) not in assigned and iso_to_usps(f["properties"]) is not None
     ]
     if unassigned:
-        print(f"  Unassigned states (not in Form 930 coverage): {sorted(set(unassigned))}", file=sys.stderr)
+        print(
+            f"  Unassigned states (not in Form 930 coverage): {sorted(set(unassigned))}",
+            file=sys.stderr,
+        )
 
     out_features = []
     for region, geoms in by_region.items():
@@ -122,48 +127,53 @@ def build_with_shapely(features_us: list[dict]) -> dict:
             print(f"WARNING: no geometries for region {region}", file=sys.stderr)
             continue
         dissolved = unary_union(geoms)
-        out_features.append({
-            "type": "Feature",
-            "properties": {
-                "region": region,
-                "region_name": EIA_POWER_REGIONS[region]["name"],
-                "state_count": len(geoms),
-            },
-            "geometry": mapping(dissolved),
-        })
+        out_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "region": region,
+                    "region_name": EIA_POWER_REGIONS[region]["name"],
+                    "state_count": len(geoms),
+                },
+                "geometry": mapping(dissolved),
+            }
+        )
         print(f"  {region} ({EIA_POWER_REGIONS[region]['name']}): {len(geoms)} states")
 
     return {"type": "FeatureCollection", "features": out_features}
 
 
 def build_without_shapely(features_us: list[dict]) -> dict:
+    """Fallback when shapely is absent: keep state polygons, tagged by region."""
     out_features = []
     for f in features_us:
         state = iso_to_usps(f["properties"])
         region = STATE_REGION.get(state or "")
         if not region:
             continue
-        out_features.append({
-            "type": "Feature",
-            "properties": {
-                "region": region,
-                "region_name": EIA_POWER_REGIONS[region]["name"],
-                "state_abbr": state,
-            },
-            "geometry": f["geometry"],
-        })
+        out_features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "region": region,
+                    "region_name": EIA_POWER_REGIONS[region]["name"],
+                    "state_abbr": state,
+                },
+                "geometry": f["geometry"],
+            }
+        )
     return {"type": "FeatureCollection", "features": out_features}
 
 
 def main() -> None:
+    """Fetch Natural Earth state polygons and write us_power_regions.geojson."""
     print("Downloading Natural Earth 50m state boundaries...")
     req = urllib.request.Request(NE_STATES_URL, headers={"User-Agent": "energy-hub-build"})
     with urllib.request.urlopen(req, timeout=60) as r:
         raw = json.load(r)
 
     features_us = [
-        f for f in raw["features"]
-        if f["properties"].get("admin") == "United States of America"
+        f for f in raw["features"] if f["properties"].get("admin") == "United States of America"
     ]
     print(f"  Found {len(features_us)} US state features")
 

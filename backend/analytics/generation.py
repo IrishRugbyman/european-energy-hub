@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-from loguru import logger
-
 from loaders._base import _query, get_read_conn
 from loaders.power import load_installed_capacity
+from loguru import logger
 
 # Fuel types stored in power_generation_actual after fetch_generation_full
 _SOURCE_TECHS = (
@@ -37,7 +36,18 @@ _SOURCE_TECHS = (
 )
 
 # Output fuel columns (wind_onshore + wind_offshore merged into wind)
-FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "nuclear", "oil", "other", "solar", "wind")
+FUEL_COLS = (
+    "biomass",
+    "coal",
+    "gas",
+    "geothermal",
+    "hydro",
+    "nuclear",
+    "oil",
+    "other",
+    "solar",
+    "wind",
+)
 
 RENEWABLE_COLS = ("solar", "wind", "hydro")
 
@@ -63,11 +73,15 @@ def build_generation_tables() -> dict[str, pd.DataFrame]:
 # a denominator and differ only by forecast-vs-realised - the clean basis for isolating
 # the look-ahead premium in the fundamental signal arc.
 FORECAST_DAILY_COLS = (
-    "zone", "gen_date",
-    "wind_pct", "solar_pct",                 # DA forecast wind/solar as % of forecast load
-    "wind_pct_actual", "solar_pct_actual",   # realised wind/solar as % of realised load
-    "load_fc_mw", "load_actual_mw",
-    "nuclear_lag1_gw",                       # previous day's realised nuclear output in GW (gate-closure proxy)
+    "zone",
+    "gen_date",
+    "wind_pct",
+    "solar_pct",  # DA forecast wind/solar as % of forecast load
+    "wind_pct_actual",
+    "solar_pct_actual",  # realised wind/solar as % of realised load
+    "load_fc_mw",
+    "load_actual_mw",
+    "nuclear_lag1_gw",  # previous day's realised nuclear output in GW (gate-closure proxy)
 )
 
 
@@ -75,7 +89,7 @@ def _empty_forecast_daily() -> pd.DataFrame:
     return pd.DataFrame(columns=list(FORECAST_DAILY_COLS))
 
 
-def _build_nuclear_lag(conn) -> "pd.DataFrame | None":
+def _build_nuclear_lag(conn) -> pd.DataFrame | None:
     """Daily nuclear generation (GW), lagged 1 day within each zone.
 
     Uses power_generation_actual tech=nuclear. The shift makes day D's value equal to
@@ -83,14 +97,17 @@ def _build_nuclear_lag(conn) -> "pd.DataFrame | None":
     Zones without nuclear (IT-NORD) produce 0.0.
     """
     try:
-        nuc = _query(conn, """
+        nuc = _query(
+            conn,
+            """
             SELECT zone,
                    DATE_TRUNC('day', ts)::DATE AS gen_date,
                    AVG(mw) / 1000.0 AS nuclear_gw
             FROM power_generation_actual
             WHERE tech = 'nuclear'
             GROUP BY zone, gen_date
-        """)
+        """,
+        )
     except Exception:
         logger.exception("nuclear lag query failed")
         return None
@@ -118,25 +135,34 @@ def _build_generation_forecast_daily() -> pd.DataFrame:
     """
     try:
         conn = get_read_conn()
-        gen_fc = _query(conn, """
+        gen_fc = _query(
+            conn,
+            """
             SELECT zone, DATE_TRUNC('day', ts)::DATE AS gen_date, tech, AVG(mw) AS mw
             FROM power_generation_forecast
             WHERE forecast_type = 'DA'
               AND tech IN ('wind_onshore', 'wind_offshore', 'solar')
             GROUP BY zone, gen_date, tech
-        """)
-        gen_act = _query(conn, """
+        """,
+        )
+        gen_act = _query(
+            conn,
+            """
             SELECT zone, DATE_TRUNC('day', ts)::DATE AS gen_date, tech, AVG(mw) AS mw
             FROM power_generation_actual
             WHERE tech IN ('wind_onshore', 'wind_offshore', 'solar')
             GROUP BY zone, gen_date, tech
-        """)
-        load = _query(conn, """
+        """,
+        )
+        load = _query(
+            conn,
+            """
             SELECT zone, DATE_TRUNC('day', ts)::DATE AS gen_date, kind, AVG(mw) AS mw
             FROM power_load
             WHERE kind IN ('forecast', 'actual')
             GROUP BY zone, gen_date, kind
-        """)
+        """,
+        )
         nuclear_lag = _build_nuclear_lag(conn)
         conn.close()
     except Exception:
@@ -163,9 +189,13 @@ def _build_generation_forecast_daily() -> pd.DataFrame:
 
     fc = _pivot_ws(gen_fc).rename(columns={"wind_mw": "wind_fc", "solar_mw": "solar_fc"})
     act = _pivot_ws(gen_act).rename(columns={"wind_mw": "wind_act", "solar_mw": "solar_act"})
-    load_w = load.pivot_table(index=["zone", "gen_date"], columns="kind", values="mw", aggfunc="mean")
+    load_w = load.pivot_table(
+        index=["zone", "gen_date"], columns="kind", values="mw", aggfunc="mean"
+    )
     load_w.columns.name = None
-    load_w = load_w.reset_index().rename(columns={"forecast": "load_fc_mw", "actual": "load_actual_mw"})
+    load_w = load_w.reset_index().rename(
+        columns={"forecast": "load_fc_mw", "actual": "load_actual_mw"}
+    )
 
     df = fc.merge(load_w, on=["zone", "gen_date"], how="inner")
     df = df.merge(act, on=["zone", "gen_date"], how="left")
@@ -178,7 +208,14 @@ def _build_generation_forecast_daily() -> pd.DataFrame:
     df["solar_pct_actual"] = np.where(act_ok, df["solar_act"] / df["load_actual_mw"] * 100, np.nan)
 
     df = df[df["wind_pct"].notna()].copy()
-    for c in ("wind_pct", "solar_pct", "wind_pct_actual", "solar_pct_actual", "load_fc_mw", "load_actual_mw"):
+    for c in (
+        "wind_pct",
+        "solar_pct",
+        "wind_pct_actual",
+        "solar_pct_actual",
+        "load_fc_mw",
+        "load_actual_mw",
+    ):
         df[c] = df[c].round(3)
 
     # Nuclear D-1 lag: merge by zone + gen_date (both as datetime for the merge, then stringify)
@@ -219,14 +256,16 @@ def _pivot_and_merge_wind(df: pd.DataFrame, ts_col: str) -> pd.DataFrame:
 
     wide["total_mw"] = wide[list(FUEL_COLS)].sum(axis=1)
     renewable_sum = wide[list(RENEWABLE_COLS)].sum(axis=1)
-    wide["renewable_pct"] = (
-        renewable_sum / wide["total_mw"].replace(0, float("nan")) * 100
-    ).round(1)
+    wide["renewable_pct"] = (renewable_sum / wide["total_mw"].replace(0, float("nan")) * 100).round(
+        1
+    )
     return wide
 
 
 def _empty_daily() -> pd.DataFrame:
-    return pd.DataFrame(columns=["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"])
+    return pd.DataFrame(
+        columns=["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"]
+    )
 
 
 def _empty_hourly() -> pd.DataFrame:
@@ -305,10 +344,18 @@ def _build_capacity_factors(daily: pd.DataFrame) -> pd.DataFrame:
     Returns DataFrame: zone, gen_date, wind_cf, solar_cf,
     wind_mw, solar_mw, wind_installed_mw, solar_installed_mw.
     """
-    _empty = pd.DataFrame(columns=[
-        "zone", "gen_date", "wind_cf", "solar_cf",
-        "wind_mw", "solar_mw", "wind_installed_mw", "solar_installed_mw",
-    ])
+    _empty = pd.DataFrame(
+        columns=[
+            "zone",
+            "gen_date",
+            "wind_cf",
+            "solar_cf",
+            "wind_mw",
+            "solar_mw",
+            "wind_installed_mw",
+            "solar_installed_mw",
+        ]
+    )
     if daily.empty:
         return _empty
 
@@ -323,9 +370,7 @@ def _build_capacity_factors(daily: pd.DataFrame) -> pd.DataFrame:
 
     # Compute total wind installed (onshore + offshore)
     cap = cap.copy()
-    cap["wind_installed_mw"] = (
-        cap["wind_onshore_mw"].fillna(0) + cap["wind_offshore_mw"].fillna(0)
-    )
+    cap["wind_installed_mw"] = cap["wind_onshore_mw"].fillna(0) + cap["wind_offshore_mw"].fillna(0)
     cap = cap.rename(columns={"solar_mw": "solar_installed_mw"})
     cap = cap[["zone", "year", "wind_installed_mw", "solar_installed_mw"]]
 
@@ -355,10 +400,18 @@ def _build_capacity_factors(daily: pd.DataFrame) -> pd.DataFrame:
     merged["solar_cf"] = (merged["solar"] / merged["solar_installed_mw"]).clip(0, 1).round(4)
 
     merged["gen_date"] = merged["gen_date"].dt.strftime("%Y-%m-%d")
-    result = merged[[
-        "zone", "gen_date", "wind_cf", "solar_cf",
-        "wind", "solar", "wind_installed_mw", "solar_installed_mw",
-    ]].rename(columns={"wind": "wind_mw", "solar": "solar_mw"})
+    result = merged[
+        [
+            "zone",
+            "gen_date",
+            "wind_cf",
+            "solar_cf",
+            "wind",
+            "solar",
+            "wind_installed_mw",
+            "solar_installed_mw",
+        ]
+    ].rename(columns={"wind": "wind_mw", "solar": "solar_mw"})
 
     return result.dropna(subset=["wind_cf", "solar_cf"], how="all").reset_index(drop=True)
 
@@ -396,8 +449,18 @@ def compute_forecast_accuracy(window_days: int = 90) -> pd.DataFrame:
     if df is None or df.empty:
         logger.warning("forecast_accuracy: no data")
         return pd.DataFrame(
-            columns=["zone", "wind_mae_mw", "wind_avg_mw", "solar_mae_mw", "solar_avg_mw",
-                     "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
+            columns=[
+                "zone",
+                "wind_mae_mw",
+                "wind_avg_mw",
+                "solar_mae_mw",
+                "solar_avg_mw",
+                "wind_installed_mw",
+                "solar_installed_mw",
+                "wind_mae_pct",
+                "solar_mae_pct",
+                "n_hours",
+            ]
         )
 
     # Cast Decimal columns returned by PostgreSQL ROUND(::numeric) to float
@@ -405,10 +468,14 @@ def compute_forecast_accuracy(window_days: int = 90) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Pivot: (zone, tech) -> columns
-    wind = df[df["tech"].isin(["wind_onshore", "wind_offshore"])].groupby("zone", as_index=False).agg(
-        wind_mae_mw=("mae_mw", "sum"),
-        wind_avg_mw=("avg_actual_mw", "sum"),
-        n_hours=("n_hours", "max"),
+    wind = (
+        df[df["tech"].isin(["wind_onshore", "wind_offshore"])]
+        .groupby("zone", as_index=False)
+        .agg(
+            wind_mae_mw=("mae_mw", "sum"),
+            wind_avg_mw=("avg_actual_mw", "sum"),
+            n_hours=("n_hours", "max"),
+        )
     )
     solar = df[df["tech"] == "solar"][["zone", "mae_mw", "avg_actual_mw"]].rename(
         columns={"mae_mw": "solar_mae_mw", "avg_actual_mw": "solar_avg_mw"}
@@ -422,13 +489,12 @@ def compute_forecast_accuracy(window_days: int = 90) -> pd.DataFrame:
     if cap_df is not None and not cap_df.empty:
         latest_year = cap_df["year"].max()
         cap_latest = cap_df[cap_df["year"] == latest_year].copy()
-        cap_latest["wind_installed_mw"] = (
-            cap_latest["wind_onshore_mw"].fillna(0) + cap_latest["wind_offshore_mw"].fillna(0)
-        )
+        cap_latest["wind_installed_mw"] = cap_latest["wind_onshore_mw"].fillna(0) + cap_latest[
+            "wind_offshore_mw"
+        ].fillna(0)
         cap_latest["solar_installed_mw"] = cap_latest["solar_mw"].fillna(0)
         combined = combined.merge(
-            cap_latest[["zone", "wind_installed_mw", "solar_installed_mw"]],
-            on="zone", how="left"
+            cap_latest[["zone", "wind_installed_mw", "solar_installed_mw"]], on="zone", how="left"
         )
     else:
         combined["wind_installed_mw"] = float("nan")
@@ -443,11 +509,19 @@ def compute_forecast_accuracy(window_days: int = 90) -> pd.DataFrame:
     ).round(1)
 
     # Round MW columns
-    for col in ["wind_mae_mw", "wind_avg_mw", "solar_mae_mw", "solar_avg_mw",
-                "wind_installed_mw", "solar_installed_mw"]:
+    for col in [
+        "wind_mae_mw",
+        "wind_avg_mw",
+        "solar_mae_mw",
+        "solar_avg_mw",
+        "wind_installed_mw",
+        "solar_installed_mw",
+    ]:
         if col in combined.columns:
             combined[col] = combined[col].round(0)
 
     combined["n_hours"] = combined["n_hours"].fillna(0).astype(int)
 
-    return combined.sort_values("wind_mae_pct", ascending=False, na_position="last").reset_index(drop=True)
+    return combined.sort_values("wind_mae_pct", ascending=False, na_position="last").reset_index(
+        drop=True
+    )

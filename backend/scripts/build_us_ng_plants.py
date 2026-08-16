@@ -145,6 +145,7 @@ PLANT_URL_RE = re.compile(
 
 
 def fetch_html(url: str) -> str:
+    """Fetch a page as text, with a browser-like User-Agent."""
     for attempt in range(3):
         try:
             r = req_lib.get(
@@ -164,6 +165,7 @@ def fetch_html(url: str) -> str:
 
 
 def scrape_cleanview_state(state_slug: str) -> list[dict]:
+    """Scrape one cleanview state page for its gas-plant rows."""
     url = f"{CLEANVIEW_BASE}/power-projects/operating/natural-gas-power-plants/{state_slug}"
     html = fetch_html(url)
     if not html:
@@ -320,6 +322,7 @@ def eia_get_generation(plant_ids: list[int]) -> dict[int, float]:
 
 
 def main() -> None:
+    """Scrape cleanview, enrich from EIA, and write us_ng_plants.json."""
     if not EIA_KEY:
         raise SystemExit("EIA_API_KEY not set")
 
