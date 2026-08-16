@@ -31,4 +31,4 @@ jobs:
             npm run build
 
             echo "=== Done ==="
-            sudo systemctl is-active energy-api
+            systemctl is-active energy-api
