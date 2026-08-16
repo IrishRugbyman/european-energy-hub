@@ -1,0 +1,55 @@
+# Committed so CI lints and formats exactly as the dev machine does.
+#
+# Without this file the GitHub runner finds no ruff config at all (the real one
+# lives at ~/.config/ruff/ruff.toml, extended by ~/quant/ruff.toml, neither of
+# which is in the repo). Ruff then falls back to its defaults: line-length 88 and
+# a much smaller rule set. That made "ruff format --check backend/" fail on code
+# that is correctly formatted at line-length 100, and made "ruff check" enforce a
+# different standard in CI than locally.
+#
+# Mirrors ~/.config/ruff/ruff.toml plus the ~/quant/ruff.toml additions that
+# apply to this repo. Keep the two in sync when either changes.
+
+target-version = "py311"
+line-length = 100
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes (undefined names, unused imports)
+    "I",   # isort
+    "UP",  # pyupgrade (modernise syntax)
+    "B",   # flake8-bugbear (likely bugs and design problems)
+    "C4",  # flake8-comprehensions (simplify comprehensions)
+    "SIM", # flake8-simplify
+    "PIE", # flake8-pie (misc lints)
+    "RET", # flake8-return
+    "D1",  # pydocstyle - presence only (D100-D107: missing docstrings)
+    "NPY", # numpy-specific lints
+]
+ignore = [
+    "D100",   # missing docstring in public module, too noisy for one-shot scripts
+    "D104",   # missing docstring in public package
+    "E501",   # line too long, handled by the formatter
+    "B008",   # function calls in default arguments (the FastAPI Depends idiom)
+    "SIM108", # ternary operator preference, sometimes less readable
+]
+
+# NOTE: ruff replaces this table wholesale rather than merging it, so every entry
+# that should apply here has to be listed, including the inherited ones.
+[lint.per-file-ignores]
+"**/notebooks/*" = ["D", "B007", "E402", "F401", "F811"] # notebooks are exploratory
+"**/tests/*"     = ["D"]                                 # pytest functions need no docstrings
+"**/schemas.py"  = ["D101"]                              # Pydantic models are self-documenting
+
+[lint.pydocstyle]
+convention = "google"
+
+[lint.isort]
+known-first-party = ["quant_lib", "market_data"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
