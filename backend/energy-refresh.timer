@@ -5,7 +5,9 @@
 
 [Unit]
 Description=Run European Energy Hub data refresh twice daily
-Requires=energy-refresh.service
+# NO Requires= here. It would make this timer start its service at boot as
+# well as on schedule - see ~/ops/fix-timer-requires.sh. [Timer] Unit= already
+# defaults to the same-named .service.
 
 [Timer]
 OnCalendar=13:45

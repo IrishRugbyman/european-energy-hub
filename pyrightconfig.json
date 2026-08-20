@@ -1,0 +1,23 @@
+{
+  "include": ["backend"],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "**/.venv",
+    "backend/data",
+    "backend/results",
+    "frontend"
+  ],
+  "venvPath": "backend",
+  "venv": ".venv",
+  "pythonVersion": "3.12",
+
+  "// extraPaths": "uv installs market-data and quant-lib as PEP 660 editable packages (__editable___*_finder.py import hooks), which pyright cannot follow. Point at the source trees directly so `loaders.*` and `quant_lib.*` resolve.",
+  "extraPaths": ["../shared/market-data", "../shared/quant-lib/src", "backend/scripts"],
+
+  "// typeCheckingMode": "off = navigation, hover and rename only. The codebase is pandas/numpy-heavy and untyped; 'basic' produced ~770 false positives (Index.date, Series-narrowed-to-ndarray) that would bury real signal. Unresolved imports are still surfaced explicitly below.",
+  "typeCheckingMode": "off",
+  "reportMissingImports": "error",
+  "reportMissingModuleSource": "none",
+  "reportMissingTypeStubs": "none"
+}

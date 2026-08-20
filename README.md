@@ -4,7 +4,7 @@ Live dashboard for European gas and power markets - [energy.lbzgiu.xyz](https://
 
 [![CI](https://github.com/IrishRugbyman/european-energy-hub/actions/workflows/ci.yml/badge.svg)](https://github.com/IrishRugbyman/european-energy-hub/actions/workflows/ci.yml)
 
-Daily-refreshing data from AGSI+, ENTSO-E, ENTSOG, and SMARD across five dashboards and 60+ API endpoints. The /spreads page documents a 57-phase quantitative signal research arc on day-ahead power fair value.
+Daily-refreshing data from AGSI+, ENTSO-E, ENTSOG, and Netztransparenz across five dashboards and 60+ API endpoints. The /spreads page documents a 57-phase quantitative signal research arc on day-ahead power fair value.
 
 ---
 
@@ -16,7 +16,7 @@ Daily-refreshing data from AGSI+, ENTSO-E, ENTSOG, and SMARD across five dashboa
 | `/map` | Day-ahead power prices and generation by ENTSO-E bidding zone (27 zones). Six metric modes: Price, Range, Negative-hours, 2yr-rank, Renewable%, Dominant fuel. Interconnection flows toggle. Zone panel: 48h price chart, fuel breakdown, daily generation + RE% trend, daily price range. |
 | `/spreads` | Clean spark/dark/fuel-switching spread analytics with the full signal-research arc below |
 | `/prices` | TTF, EUA, API2 coal, Henry Hub - time series, seasonality decomposition, cross-commodity correlation matrix |
-| `/imbalance` | German reBAP imbalance prices (SMARD) with a walk-forward forecast-error signal (70.3% directional accuracy, Sharpe 3.75 OOS) |
+| `/imbalance` | German reBAP imbalance prices (Netztransparenz) with a walk-forward forecast-error signal (70.3% directional accuracy, Sharpe 3.75 OOS) |
 
 US dashboards at `/us-gas`, `/us-power`, `/us-plants` cover EIA storage regions, generation mix by ISO, and 624 natural gas power plants on a Leaflet map.
 
@@ -101,7 +101,7 @@ All sources are free public APIs. No synthetic data.
 | [AGSI+](https://agsi.gie.eu) | EU gas storage by country, daily |
 | [ENTSO-E Transparency](https://transparency.entsoe.eu) | DA prices, cross-border flows (NTC + scheduled), full generation mix (A75), DA generation forecasts (A69), 27 bidding zones |
 | [ENTSOG](https://www.entsog.eu) | Physical gas flows |
-| [SMARD](https://www.smard.de) | German reBAP imbalance prices, realised renewable generation + load |
+| [Netztransparenz](https://www.netztransparenz.de) | German reBAP imbalance prices (quarter-hourly, the four TSOs' joint platform) |
 | [DB.nomics / ICE](https://db.nomics.world) | TTF front-month |
 | yfinance (CO2.L) | EUA front-month |
 | [IMF via DB.nomics](https://db.nomics.world) | API2 coal (monthly) |

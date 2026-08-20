@@ -89,6 +89,51 @@ export function powerPriceColor(eur: number | null | undefined): string {
   return '#7f1d1d'                  // red-900   (extreme)
 }
 
+/**
+ * Zones that have generation data but no market price, and never will.
+ *
+ * Corsica clears inside the French bidding zone and is operated by EDF SEI as a
+ * non-interconnected system on a regulated tariff, so there is no day-ahead price to
+ * publish. This is categorically different from a zone whose price is merely missing
+ * today, and the map has to say so: painting it in the "no data" grey would imply a
+ * fetch gap that someone could go and fix.
+ *
+ * Must stay in sync with `ISLAND_ZONES` in `backend/analytics/island.py`.
+ */
+export const NO_PRICE_ZONES = new Set(['FR-COR'])
+
+export function hasNoPrice(zone: string): boolean {
+  return NO_PRICE_ZONES.has(zone)
+}
+
+/** Fill for a no-price zone under a price metric. Deliberately off the price ramp and
+ *  distinct from the `#374151` missing-data grey - it is paired with a dashed stroke. */
+export const NO_PRICE_FILL = '#2f2a3d'
+export const NO_PRICE_STROKE = '#8b7fb0'
+export const NO_PRICE_DASH = '4 3'
+
+export type MapMetric =
+  | 'price' | 'range' | 'neg_hours' | 'pct_rank'
+  | 'renewable' | 'dominant_fuel' | 'carbon_intensity'
+  | 'wind_cf' | 'solar_cf' | 'hydro_fill'
+
+const PRICE_METRICS: MapMetric[] = ['price', 'range', 'neg_hours', 'pct_rank']
+
+export function isPriceMetric(m: MapMetric): boolean {
+  return PRICE_METRICS.includes(m)
+}
+
+/**
+ * The no-price override for a zone's fill, or null to fall through to the normal scale.
+ *
+ * Lives here rather than in EuroMap so the branch is testable without pulling Leaflet (and
+ * a DOM) into the test run, and so it cannot drift from `isPriceMetric` above.
+ */
+export function noPriceFillFor(metric: MapMetric, zone: string | undefined): string | null {
+  if (!zone || !hasNoPrice(zone) || !isPriceMetric(metric)) return null
+  return NO_PRICE_FILL
+}
+
 const ZONE_NAMES: Record<string, string> = {
   'AT':     'Austria',
   'BE':     'Belgium',

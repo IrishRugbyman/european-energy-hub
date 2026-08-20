@@ -457,6 +457,62 @@ export interface GenCapacityResponse {
   daily: CapacityFactorPoint[]
 }
 
+/**
+ * One day of island supply. Every field is nullable: days inside the EDF source gap
+ * (2025-01-01 to 2026-07-19) arrive with all-null values on purpose. Do not filter them
+ * out before charting - they are what makes the chart break instead of interpolating a
+ * straight line across 19 months that were never published.
+ */
+export interface IslandDailyPoint {
+  gen_date: string
+  net_import_mw: number | null
+  min_import_mw: number | null
+  max_import_mw: number | null
+  local_gen_mw: number | null
+  oil_mw: number | null
+  renewable_mw: number | null
+  total_supply_mw: number | null
+  import_share_pct: number | null
+  renewable_share_pct: number | null
+}
+
+export interface IslandHourlyPoint {
+  ts: string
+  net_import_mw: number | null
+  oil_mw: number | null
+  renewable_mw: number | null
+  total_supply_mw: number | null
+}
+
+export interface IslandProfilePoint {
+  hour: number
+  net_import_mw: number | null
+  oil_mw: number | null
+  renewable_mw: number | null
+  import_share_pct: number | null
+}
+
+export interface IslandResponse {
+  zone: string
+  gen_date: string | null
+  net_import_mw: number | null
+  local_gen_mw: number | null
+  oil_mw: number | null
+  renewable_mw: number | null
+  total_supply_mw: number | null
+  import_share_pct: number | null
+  renewable_share_pct: number | null
+  max_import_mw: number | null
+  peak_supply_mw: number | null
+  data_start: string | null
+  data_end: string | null
+  gap_days: number | null
+  profile_days: number | null
+  daily: IslandDailyPoint[]
+  hourly: IslandHourlyPoint[]
+  profile: IslandProfilePoint[]
+}
+
 export interface ImbalanceHourlyPoint {
   hour: number
   avg_eur: number | null
@@ -1083,10 +1139,9 @@ export interface RebapSignalToday {
   pred_excess: number
   direction: string
   rebap_roll5: number
-  wind_err_lag1: number
-  solar_err_lag1: number
   wind_fc_d: number
   rebap_dev_lag1: number
+  nrv_dev_lag1: number
 }
 
 export interface RebapSignalResponse {
@@ -1095,13 +1150,16 @@ export interface RebapSignalResponse {
   naive_accuracy_pct: number
   naive_pos_rate_pct: number
   cost_per_mwh: number
+  /** Booked on the reBAP excess above its 5-day trend (see backend compute_rebap_signal). */
   model: RebapSignalPerfBlock
-  naive: RebapSignalPerfBlock
+  /** Always predicts a positive excess - the apples-to-apples baseline for `model`. */
+  naive_excess: RebapSignalPerfBlock
+  /** Always long the LEVEL, unconditionally - a different question, not a comparator. */
+  structural_long: RebapSignalPerfBlock
   coef: {
-    wind_err_lag1: RebapCoefStability
-    solar_err_lag1: RebapCoefStability
     wind_fc_d: RebapCoefStability
     rebap_dev_lag1: RebapCoefStability
+    nrv_dev_lag1: RebapCoefStability
   }
   equity_curve: RebapEquityPoint[]
   signal_today: RebapSignalToday | null
@@ -1245,6 +1303,7 @@ export const api = {
   powerHourlyProfileEu: () => get<EuDuckCurveResponse>('/power/hourly-profile-eu'),
   genZone: (zone: string) => get<GenZoneResponse>(`/generation/zone/${zone}`),
   genCapacity: (zone: string) => get<GenCapacityResponse>(`/generation/zone/${zone}/capacity`),
+  island: (zone: string) => get<IslandResponse>(`/island/${zone}`),
   imbalance: () => get<ImbalanceResponse>('/imbalance'),
   imbalanceProfile: () => get<ImbalanceProfileResponse>('/imbalance/profile'),
   imbalanceDispatch: () => get<BatteryResponse>('/imbalance/dispatch'),

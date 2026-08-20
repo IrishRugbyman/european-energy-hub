@@ -7,6 +7,14 @@
 # Check:
 #   systemctl status energy-refresh.service energy-refresh.timer
 #   journalctl -u energy-refresh.service -n 50 --no-pager
+#
+# GOTCHA: energy-refresh.timer declares Requires=energy-refresh.service (the convention
+# across all the freight timers too), so `systemctl stop energy-refresh.service` - the
+# natural thing to do to a stuck run - also stops the TIMER, silently killing the
+# schedule. After stopping the service, always:
+#   sudo systemctl start energy-refresh.timer
+# Confirm with `systemctl list-timers energy-refresh.timer`: a healthy timer shows a NEXT
+# elapse. A "-" in that column means either the schedule is dead or a run is still going.
 
 [Unit]
 Description=European Energy Hub data refresh (market_data PostgreSQL -> energy_hub.duckdb)
@@ -20,6 +28,13 @@ WorkingDirectory=/home/lbzgiu/quant/energy/backend
 ExecStart=/home/lbzgiu/quant/energy/backend/.venv/bin/python scripts/refresh.py
 StandardOutput=journal
 StandardError=journal
+
+# The rebuild phase makes unbounded HTTP calls (Open-Meteo heat risk, EIA us_power and
+# us_plants) with no per-request timeout, so a slow external API hangs the whole job
+# indefinitely - the unit then sits in "activating" and the timer reports no next elapse,
+# which is how a stuck run stays invisible. A normal run is ~10 minutes; this bounds any
+# hang and lets the next scheduled firing recover, since the job is idempotent.
+TimeoutStartSec=3600
 
 [Install]
 WantedBy=multi-user.target

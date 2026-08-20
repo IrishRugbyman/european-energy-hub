@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import duckdb
@@ -44,7 +44,11 @@ def _seed_db(path: str) -> None:
     rows_hist = []
     for i in range((today - start).days + 1):
         day = start + timedelta(days=i)
-        for cc, base_full, wgv in [("DE", 60.0, 24000.0), ("FR", 70.0, 12000.0), ("EU", 63.0, 36000.0)]:
+        for cc, base_full, wgv in [
+            ("DE", 60.0, 24000.0),
+            ("FR", 70.0, 12000.0),
+            ("EU", 63.0, 36000.0),
+        ]:
             full_pct = min(99.0, max(10.0, base_full + (i % 365 - 182) * 0.15))
             rows_hist.append((cc, day.isoformat(), round(full_pct, 2), 50.0, 0.0, wgv))
     conn.executemany("INSERT INTO storage_history VALUES (?, ?, ?, ?, ?, ?)", rows_hist)
@@ -64,7 +68,9 @@ def _seed_db(path: str) -> None:
             [cc, today.isoformat(), fp, 1.2, -3.5, 5.0, 50.0, 0.0, wgv],
         )
 
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_gas", "2026-06-12T12:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_gas", "2026-06-12T12:00:00+00:00"]
+    )
 
     # Power tables
     conn.execute("""
@@ -94,9 +100,17 @@ def _seed_db(path: str) -> None:
             neg_h = 2 if price < 50 else 0
             conn.execute(
                 "INSERT INTO power_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [zone, day.isoformat(), round(price, 2), round(price * 1.15, 2),
-                 round(price * 0.85, 2), range_eur, neg_h,
-                 round(price - range_eur / 2, 2), round(price + range_eur / 2, 2)],
+                [
+                    zone,
+                    day.isoformat(),
+                    round(price, 2),
+                    round(price * 1.15, 2),
+                    round(price * 0.85, 2),
+                    range_eur,
+                    neg_h,
+                    round(price - range_eur / 2, 2),
+                    round(price + range_eur / 2, 2),
+                ],
             )
 
     # Seed 8 days of hourly data
@@ -114,7 +128,9 @@ def _seed_db(path: str) -> None:
             "INSERT INTO power_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [zone, today.isoformat(), base, round(base * 1.15, 2), 5.0, 45.0, 1, 62.5],
         )
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_power", "2026-06-12T12:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_power", "2026-06-12T12:00:00+00:00"]
+    )
 
     # Hourly price profiles (avg price by hour-of-day, last 90 days)
     conn.execute("""
@@ -177,7 +193,18 @@ def _seed_db(path: str) -> None:
         disruption = 288.0  # constant representative value
         conn.execute(
             "INSERT INTO spreads_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [day, round(power, 2), round(ttf, 2), eua, coal_eur_mwh, css, cds, fss, regime, disruption],
+            [
+                day,
+                round(power, 2),
+                round(ttf, 2),
+                eua,
+                coal_eur_mwh,
+                css,
+                cds,
+                fss,
+                regime,
+                disruption,
+            ],
         )
         nbp = round(ttf * 0.88, 2)  # ~12% discount to TTF
         hh_eur_mwh = round(2.5 * 0.86 / 0.293071, 2)  # HH USD/MMBtu -> EUR/MWh
@@ -186,7 +213,9 @@ def _seed_db(path: str) -> None:
             [day, round(ttf, 2), eua, 120.0, 2.5, nbp, hh_eur_mwh],
         )
 
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_spreads", "2026-06-12T12:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_spreads", "2026-06-12T12:00:00+00:00"]
+    )
 
     # Flows table
     conn.execute("""
@@ -208,7 +237,10 @@ def _seed_db(path: str) -> None:
     conn.execute(f"CREATE TABLE congestion_latest ({cong_cols})")
     conn.execute(f"CREATE TABLE congestion_daily ({cong_cols})")
     # FR->DE-LU: congested (~92%); DE-LU->NL: moderate (~55%)
-    for fz, tz, ntc, sched, util in [("FR", "DE-LU", 3000.0, 2760.0, 92.0), ("DE-LU", "NL", 1200.0, 660.0, 55.0)]:
+    for fz, tz, ntc, sched, util in [
+        ("FR", "DE-LU", 3000.0, 2760.0, 92.0),
+        ("DE-LU", "NL", 1200.0, 660.0, 55.0),
+    ]:
         conn.execute(
             "INSERT INTO congestion_latest VALUES (?, ?, ?, ?, ?, ?)",
             [fz, tz, today.isoformat(), ntc, sched, util],
@@ -223,7 +255,9 @@ def _seed_db(path: str) -> None:
             "INSERT INTO congestion_daily VALUES (?, ?, ?, ?, ?, ?)",
             ["FR", "DE-LU", day, ntc, sched, util],
         )
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_congestion", "2026-06-12T12:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_congestion", "2026-06-12T12:00:00+00:00"]
+    )
 
     # Gas physical flows tables (ENTSOG)
     conn.execute("""
@@ -253,7 +287,9 @@ def _seed_db(path: str) -> None:
             "INSERT INTO gas_flows_daily VALUES (?, ?, ?, ?, ?)",
             ["AT", day, entry, exit_, round(entry - exit_, 3)],
         )
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", "2026-06-12T12:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", "2026-06-12T12:00:00+00:00"]
+    )
 
     fuel_cols = "biomass REAL, coal REAL, gas REAL, geothermal REAL, hydro REAL, nuclear REAL, oil REAL, other REAL, solar REAL, wind REAL"
 
@@ -266,11 +302,41 @@ def _seed_db(path: str) -> None:
     # zone, gen_date, biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind, renewable_pct, total_mw
     conn.execute(
         "INSERT INTO generation_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ["DE-LU", today.isoformat(), 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 0.0, 200.0, 500.0, 6000.0, 12000.0, 57.4, 34400.0],
+        [
+            "DE-LU",
+            today.isoformat(),
+            1200.0,
+            8000.0,
+            5000.0,
+            0.0,
+            1500.0,
+            0.0,
+            200.0,
+            500.0,
+            6000.0,
+            12000.0,
+            57.4,
+            34400.0,
+        ],
     )
     conn.execute(
         "INSERT INTO generation_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ["FR", today.isoformat(), 800.0, 1000.0, 2000.0, 0.0, 8000.0, 38000.0, 100.0, 200.0, 4000.0, 5000.0, 22.3, 59100.0],
+        [
+            "FR",
+            today.isoformat(),
+            800.0,
+            1000.0,
+            2000.0,
+            0.0,
+            8000.0,
+            38000.0,
+            100.0,
+            200.0,
+            4000.0,
+            5000.0,
+            22.3,
+            59100.0,
+        ],
     )
 
     # generation_daily (2 years of daily data for DE-LU, 1 zone for coverage)
@@ -292,15 +358,51 @@ def _seed_db(path: str) -> None:
         total = solar + wind + hydro + gas + coal + nuclear + 1200.0 + 200.0 + 500.0
         renewable_pct = round((solar + wind + hydro) / total * 100, 1)
         # zone, gen_date, biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind, renewable_pct, total_mw
-        gen_rows.append(["DE-LU", day, 1200.0, coal, gas, 0.0, hydro, nuclear, 200.0, 500.0, solar, wind, renewable_pct, round(total, 1)])
+        gen_rows.append(
+            [
+                "DE-LU",
+                day,
+                1200.0,
+                coal,
+                gas,
+                0.0,
+                hydro,
+                nuclear,
+                200.0,
+                500.0,
+                solar,
+                wind,
+                renewable_pct,
+                round(total, 1),
+            ]
+        )
         # FR: realistic nuclear + gas + wind/solar mix
         fr_nuclear = round(36000.0 + 2000.0 * ((i % 365 - 180) / 365), 1)
         fr_solar = round(6000.0 + 4000.0 * ((i % 365 - 180) / 365), 1)
         fr_wind = 5000.0
         fr_total = fr_nuclear + fr_solar + fr_wind + 3000.0 + 5000.0
         fr_re_pct = round((fr_solar + fr_wind) / fr_total * 100, 1)
-        gen_rows.append(["FR", day, 300.0, 0.0, 3000.0, 0.0, 5000.0, fr_nuclear, 0.0, 200.0, fr_solar, fr_wind, fr_re_pct, round(fr_total, 1)])
-    conn.executemany("INSERT INTO generation_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_rows)
+        gen_rows.append(
+            [
+                "FR",
+                day,
+                300.0,
+                0.0,
+                3000.0,
+                0.0,
+                5000.0,
+                fr_nuclear,
+                0.0,
+                200.0,
+                fr_solar,
+                fr_wind,
+                fr_re_pct,
+                round(fr_total, 1),
+            ]
+        )
+    conn.executemany(
+        "INSERT INTO generation_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_rows
+    )
 
     # generation_forecast_daily (no-look-ahead DA-forecast wind/solar penetration over load).
     # Seeds DE-LU (wind-heavy) and FR (nuclear baseload, low wind%) so the fundamental signal
@@ -318,23 +420,45 @@ def _seed_db(path: str) -> None:
     for i in range((today - daily_start).days + 1):
         day = (daily_start + timedelta(days=i)).isoformat()
         load_de = 55000.0
-        de_wind = 28.0 + 14.0 * ((i % 365 - 90) / 365)          # ~21-35% of load, swings
+        de_wind = 28.0 + 14.0 * ((i % 365 - 90) / 365)  # ~21-35% of load, swings
         de_solar = 10.0 + 8.0 * ((i % 365 - 180) / 365)
         # actual ~ forecast + small deterministic noise (no RNG)
         de_wind_a = de_wind + 1.2 * (((i * 7) % 11 - 5) / 5)
         de_solar_a = de_solar + 0.8 * (((i * 5) % 9 - 4) / 4)
         # DE-LU: nuclear phased out April 2023; seed 0 throughout to match post-phase-out reality
-        fc_rows.append(["DE-LU", day, round(de_wind, 3), round(de_solar, 3),
-                        round(de_wind_a, 3), round(de_solar_a, 3), load_de, load_de + 800.0, 0.0])
+        fc_rows.append(
+            [
+                "DE-LU",
+                day,
+                round(de_wind, 3),
+                round(de_solar, 3),
+                round(de_wind_a, 3),
+                round(de_solar_a, 3),
+                load_de,
+                load_de + 800.0,
+                0.0,
+            ]
+        )
         load_fr = 52000.0
-        fr_wind = 9.0 + 4.0 * ((i % 365 - 90) / 365)            # ~5-13% of load
+        fr_wind = 9.0 + 4.0 * ((i % 365 - 90) / 365)  # ~5-13% of load
         fr_solar = 11.0 + 7.0 * ((i % 365 - 180) / 365)
         fr_wind_a = fr_wind + 0.9 * (((i * 3) % 7 - 3) / 3)
         fr_solar_a = fr_solar + 0.7 * (((i * 4) % 9 - 4) / 4)
         # FR: nuclear oscillates ~36-44 GW; use a deterministic seasonal pattern
         fr_nuclear = round(40.0 + 4.0 * ((i % 365 - 180) / 365), 3)
-        fc_rows.append(["FR", day, round(fr_wind, 3), round(fr_solar, 3),
-                        round(fr_wind_a, 3), round(fr_solar_a, 3), load_fr, load_fr + 600.0, fr_nuclear])
+        fc_rows.append(
+            [
+                "FR",
+                day,
+                round(fr_wind, 3),
+                round(fr_solar, 3),
+                round(fr_wind_a, 3),
+                round(fr_solar_a, 3),
+                load_fr,
+                load_fr + 600.0,
+                fr_nuclear,
+            ]
+        )
     conn.executemany(
         "INSERT INTO generation_forecast_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", fc_rows
     )
@@ -346,17 +470,140 @@ def _seed_db(path: str) -> None:
             zone VARCHAR, ts TIMESTAMPTZ, {fuel_cols}
         )
     """)
-    from datetime import datetime
     hourly_start = datetime(today.year, today.month, today.day) - timedelta(days=10)
     gen_hourly = []
     for i in range(10 * 24):
         ts = (hourly_start + timedelta(hours=i)).strftime("%Y-%m-%d %H:%M:%S+00:00")
         hour = i % 24
-        solar_h = round(max(0.0, 6000.0 * ((hour - 6) / 6) if 6 <= hour <= 12 else max(0.0, 6000.0 * (1 - (hour - 12) / 8))), 1)
+        solar_h = round(
+            max(
+                0.0,
+                6000.0 * ((hour - 6) / 6)
+                if 6 <= hour <= 12
+                else max(0.0, 6000.0 * (1 - (hour - 12) / 8)),
+            ),
+            1,
+        )
         wind_h = round(10000.0 + 1000.0 * ((hour - 12) / 12), 1)
         # zone, ts, biomass, coal, gas, geothermal, hydro, nuclear, oil, other, solar, wind
-        gen_hourly.append(["DE-LU", ts, 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 0.0, 200.0, 500.0, solar_h, wind_h])
-    conn.executemany("INSERT INTO generation_hourly_recent VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", gen_hourly)
+        gen_hourly.append(
+            ["DE-LU", ts, 1200.0, 8000.0, 5000.0, 0.0, 1500.0, 0.0, 200.0, 500.0, solar_h, wind_h]
+        )
+    conn.executemany(
+        "INSERT INTO generation_hourly_recent VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        gen_hourly,
+    )
+
+    # island_* (FR-COR). Seeded with a deliberate 3-day hole in the middle of the daily
+    # series: the padded NULL rows are the behaviour the /api/island endpoint exists to
+    # preserve, so the fixture has to contain one.
+    conn.execute("""
+        CREATE TABLE island_daily (
+            zone VARCHAR, gen_date DATE,
+            net_import_mw REAL, min_import_mw REAL, max_import_mw REAL,
+            local_gen_mw REAL, oil_mw REAL, renewable_mw REAL, total_supply_mw REAL,
+            import_share_pct REAL, renewable_share_pct REAL
+        )
+    """)
+    island_start = today - timedelta(days=29)
+    island_gap = {island_start + timedelta(days=d) for d in (10, 11, 12)}
+    island_rows = []
+    for i in range(30):
+        day = island_start + timedelta(days=i)
+        if day in island_gap:
+            island_rows.append(
+                ["FR-COR", day.isoformat(), None, None, None, None, None, None, None, None, None]
+            )
+            continue
+        imp = 80.0 + (i % 7) * 5.0
+        oil = 190.0 + (i % 5) * 4.0
+        ren = 85.0 + (i % 4) * 3.0
+        local = oil + ren
+        island_rows.append(
+            [
+                "FR-COR",
+                day.isoformat(),
+                imp,
+                imp - 20.0,
+                imp + 30.0,
+                local,
+                oil,
+                ren,
+                local + imp,
+                round(imp / (local + imp) * 100, 1),
+                round(ren / (local + imp) * 100, 1),
+            ]
+        )
+    conn.executemany(
+        "INSERT INTO island_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", island_rows
+    )
+
+    conn.execute("""
+        CREATE TABLE island_hourly_recent (
+            zone VARCHAR, ts TIMESTAMP,
+            net_import_mw REAL, oil_mw REAL, renewable_mw REAL, total_supply_mw REAL
+        )
+    """)
+    island_hourly_start = datetime(today.year, today.month, today.day) - timedelta(days=14)
+    island_hourly = []
+    for i in range(14 * 24):
+        ts = (island_hourly_start + timedelta(hours=i)).strftime("%Y-%m-%d %H:%M:%S")
+        hour = i % 24
+        ren_h = 20.0 + (150.0 if 9 <= hour <= 16 else 0.0)
+        island_hourly.append(["FR-COR", ts, 90.0, 200.0 - ren_h * 0.5, ren_h, 290.0 + ren_h * 0.5])
+    conn.executemany("INSERT INTO island_hourly_recent VALUES (?, ?, ?, ?, ?, ?)", island_hourly)
+
+    conn.execute("""
+        CREATE TABLE island_hourly_profile (
+            zone VARCHAR, hour INTEGER,
+            net_import_mw REAL, oil_mw REAL, renewable_mw REAL,
+            import_share_pct REAL, n_days INTEGER
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO island_hourly_profile VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [
+            [
+                "FR-COR",
+                h,
+                90.0,
+                200.0 - (150.0 if 9 <= h <= 16 else 0.0) * 0.5,
+                20.0 + (150.0 if 9 <= h <= 16 else 0.0),
+                23.5,
+                14,
+            ]
+            for h in range(24)
+        ],
+    )
+
+    conn.execute("""
+        CREATE TABLE island_latest (
+            zone VARCHAR, gen_date DATE,
+            net_import_mw REAL, local_gen_mw REAL, oil_mw REAL, renewable_mw REAL,
+            total_supply_mw REAL, import_share_pct REAL, renewable_share_pct REAL,
+            max_import_mw REAL, peak_supply_mw REAL,
+            data_start DATE, data_end DATE, gap_days INTEGER
+        )
+    """)
+    conn.execute(
+        "INSERT INTO island_latest VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            "FR-COR",
+            today.isoformat(),
+            80.3,
+            299.2,
+            209.5,
+            89.8,
+            379.6,
+            21.2,
+            23.7,
+            154.6,
+            401.9,
+            island_start.isoformat(),
+            today.isoformat(),
+            3,
+        ],
+    )
 
     # capacity_factors_daily (2 years of daily CF data for DE-LU)
     conn.execute("""
@@ -372,11 +619,23 @@ def _seed_db(path: str) -> None:
         day = (daily_start + timedelta(days=i)).isoformat()
         solar = round(4000.0 + 2000.0 * ((i % 365 - 180) / 365), 1)
         wind = round(10000.0 + 2000.0 * ((i % 365 - 90) / 365), 1)
-        cf_rows.append(["DE-LU", day, round(wind / 68000, 4), round(solar / 60000, 4), wind, solar, 68000.0, 60000.0])
+        cf_rows.append(
+            [
+                "DE-LU",
+                day,
+                round(wind / 68000, 4),
+                round(solar / 60000, 4),
+                wind,
+                solar,
+                68000.0,
+                60000.0,
+            ]
+        )
     conn.executemany("INSERT INTO capacity_factors_daily VALUES (?, ?, ?, ?, ?, ?, ?, ?)", cf_rows)
 
     # imbalance tables (trailing 10 days 15-min + 2Y daily + latest)
     from datetime import datetime as dt
+
     conn.execute("""
         CREATE TABLE imbalance_recent (ts TIMESTAMP, rebap_eur_mwh REAL)
     """)
@@ -390,7 +649,8 @@ def _seed_db(path: str) -> None:
 
     conn.execute("""
         CREATE TABLE imbalance_daily (
-            price_date DATE, mean_eur REAL, min_eur REAL, max_eur REAL, count INTEGER
+            price_date DATE, mean_eur REAL, min_eur REAL, max_eur REAL, count INTEGER,
+            nrv_mean_mw REAL
         )
     """)
     imb_daily_start = date(today.year - 2, 1, 1)
@@ -398,10 +658,17 @@ def _seed_db(path: str) -> None:
     for i in range((today - imb_daily_start).days + 1):
         day = (imb_daily_start + timedelta(days=i)).isoformat()
         mean_e = round(85.0 + 30.0 * (i % 100) / 100, 2)
-        imb_daily_rows.append([day, mean_e, round(mean_e - 20.0, 2), round(mean_e + 40.0, 2), 96])
-    conn.executemany("INSERT INTO imbalance_daily VALUES (?, ?, ?, ?, ?)", imb_daily_rows)
+        # Deterministic NRV-Saldo series, independent period from mean_e so nrv_dev_lag1
+        # is not a trivial linear function of rebap_dev_lag1 in the fixture.
+        nrv_mw = round(-150.0 + 300.0 * (i % 37) / 37, 2)
+        imb_daily_rows.append(
+            [day, mean_e, round(mean_e - 20.0, 2), round(mean_e + 40.0, 2), 96, nrv_mw]
+        )
+    conn.executemany("INSERT INTO imbalance_daily VALUES (?, ?, ?, ?, ?, ?)", imb_daily_rows)
 
-    latest_ts = (dt(today.year, today.month, today.day) - timedelta(minutes=15)).strftime("%Y-%m-%d %H:%M:%S")
+    latest_ts = (dt(today.year, today.month, today.day) - timedelta(minutes=15)).strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
     conn.execute("""
         CREATE TABLE imbalance_latest (
             current_ts TIMESTAMP, rebap_eur_mwh REAL,
@@ -462,6 +729,7 @@ def _seed_db(path: str) -> None:
     """)
     conn.execute("CREATE TABLE battery_summary (key VARCHAR PRIMARY KEY, value VARCHAR)")
     from datetime import datetime as dt2
+
     bat_start = dt2(today.year, today.month, today.day) - timedelta(days=30)
     pnl = 0.0
     for i in range(30 * 24):
@@ -524,6 +792,7 @@ def _seed_db(path: str) -> None:
     """)
     corr_zones = ["AT", "BE", "CH", "DE-LU", "FR", "IT-NORD", "NL", "ES", "PL", "SE-1"]
     import itertools
+
     for za, zb in itertools.combinations(corr_zones, 2):
         # Vary correlation: geographically close zones are more correlated
         if {za, zb} == {"FR", "SE-1"}:
@@ -532,9 +801,7 @@ def _seed_db(path: str) -> None:
             r = round(0.1 + hash(za + zb) % 50 / 100, 3)
         else:
             r = round(0.7 + hash(za + zb) % 25 / 100, 3)
-        conn.execute(
-            "INSERT INTO power_correlation_30d VALUES (?, ?, ?)", [za, zb, r]
-        )
+        conn.execute("INSERT INTO power_correlation_30d VALUES (?, ?, ?)", [za, zb, r])
 
     # TTF forward curve
     conn.execute("""
@@ -646,7 +913,9 @@ def _seed_db(path: str) -> None:
         "INSERT INTO lng_history VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         ["ES", date.today() - timedelta(days=1), 13575.0, 560.0, 23240.0, 2132.0, 58.4, 26.3],
     )
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_lng", "2026-06-24T12:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_lng", "2026-06-24T12:00:00+00:00"]
+    )
 
     # --- Nuclear heat risk tables ---
     conn.execute("""
@@ -662,18 +931,66 @@ def _seed_db(path: str) -> None:
     conn.executemany(
         "INSERT INTO nuclear_heat_risk_latest VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
-            ["TRICASTIN",  "Tricastin",   "Rhone",   3600, 44.332, 4.732,
-             (date.today() - timedelta(days=1)).isoformat(),
-             38.5, 28.1, 10.4, "critical", 4, 39.4, date.today().isoformat(), "critical",
-             30.5, 24.0, 27.0],
-            ["GOLFECH",    "Golfech",     "Garonne", 1400, 44.107, 0.851,
-             (date.today() - timedelta(days=1)).isoformat(),
-             34.0, 27.5, 6.5,  "warning",  2, 32.0, date.today().isoformat(), "warning",
-             27.3, 24.0, 28.0],
-            ["CATTENOM",   "Cattenom",    "Moselle", 5400, 49.400, 6.218,
-             (date.today() - timedelta(days=1)).isoformat(),
-             27.0, 25.0, 2.0,  "normal",   0, 28.0, date.today().isoformat(), "normal",
-             21.0, 24.0, 28.0],
+            [
+                "TRICASTIN",
+                "Tricastin",
+                "Rhone",
+                3600,
+                44.332,
+                4.732,
+                (date.today() - timedelta(days=1)).isoformat(),
+                38.5,
+                28.1,
+                10.4,
+                "critical",
+                4,
+                39.4,
+                date.today().isoformat(),
+                "critical",
+                30.5,
+                24.0,
+                27.0,
+            ],
+            [
+                "GOLFECH",
+                "Golfech",
+                "Garonne",
+                1400,
+                44.107,
+                0.851,
+                (date.today() - timedelta(days=1)).isoformat(),
+                34.0,
+                27.5,
+                6.5,
+                "warning",
+                2,
+                32.0,
+                date.today().isoformat(),
+                "warning",
+                27.3,
+                24.0,
+                28.0,
+            ],
+            [
+                "CATTENOM",
+                "Cattenom",
+                "Moselle",
+                5400,
+                49.400,
+                6.218,
+                (date.today() - timedelta(days=1)).isoformat(),
+                27.0,
+                25.0,
+                2.0,
+                "normal",
+                0,
+                28.0,
+                date.today().isoformat(),
+                "normal",
+                21.0,
+                24.0,
+                28.0,
+            ],
         ],
     )
     conn.execute("""
@@ -690,7 +1007,14 @@ def _seed_db(path: str) -> None:
         )
     conn.execute(
         "INSERT INTO nuclear_heat_risk_trend VALUES (?,?,?,?,?,?)",
-        ["TRICASTIN", "Tricastin", "Rhone", (date.today() + timedelta(days=1)).isoformat(), 40.0, True],
+        [
+            "TRICASTIN",
+            "Tricastin",
+            "Rhone",
+            (date.today() + timedelta(days=1)).isoformat(),
+            40.0,
+            True,
+        ],
     )
     conn.execute("""
         CREATE TABLE nuclear_heat_risk_seasonal (
@@ -701,7 +1025,9 @@ def _seed_db(path: str) -> None:
         "INSERT INTO nuclear_heat_risk_seasonal VALUES (?,?,?,?,?)",
         ["TRICASTIN", 176, 28.1, 22.0, 38.0],
     )
-    conn.execute("INSERT INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", "2026-06-25T08:00:00+00:00"])
+    conn.execute(
+        "INSERT INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", "2026-06-25T08:00:00+00:00"]
+    )
 
     # Hydro reservoir tables (Phase 84)
     conn.execute("""
@@ -724,6 +1050,7 @@ def _seed_db(path: str) -> None:
 
     import datetime as _dt
     from datetime import timedelta as _td
+
     _today = _dt.date.today()
     _week = _today - _td(days=_today.weekday() + 1)  # last Sunday
     for _cc, _twh in [("NO", 52.0), ("SE", 24.0), ("FR", 2.5)]:
@@ -763,7 +1090,19 @@ def _seed_db(path: str) -> None:
     for _cc, _corr, _bal, _price in [("NO", -0.47, -2.6, 58.8), ("SE", -0.20, -8.1, 58.4)]:
         conn.execute(
             "INSERT INTO hydro_price_balance_summary VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            [_cc, 387, _corr, round(_corr * 0.4, 3), round(_corr * _corr, 3), -1.4, str(_week), _bal, _price, _price + 3, -3.0],
+            [
+                _cc,
+                387,
+                _corr,
+                round(_corr * 0.4, 3),
+                round(_corr * _corr, 3),
+                -1.4,
+                str(_week),
+                _bal,
+                _price,
+                _price + 3,
+                -3.0,
+            ],
         )
         for _wi in range(156):
             _wd = _week - _td(weeks=_wi)
@@ -788,6 +1127,7 @@ def seeded_db():
 def client(seeded_db):
     os.environ["ENERGY_DB"] = seeded_db
     from app.main import app
+
     with TestClient(app) as c:
         yield c
     del os.environ["ENERGY_DB"]

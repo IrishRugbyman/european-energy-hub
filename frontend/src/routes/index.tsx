@@ -70,7 +70,7 @@ const DASHBOARDS: Dashboard[] = [
     to: '/imbalance',
     label: 'Imbalance',
     icon: Activity,
-    description: 'German reBAP imbalance prices via SMARD.',
+    description: 'German reBAP imbalance prices via Netztransparenz.',
     featured: false,
     wide: false,
   },
@@ -108,7 +108,7 @@ const DASHBOARDS: Dashboard[] = [
   },
 ]
 
-const SOURCES = ['ENTSO-E', 'AGSI+', 'ENTSOG', 'EIA', 'SMARD', 'ICE / DB.nomics', 'IMF', 'yfinance']
+const SOURCES = ['ENTSO-E', 'AGSI+', 'ENTSOG', 'EIA', 'Netztransparenz', 'ICE / DB.nomics', 'IMF', 'yfinance']
 
 function fmt1(v: number | null | undefined): string {
   if (v == null) return '-'

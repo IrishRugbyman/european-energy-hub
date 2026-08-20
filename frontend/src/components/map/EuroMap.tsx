@@ -15,7 +15,13 @@ import {
   CHOROPLETH_FILL_OPACITY,
   CHOROPLETH_STROKE,
   CHOROPLETH_STROKE_WIDTH,
+  NO_PRICE_STROKE,
+  NO_PRICE_DASH,
+  noPriceFillFor,
+  hasNoPrice,
+  isPriceMetric,
   zoneName,
+  type MapMetric,
 } from '@/lib/scales'
 import type { PowerLatestRow, GenMapItem } from '@/lib/api'
 
@@ -23,11 +29,9 @@ const CARTO_NOLABELS = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/
 const CARTO_LABELS   = 'https://{s}.basemaps.cartocdn.com/dark_only_labels/{z}/{x}/{y}{r}.png'
 const CARTO_ATTR = '&copy; <a href="https://carto.com/">CARTO</a> &copy; OpenStreetMap contributors'
 
-export type MapMetric = 'price' | 'range' | 'neg_hours' | 'pct_rank' | 'renewable' | 'dominant_fuel' | 'carbon_intensity' | 'wind_cf' | 'solar_cf' | 'hydro_fill'
-
-export function isPriceMetric(m: MapMetric): boolean {
-  return m === 'price' || m === 'range' || m === 'neg_hours' || m === 'pct_rank'
-}
+// MapMetric and isPriceMetric now live in lib/scales so they can be tested without
+// Leaflet. Re-exported here because that is where consumers already import them from.
+export { isPriceMetric, type MapMetric }
 
 // Wind CF: low = red (wind drought -> gas fills gap), high = green
 function windCfColor(cf: number | null | undefined): string {
@@ -90,7 +94,12 @@ export function zoneColor(
   power: PowerLatestRow | undefined,
   gen: GenMapItem | undefined,
   hydroVsAvg?: number | null,
+  zone?: string,
 ): string {
+  // A zone with no market price is not a zone with a missing price. Give it its own fill
+  // (paired with a dashed stroke in zoneStyle) so it never reads as a data gap.
+  const noPrice = noPriceFillFor(metric, zone)
+  if (noPrice) return noPrice
   switch (metric) {
     case 'price':             return powerPriceColor(power?.base_eur)
     case 'range':             return dayRangeColor(power?.day_range_eur)
@@ -105,6 +114,30 @@ export function zoneColor(
   }
 }
 
+/**
+ * Full path style for one zone. Single source of truth for the initial render, the
+ * data-change re-style, and the mouseout restore - those three drifted apart easily when
+ * each built its own object, and a no-price zone losing its dashed stroke on mouseout
+ * would have been exactly that kind of silent drift.
+ */
+function zoneStyle(
+  zone: string,
+  metric: MapMetric,
+  power: PowerLatestRow | undefined,
+  gen: GenMapItem | undefined,
+  hydroVsAvg: number | null,
+  isSelected: boolean,
+): PathOptions {
+  const noPrice = hasNoPrice(zone) && isPriceMetric(metric)
+  return {
+    fillColor: zoneColor(metric, power, gen, hydroVsAvg, zone),
+    fillOpacity: isSelected ? 0.95 : CHOROPLETH_FILL_OPACITY,
+    color: isSelected ? '#38bdf8' : noPrice ? NO_PRICE_STROKE : CHOROPLETH_STROKE,
+    weight: isSelected ? 2 : noPrice ? 1.5 : CHOROPLETH_STROKE_WIDTH,
+    dashArray: noPrice ? NO_PRICE_DASH : undefined,
+  }
+}
+
 function tooltipContent(
   zone: string,
   power: PowerLatestRow | undefined,
@@ -113,6 +146,7 @@ function tooltipContent(
   hydroVsAvg?: number | null,
 ): string {
   const name = zoneName(zone)
+  const noPrice = hasNoPrice(zone)
   const price = power?.base_eur != null ? `${power.base_eur.toFixed(0)} €/MWh` : null
   const re = gen?.renewable_pct != null ? `${gen.renewable_pct.toFixed(0)}% RE` : null
 
@@ -134,6 +168,11 @@ function tooltipContent(
     : ''
 
   const metricExtra = (() => {
+    // Say why the price is absent, not just that it is. "No data" would invite someone to
+    // go hunting for a feed that does not exist.
+    if (noPrice && isPriceMetric(metric)) {
+      return '<span style="color:#a89ec9">No market price - EDF SEI island system, clears inside FR</span>'
+    }
     switch (metric) {
       case 'range':
         return power?.day_range_eur != null ? `Range: ${power.day_range_eur.toFixed(0)} €` : ''
@@ -274,13 +313,16 @@ function EuroChoroLayer({
       const f = (layer as any).feature as Feature
       const zone: string = f?.properties?.['zone'] ?? ''
       const dataZone: string = f?.properties?.['displayAs'] ?? zone
-      const isSelected = dataZone === selected
-      ;(layer as L.Path).setStyle({
-        fillColor: zoneColor(metric, powerByZone[dataZone], genByZone[dataZone], hydroByZone[dataZone] ?? null),
-        fillOpacity: isSelected ? 0.95 : CHOROPLETH_FILL_OPACITY,
-        color: isSelected ? '#38bdf8' : CHOROPLETH_STROKE,
-        weight: isSelected ? 2 : CHOROPLETH_STROKE_WIDTH,
-      })
+      ;(layer as L.Path).setStyle(
+        zoneStyle(
+          dataZone,
+          metric,
+          powerByZone[dataZone],
+          genByZone[dataZone],
+          hydroByZone[dataZone] ?? null,
+          dataZone === selected,
+        ),
+      )
     })
   }, [powerByZone, genByZone, hydroByZone, selected, metric])
 
@@ -300,18 +342,14 @@ function createLayer(
     style: (feature: Feature | undefined): PathOptions => {
       const zone = feature?.properties?.['zone'] ?? ''
       const dataZone = feature?.properties?.['displayAs'] ?? zone
-      const sel = selectedRef.current
-      return {
-        fillColor: zoneColor(
-          metricRef.current,
-          powerRef.current[dataZone],
-          genRef.current[dataZone],
-          hydroRef.current[dataZone] ?? null,
-        ),
-        fillOpacity: dataZone === sel ? 0.95 : CHOROPLETH_FILL_OPACITY,
-        color: dataZone === sel ? '#38bdf8' : CHOROPLETH_STROKE,
-        weight: dataZone === sel ? 2 : CHOROPLETH_STROKE_WIDTH,
-      }
+      return zoneStyle(
+        dataZone,
+        metricRef.current,
+        powerRef.current[dataZone],
+        genRef.current[dataZone],
+        hydroRef.current[dataZone] ?? null,
+        dataZone === selectedRef.current,
+      )
     },
     onEachFeature: (feature: Feature, layer: Layer) => {
       const zone = feature?.properties?.['zone'] ?? ''
@@ -334,11 +372,18 @@ function createLayer(
             .openOn(m)
         },
         mouseout: (e: LeafletMouseEvent) => {
-          const isSel = zone === selectedRef.current
-          ;(e.target as L.Path).setStyle({
-            weight: isSel ? 2 : CHOROPLETH_STROKE_WIDTH,
-            color: isSel ? '#38bdf8' : CHOROPLETH_STROKE,
-          })
+          // Restore through zoneStyle so a no-price zone gets its dashed stroke back
+          // rather than silently reverting to the ordinary solid one.
+          ;(e.target as L.Path).setStyle(
+            zoneStyle(
+              dataZone,
+              metricRef.current,
+              powerRef.current[dataZone],
+              genRef.current[dataZone],
+              hydroRef.current[dataZone] ?? null,
+              dataZone === selectedRef.current,
+            ),
+          )
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ;(e.target as any)._map?.closePopup()
         },

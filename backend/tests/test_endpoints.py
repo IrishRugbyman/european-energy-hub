@@ -194,6 +194,7 @@ def test_flows(client):
 
 def test_flows_date_filter(client):
     import datetime
+
     today = datetime.date.today().isoformat()
     r = client.get(f"/api/flows?date={today}")
     assert r.status_code == 200
@@ -288,6 +289,7 @@ def test_gen_map_latest(client):
 
 def test_gen_map_historical_date(client):
     import datetime
+
     # Use a date 30 days ago (within the seeded 2-year history)
     target = (datetime.date.today() - datetime.timedelta(days=30)).isoformat()
     r = client.get(f"/api/generation/map?date={target}")
@@ -674,13 +676,14 @@ def test_imbalance_signal(client):
     assert 0 < data["naive_accuracy_pct"] <= 100
     assert 0 < data["naive_pos_rate_pct"] <= 100
     assert data["cost_per_mwh"] == 2.0
-    # Model vs naive blocks
-    for block in ("model", "naive"):
+    # model / naive_excess (excess-basis) and structural_long (level-basis, reported
+    # separately - see analytics.imbalance.compute_rebap_signal)
+    for block in ("model", "naive_excess", "structural_long"):
         b = data[block]
         assert "sharpe" in b and "cum_pnl" in b and "max_dd_eur" in b
         assert b["max_dd_eur"] <= 0
-    # Coefficient stability for all 4 features
-    for feat in ("wind_err_lag1", "solar_err_lag1", "wind_fc_d", "rebap_dev_lag1"):
+    # Coefficient stability for all 3 features
+    for feat in ("wind_fc_d", "rebap_dev_lag1", "nrv_dev_lag1"):
         c = data["coef"][feat]
         assert {"mean", "std", "cv"} <= c.keys()
     # Equity curve has both model and naive columns
@@ -948,8 +951,19 @@ def test_generation_eu_monthly_fuel_mix(client):
         assert row["solar_pct"] >= 0
         assert row["wind_pct"] >= 0
         # Share percentages should sum to roughly 100 (allow some float rounding)
-        total = sum(row[k] for k in ("solar_pct", "wind_pct", "nuclear_pct", "hydro_pct",
-                                      "gas_pct", "coal_pct", "biomass_pct", "other_pct"))
+        total = sum(
+            row[k]
+            for k in (
+                "solar_pct",
+                "wind_pct",
+                "nuclear_pct",
+                "hydro_pct",
+                "gas_pct",
+                "coal_pct",
+                "biomass_pct",
+                "other_pct",
+            )
+        )
         assert 90 <= total <= 110, f"fuel shares sum to {total}, expected ~100"
 
 
@@ -1213,7 +1227,12 @@ def test_spreads_nonlinear_cost_robustness(client):
     assert data["avg_turnover_linear"] >= 0
     assert data["avg_turnover_nonlinear"] >= 0
     gross = data["gross"]
-    assert {"linear_sharpe", "nonlinear_sharpe", "linear_cum_pnl", "nonlinear_cum_pnl"} <= gross.keys()
+    assert {
+        "linear_sharpe",
+        "nonlinear_sharpe",
+        "linear_cum_pnl",
+        "nonlinear_cum_pnl",
+    } <= gross.keys()
     sweep = data["sweep"]
     assert len(sweep) > 1
     # Grid starts at zero cost and rises monotonically
@@ -1245,7 +1264,13 @@ def test_spreads_nonlinear_edge_by_zone(client):
     winds = [z["mean_wind_pct"] for z in zones]
     assert winds == sorted(winds)
     for z in zones:
-        assert {"zone", "mean_wind_pct", "n_eval", "sharpe_delta_gross", "cum_pnl_delta_gross"} <= z.keys()
+        assert {
+            "zone",
+            "mean_wind_pct",
+            "n_eval",
+            "sharpe_delta_gross",
+            "cum_pnl_delta_gross",
+        } <= z.keys()
         assert z["n_eval"] > 0
         # Gross edge is the difference of the two reported Sharpes
         if z["sharpe_lin"] is not None and z["sharpe_nl"] is not None:
@@ -1349,7 +1374,15 @@ def test_spreads_residual_mean_reversion(client):
     assert data["n_zones"] >= 1
     assert 0 <= data["n_mean_reverting"] <= data["n_zones"]
     for z in data["zones"]:
-        assert {"zone", "n_obs", "half_life_days", "vr", "vr_pvalue", "hurst", "mean_reverting"} <= z.keys()
+        assert {
+            "zone",
+            "n_obs",
+            "half_life_days",
+            "vr",
+            "vr_pvalue",
+            "hurst",
+            "mean_reverting",
+        } <= z.keys()
         assert z["n_obs"] >= 60
         # The conservative AND verdict implies its three conditions when True
         if z["mean_reverting"]:
@@ -1374,7 +1407,15 @@ def test_spreads_gbm_model(client):
     imp = data["importance"]
     assert len(imp) == 7
     assert abs(sum(row["importance_pct"] for row in imp) - 100.0) < 1.0
-    assert {row["feature"] for row in imp} == {"ttf", "eua", "wind_pct", "solar_pct", "resid_gw", "dttf", "nuclear_gw"}
+    assert {row["feature"] for row in imp} == {
+        "ttf",
+        "eua",
+        "wind_pct",
+        "solar_pct",
+        "resid_gw",
+        "dttf",
+        "nuclear_gw",
+    }
     # Wind partial-dependence curve present, ascending in wind
     pw = data["partial_wind"]
     assert len(pw) > 1
@@ -1816,9 +1857,12 @@ def test_spreads_signal_posture(client):
         assert z["zone"] in ("DE-LU", "FR", "NL", "IT-NORD", "BE")
     # postures must be valid values
     valid_postures = {
-        "STRONG FADE (SHORT)", "STRONG FADE (LONG)",
-        "WEAK FADE (SHORT)", "WEAK FADE (LONG)",
-        "TREND", "NEUTRAL",
+        "STRONG FADE (SHORT)",
+        "STRONG FADE (LONG)",
+        "WEAK FADE (SHORT)",
+        "WEAK FADE (LONG)",
+        "TREND",
+        "NEUTRAL",
     }
     for z in data["zones"]:
         assert z["posture"] in valid_postures, f"Unknown posture: {z['posture']}"
@@ -2052,3 +2096,66 @@ def test_hydro_price_balance(client):
     # Series present for both countries
     series_countries = {p["country"] for p in data["series"]}
     assert series_countries == {"NO", "SE"}
+
+
+# ---------------------------------------------------------------------------
+# /api/island - non-interconnected island systems (FR-COR)
+# ---------------------------------------------------------------------------
+
+
+def test_island_zone_returns_headline_and_series(client):
+    r = client.get("/api/island/FR-COR")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["zone"] == "FR-COR"
+    assert data["net_import_mw"] == pytest.approx(80.3)
+    assert data["import_share_pct"] == pytest.approx(21.2)
+    assert data["oil_mw"] == pytest.approx(209.5)
+    assert len(data["daily"]) == 30
+    assert len(data["hourly"]) == 14 * 24
+    assert len(data["profile"]) == 24
+
+
+def test_island_dates_are_plain_dates_not_timestamps(client):
+    """gen_date/data_start/data_end feed chart axes and prose, so no ' 00:00:00' tail."""
+    data = client.get("/api/island/FR-COR").json()
+    for field in ("gen_date", "data_start", "data_end"):
+        assert data[field] is not None
+        assert len(data[field]) == 10, f"{field} = {data[field]!r}"
+
+
+def test_island_daily_keeps_gap_rows_as_nulls(client):
+    """The padded NULL days are the whole point - a chart must break, not interpolate."""
+    data = client.get("/api/island/FR-COR").json()
+    gap = [r for r in data["daily"] if r["net_import_mw"] is None]
+    assert len(gap) == 3
+    # And they are interior, not trailing: real data exists on both sides.
+    dates = [r["gen_date"] for r in data["daily"]]
+    gap_idx = [i for i, r in enumerate(data["daily"]) if r["net_import_mw"] is None]
+    assert min(gap_idx) > 0
+    assert max(gap_idx) < len(dates) - 1
+
+
+def test_island_gap_days_matches_the_null_rows(client):
+    data = client.get("/api/island/FR-COR").json()
+    assert data["gap_days"] == len([r for r in data["daily"] if r["net_import_mw"] is None])
+
+
+def test_island_profile_reports_its_window(client):
+    """profile_days must be surfaced so the UI never implies a year of evidence."""
+    data = client.get("/api/island/FR-COR").json()
+    assert data["profile_days"] == 14
+
+
+def test_island_zone_not_found(client):
+    r = client.get("/api/island/DE-LU")
+    assert r.status_code == 404
+
+
+def test_island_zone_lowercase(client):
+    assert client.get("/api/island/fr-cor").status_code == 200
+
+
+def test_power_zone_absent_for_no_price_zone(client):
+    """FR-COR has generation but no price row - the price endpoint must 404, not 500."""
+    assert client.get("/api/power/zone/FR-COR").status_code == 404

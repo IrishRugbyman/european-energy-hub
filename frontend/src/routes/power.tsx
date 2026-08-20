@@ -8,7 +8,7 @@ import { UnifiedZonePanel } from '@/components/map/UnifiedZonePanel'
 import { BorderPanel } from '@/components/power/BorderPanel'
 import { InterconnectionLayer, type BorderKey, type InterconnMode } from '@/components/power/InterconnectionLayer'
 import { StaleBanner } from '@/components/StaleBanner'
-import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity, zoneName, ZONE_TO_HYDRO_COUNTRY } from '@/lib/scales'
+import { FUEL_PALETTE, renewablePctColor, carbonIntensityColor, computeCarbonIntensity, zoneName, ZONE_TO_HYDRO_COUNTRY, NO_PRICE_FILL, NO_PRICE_STROKE } from '@/lib/scales'
 
 export const Route = createFileRoute('/power')({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -595,6 +595,17 @@ function MapDashboard() {
               <span className="text-muted-foreground">{label}</span>
             </div>
           ))}
+          {/* Corsica has generation but no price, so under a price metric it needs a key
+              entry of its own - otherwise its odd fill reads as an unexplained data gap. */}
+          {isPriceMetric(metric) && (
+            <div className="flex items-center gap-1.5 pt-1 mt-1 border-t border-border">
+              <div
+                className="w-3 h-2 rounded-sm flex-shrink-0"
+                style={{ backgroundColor: NO_PRICE_FILL, border: `1px dashed ${NO_PRICE_STROKE}` }}
+              />
+              <span className="text-muted-foreground">No market price</span>
+            </div>
+          )}
         </div>
       )}
       {showInterconnections && (

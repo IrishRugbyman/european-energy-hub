@@ -10,9 +10,9 @@ import math
 import statistics
 import threading
 import time as _time
-from datetime import date, datetime, timezone
-from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, date, datetime
+from typing import Any
 
 import pandas as pd
 from fastapi import FastAPI, HTTPException
@@ -24,288 +24,293 @@ from slowapi.util import get_remote_address
 
 from . import db
 from .schemas import (
+    AnalogTrajectoryPoint,
+    BacktestEquityPoint,
+    BacktestModelStats,
+    BacktestStats,
     BatteryHourlyPoint,
     BatteryResponse,
     BatterySummary,
+    BootstrapSharpeCI,
+    BorderFlowHistPoint,
+    BorderFlowHistResponse,
     BorderFlowRow,
+    CapacityAnnualResponse,
+    CapacityAnnualRow,
+    CapacityFactorPoint,
+    CfMapResponse,
+    CfMapRow,
     CongestionBorderResponse,
+    CongestionMonthlyPoint,
+    CongestionPremiumResponse,
+    CongestionPremiumRow,
     CongestionResponse,
     CongestionRow,
+    CongestionScatterPoint,
+    CostRobustnessGross,
+    CostRobustnessResponse,
+    CostSweepPoint,
+    CountryPaceRow,
+    CrossZoneSpreadPoint,
+    CrossZoneSpreadResponse,
+    DeflatedSharpe,
     DivergenceBorderHistory,
     DivergenceDailyPoint,
     DivergenceLatestRow,
     DivergenceResponse,
+    DowPoint,
+    EdgeByZoneResponse,
+    EdgeByZoneRow,
+    EnrichedFactorStability,
+    EnrichedModelCoef,
+    EnrichedModelImprovement,
+    EnrichedModelResponse,
+    EnrichedModelStats,
+    EuaMonthlySeasonalPoint,
+    EuAnnualFuelResponse,
+    EuAnnualFuelRow,
+    EuaSeasonalityResponse,
+    EuCfLatestResponse,
+    EuCiDailyPoint,
+    EuCiDailyResponse,
+    EuDuckCurvePoint,
+    EuDuckCurveResponse,
+    EuGenHourlyPoint,
+    EuGenHourlyResponse,
+    EuPriceRePoint,
+    EuPriceReResponse,
     FlowsResponse,
+    ForecastAccuracyResponse,
+    ForecastAccuracyRow,
+    FuelSwitchingEuaPoint,
+    FuelSwitchingEuaResponse,
+    FundamentalBacktestResponse,
+    FundamentalCoefficients,
+    FundamentalCurrent,
+    FundamentalModelResponse,
+    FundamentalPoint,
     GasCountryResponse,
     GasDoyPoint,
-    GasYearTrack,
     GasFlowCountryResponse,
     GasFlowItem,
     GasFlowResponse,
     GasMapResponse,
+    GasPaceCountriesResponse,
+    GasPacePoint,
+    GasPaceResponse,
+    GasPaceStats,
+    GasPowerPassThroughResponse,
+    GasPriceScatterResponse,
+    GasPriceScatterRow,
+    GasYearTrack,
+    GbmImportanceRow,
+    GbmModelResponse,
+    GbmPartialPoint,
     GenAnnualRow,
-    GenTrendsResponse,
+    GenCapacityResponse,
     GenDailyPoint,
+    GenerationMixRow,
     GenHourlyPoint,
     GenMapItem,
     GenMapResponse,
-    GenZoneResponse,
-    GenerationMixRow,
-    HealthResponse,
-    MetaResponse,
-    DowPoint,
-    HourlyProfilePoint,
-    MonthPoint,
-    PowerDailyPoint,
-    PowerSeasonalityResponse,
-    PowerHourlyPoint,
-    PowerLatestRow,
-    PowerMapResponse,
-    PowerZoneProfileResponse,
-    PowerZoneResponse,
-    ImbalanceDailyPoint,
-    ImbalanceLatest,
-    GenMonthlyRow,
     GenMonthlyResponse,
-    EuCiDailyPoint,
-    EuCiDailyResponse,
-    EuCfLatestResponse,
-    ZoneCfRow,
-    ZoneCfResponse,
-    EuPriceRePoint,
-    EuPriceReResponse,
-    StorageCountryRow,
-    StorageCountryResponse,
-    PowerMonthlyCell,
-    PowerMonthlyResponse,
-    EuGenHourlyPoint,
-    EuGenHourlyResponse,
-    EuDuckCurvePoint,
-    EuDuckCurveResponse,
-    ImbalanceMonthlyRow,
-    ImbalanceMonthlyResponse,
-    ImbalanceRecentPoint,
-    ImbalanceResponse,
-    PricesDailyPoint,
-    PricesResponse,
-    SeasonalBandPoint,
-    SeasonalPoint,
-    SpreadsDailyPoint,
-    SpreadsResponse,
-    StorageFacilitiesResponse,
-    StorageFacilityItem,
-    StorageLatestRow,
-    MultiZoneSpreadRow,
-    MultiZoneSpreadsResponse,
-    PriceRegimePoint,
-    PriceRegimeResponse,
-    TtfCurvePoint,
-    TtfCurveResponse,
-    TtfSeasonalMonth,
-    TtfSeasonalityResponse,
-    TtfWinterPremiumYear,
-    TtfWinterPremiumResponse,
-    ReMeritOrderBin,
-    ReMeritOrderZone,
-    ReMeritOrderResponse,
-    CapacityFactorPoint,
-    GenCapacityResponse,
-    GasPacePoint,
-    GasPaceStats,
-    GasPaceResponse,
-    CountryPaceRow,
-    GasPaceCountriesResponse,
-    ImbalanceHourlyPoint,
-    ImbalanceProfileResponse,
-    EuAnnualFuelRow,
-    EuAnnualFuelResponse,
-    ZoneCorrelationRow,
-    PowerCorrelationResponse,
-    TtfCurveSnapshotRow,
-    TtfCurveSnapshotsResponse,
-    CapacityAnnualRow,
-    CapacityAnnualResponse,
-    NegHoursMonthlyRow,
-    NegHoursMonthlyResponse,
-    GasPriceScatterRow,
-    GasPriceScatterResponse,
-    NegHoursZoneRow,
-    NegHoursZoneResponse,
-    ZonePriceReCorrRow,
-    ZonePriceReCorrResponse,
-    MonthlyFuelMixRow,
-    MonthlyFuelMixResponse,
-    ZoneHourlyProfileRow,
-    ZoneHourlyProfilesResponse,
-    ZoneTtfCorrRow,
-    ZoneTtfCorrResponse,
-    ZoneCarbonIntensityRow,
-    ZoneCarbonIntensityResponse,
-    ForecastAccuracyRow,
-    ForecastAccuracyResponse,
-    CrossZoneSpreadPoint,
-    CrossZoneSpreadResponse,
-    BorderFlowHistPoint,
-    BorderFlowHistResponse,
-    ZoneNetFlowRow,
-    ZoneNetFlowsResponse,
-    UsStorageLatestRow,
-    UsStorageMapResponse,
-    UsStorageWeekPoint,
-    UsStorageSeasonalPoint,
-    UsStorageRegionResponse,
-    UsPaceWeekPoint,
-    UsPaceStats,
-    UsPaceResponse,
-    UsPowerFuelPoint,
-    UsPowerRegionLatest,
-    UsPowerMixResponse,
-    UsPowerHourlyPoint,
-    UsPowerHistoryResponse,
-    UsNgPlant,
-    UsNgPlantsResponse,
-    FundamentalCoefficients,
-    FundamentalPoint,
-    FundamentalCurrent,
-    RollingCoefPoint,
-    FundamentalModelResponse,
-    SignalSnapshotRow,
-    SignalSnapshotResponse,
-    CfMapRow,
-    CfMapResponse,
-    WindPriceBin,
-    WindPriceInterpretation,
-    WindPriceAnalysisResponse,
-    ModelFitMetrics,
-    ModelMetricsByRegime,
-    NonlinearImprovement,
-    NonlinearScatterPoint,
-    NonlinearBacktestResponse,
-    NonlinearBacktestImprovement,
-    NonlinearBacktestEquityPoint,
-    BacktestModelStats,
-    CostRobustnessResponse,
-    CostRobustnessGross,
-    CostSweepPoint,
-    EdgeByZoneResponse,
-    EdgeByZoneRow,
-    RegimeAwareBacktestResponse,
-    RegimeBookStats,
-    RegimeAwareEquityPoint,
-    LookaheadPremium,
-    EnrichedModelResponse,
-    EnrichedModelStats,
-    EnrichedModelImprovement,
-    EnrichedModelCoef,
-    EnrichedFactorStability,
-    GbmModelResponse,
-    GbmImportanceRow,
-    GbmPartialPoint,
-    PortfolioBacktestResponse,
-    PortfolioZoneRow,
-    PortfolioStats,
-    PortfolioEquityPoint,
-    PortfolioSignificance,
-    DeflatedSharpe,
-    BootstrapSharpeCI,
-    ResidualMeanReversionResponse,
-    ResidualMeanReversionRow,
-    NonlinearModelResponse,
-    BacktestEquityPoint,
-    BacktestStats,
-    FundamentalBacktestResponse,
-    LngLatestRow,
-    LngMapResponse,
-    LngTrendPoint,
-    LngSeasonalPoint,
-    LngHistoryPoint,
-    LngCountryResponse,
-    NuclearCountryRow,
-    NuclearFrTrendPoint,
-    NuclearScatterPoint,
-    NuclearTrackerResponse,
-    NuclearHeatRiskPlant,
-    NuclearHeatRiskTrendPoint,
-    NuclearHeatRiskResponse,
-    RebapSignalResponse,
-    RebapSignalPerfBlock,
-    RebapSignalCoef,
-    RebapCoefStability,
-    RebapEquityPoint,
-    RebapSignalToday,
-    NuclearWindInteractionResponse,
-    NuclearWindCoef,
-    MarketPulseResponse,
-    MarketPulseSpread,
-    MarketPulseSignal,
-    HoldingPeriodRow,
+    GenMonthlyRow,
+    GenTrendsResponse,
+    GenZoneResponse,
+    HealthResponse,
     HoldingPeriodResponse,
-    ZonePostureRow,
-    SignalPostureResponse,
-    RebapZscoreRollingPoint,
-    RebapZscoreScatterPoint,
-    RebapZscoreDoseBucket,
-    RebapZscoreCorrelationResponse,
-    StorageFactorStats,
-    StorageFactorImprovementStats,
-    StorageFactorCoef,
-    StorageFactorRollingPoint,
-    StorageFactorScatterPoint,
-    StorageFactorTestResponse,
-    LoadErrorScatterPoint,
-    LoadErrorRollingPoint,
-    LoadErrorFactorTestResponse,
-    ZoneSignalCorrPoint,
-    ZoneSignalPairSeries,
-    ZoneSignalPair,
-    ZoneSignalCorrelationResponse,
-    StorageTtfScatterPoint,
-    StorageTtfRollingCorrPoint,
-    StorageTtfFundamentalResponse,
-    FuelSwitchingEuaPoint,
-    FuelSwitchingEuaResponse,
-    RegimeStats,
-    RegimeConditionalZoneRow,
-    RegimeConditionalResponse,
-    LngArbPoint,
-    LngArbResponse,
-    PassThroughPoint,
-    PassThroughZone,
-    GasPowerPassThroughResponse,
-    EuaMonthlySeasonalPoint,
-    EuaSeasonalityResponse,
-    UsStorageRegionPoint,
-    UsStorageHistPoint,
-    UsStorageResponse,
-    AnalogTrajectoryPoint,
-    StorageAnalogYear,
-    StorageAnalogResponse,
-    PriceVarianceZoneRow,
-    PriceVarianceDecompResponse,
-    CongestionPremiumRow,
-    CongestionScatterPoint,
-    CongestionMonthlyPoint,
-    CongestionPremiumResponse,
-    NegPriceAnnualYear,
-    NegPriceAnnualZone,
-    NegPriceAnnualResponse,
-    ZoneDispersionMonth,
-    ZoneDispersionResponse,
-    PeakOffpeakPoint,
-    PeakOffpeakResponse,
-    HydroCountryLatest,
-    HydroMapResponse,
-    HydroHistPoint,
-    HydroSeasonalPoint,
-    HydroCountryResponse,
+    HoldingPeriodRow,
+    HourlyProfilePoint,
     HydroBalanceCountry,
     HydroBalancePoint,
     HydroBalanceResponse,
+    HydroCountryLatest,
+    HydroCountryResponse,
+    HydroHistPoint,
+    HydroMapResponse,
+    HydroSeasonalPoint,
+    ImbalanceDailyPoint,
+    ImbalanceHourlyPoint,
+    ImbalanceLatest,
+    ImbalanceMonthlyResponse,
+    ImbalanceMonthlyRow,
+    ImbalanceProfileResponse,
+    ImbalanceRecentPoint,
+    ImbalanceResponse,
+    IslandDailyPoint,
+    IslandHourlyPoint,
+    IslandProfilePoint,
+    IslandResponse,
+    LngArbPoint,
+    LngArbResponse,
+    LngCountryResponse,
+    LngHistoryPoint,
+    LngLatestRow,
+    LngMapResponse,
+    LngSeasonalPoint,
+    LngTrendPoint,
+    LoadErrorFactorTestResponse,
+    LoadErrorRollingPoint,
+    LoadErrorScatterPoint,
+    LookaheadPremium,
+    MarketPulseResponse,
+    MarketPulseSignal,
+    MarketPulseSpread,
+    MetaResponse,
+    ModelFitMetrics,
+    ModelMetricsByRegime,
+    MonthlyFuelMixResponse,
+    MonthlyFuelMixRow,
+    MonthPoint,
+    MultiZoneSpreadRow,
+    MultiZoneSpreadsResponse,
+    NegHoursMonthlyResponse,
+    NegHoursMonthlyRow,
+    NegHoursZoneResponse,
+    NegHoursZoneRow,
+    NegPriceAnnualResponse,
+    NegPriceAnnualYear,
+    NegPriceAnnualZone,
+    NonlinearBacktestEquityPoint,
+    NonlinearBacktestImprovement,
+    NonlinearBacktestResponse,
+    NonlinearImprovement,
+    NonlinearModelResponse,
+    NonlinearScatterPoint,
+    NuclearCountryRow,
+    NuclearFrTrendPoint,
+    NuclearHeatRiskPlant,
+    NuclearHeatRiskResponse,
+    NuclearHeatRiskTrendPoint,
+    NuclearScatterPoint,
+    NuclearTrackerResponse,
+    NuclearWindCoef,
+    NuclearWindInteractionResponse,
+    PassThroughPoint,
+    PassThroughZone,
+    PeakOffpeakPoint,
+    PeakOffpeakResponse,
+    PortfolioBacktestResponse,
+    PortfolioEquityPoint,
+    PortfolioSignificance,
+    PortfolioStats,
+    PortfolioZoneRow,
+    PowerCorrelationResponse,
+    PowerDailyPoint,
+    PowerHourlyPoint,
+    PowerLatestRow,
+    PowerMapResponse,
+    PowerMonthlyCell,
+    PowerMonthlyResponse,
+    PowerSeasonalityResponse,
+    PowerZoneProfileResponse,
+    PowerZoneResponse,
+    PriceRegimePoint,
+    PriceRegimeResponse,
+    PricesDailyPoint,
+    PricesResponse,
+    PriceVarianceDecompResponse,
+    PriceVarianceZoneRow,
+    RebapCoefStability,
+    RebapEquityPoint,
+    RebapSignalCoef,
+    RebapSignalPerfBlock,
+    RebapSignalResponse,
+    RebapSignalToday,
+    RebapZscoreCorrelationResponse,
+    RebapZscoreDoseBucket,
+    RebapZscoreRollingPoint,
+    RebapZscoreScatterPoint,
+    RegimeAwareBacktestResponse,
+    RegimeAwareEquityPoint,
+    RegimeBookStats,
+    RegimeConditionalResponse,
+    RegimeConditionalZoneRow,
+    RegimeStats,
+    ReMeritOrderBin,
+    ReMeritOrderResponse,
+    ReMeritOrderZone,
+    ResidualMeanReversionResponse,
+    ResidualMeanReversionRow,
+    RollingCoefPoint,
+    SeasonalBandPoint,
+    SeasonalPoint,
+    SignalPostureResponse,
+    SignalSnapshotResponse,
+    SignalSnapshotRow,
+    SpreadsDailyPoint,
+    SpreadsResponse,
+    StorageAnalogResponse,
+    StorageAnalogYear,
+    StorageCountryResponse,
+    StorageCountryRow,
+    StorageFacilitiesResponse,
+    StorageFacilityItem,
+    StorageFactorCoef,
+    StorageFactorImprovementStats,
+    StorageFactorRollingPoint,
+    StorageFactorScatterPoint,
+    StorageFactorStats,
+    StorageFactorTestResponse,
+    StorageLatestRow,
+    StorageTtfFundamentalResponse,
+    StorageTtfRollingCorrPoint,
+    StorageTtfScatterPoint,
+    TtfCurvePoint,
+    TtfCurveResponse,
+    TtfCurveSnapshotRow,
+    TtfCurveSnapshotsResponse,
+    TtfSeasonalityResponse,
+    TtfSeasonalMonth,
+    TtfWinterPremiumResponse,
+    TtfWinterPremiumYear,
+    UsNgPlant,
+    UsNgPlantsResponse,
+    UsPaceResponse,
+    UsPaceStats,
+    UsPaceWeekPoint,
+    UsPowerFuelPoint,
+    UsPowerHistoryResponse,
+    UsPowerHourlyPoint,
+    UsPowerMixResponse,
+    UsPowerRegionLatest,
+    UsStorageHistPoint,
+    UsStorageLatestRow,
+    UsStorageMapResponse,
+    UsStorageRegionPoint,
+    UsStorageRegionResponse,
+    UsStorageResponse,
+    UsStorageSeasonalPoint,
+    UsStorageWeekPoint,
+    WindPriceAnalysisResponse,
+    WindPriceBin,
+    WindPriceInterpretation,
+    ZoneCarbonIntensityResponse,
+    ZoneCarbonIntensityRow,
+    ZoneCfResponse,
+    ZoneCfRow,
+    ZoneCorrelationRow,
+    ZoneDispersionMonth,
+    ZoneDispersionResponse,
+    ZoneHourlyProfileRow,
+    ZoneHourlyProfilesResponse,
+    ZoneNetFlowRow,
+    ZoneNetFlowsResponse,
+    ZonePostureRow,
+    ZonePriceReCorrResponse,
+    ZonePriceReCorrRow,
+    ZoneSignalCorrelationResponse,
+    ZoneSignalCorrPoint,
+    ZoneSignalPair,
+    ZoneSignalPairSeries,
+    ZoneTtfCorrResponse,
+    ZoneTtfCorrRow,
 )
 
 
 def _rate_limited():
     from fastapi.responses import JSONResponse
+
     return JSONResponse(status_code=429, content={"detail": "rate limit exceeded"})
 
 
@@ -360,11 +365,12 @@ def _iso(v) -> str | None:
 
 
 def _meta_val(key: str) -> str | None:
-    return db.scalar(f"SELECT value FROM meta WHERE key = ?", [key])
+    return db.scalar("SELECT value FROM meta WHERE key = ?", [key])
 
 
 @app.get("/api/health", response_model=HealthResponse)
 def health():
+    """Liveness probe plus the per-domain refresh timestamps."""
     return HealthResponse(
         ok=True,
         refreshed_at_gas=_meta_val("refreshed_at_gas"),
@@ -374,6 +380,7 @@ def health():
 
 @app.get("/api/meta", response_model=MetaResponse)
 def meta():
+    """List the countries and bidding zones present in the current snapshot."""
     cc_df = db.query("SELECT DISTINCT country FROM storage_latest ORDER BY country")
     countries = cc_df["country"].tolist() if not cc_df.empty else []
     zone_df = db.query("SELECT DISTINCT zone FROM power_latest ORDER BY zone")
@@ -390,6 +397,7 @@ def meta():
 
 @app.get("/api/gas/map", response_model=GasMapResponse)
 def gas_map():
+    """Latest gas storage fill per country, for the choropleth."""
     df = db.query(
         """
         SELECT country, gas_day::VARCHAR AS gas_day, full_pct, d7_pct, vs_avg5_pct,
@@ -399,7 +407,7 @@ def gas_map():
         """
     )
     if df.empty:
-        return GasMapResponse(as_of=datetime.now(timezone.utc).isoformat(), rows=[])
+        return GasMapResponse(as_of=datetime.now(UTC).isoformat(), rows=[])
 
     rows = [
         StorageLatestRow(
@@ -415,7 +423,7 @@ def gas_map():
         )
         for r in df.itertuples()
     ]
-    as_of = _meta_val("refreshed_at_gas") or datetime.now(timezone.utc).isoformat()
+    as_of = _meta_val("refreshed_at_gas") or datetime.now(UTC).isoformat()
 
     pipeline_offline_bcm: float | None = None
     try:
@@ -456,6 +464,7 @@ def gas_facilities():
 
 @app.get("/api/gas/country/{cc}", response_model=GasCountryResponse)
 def gas_country(cc: str):
+    """Storage history, the five-year band and facilities for one country."""
     cc = cc.upper()
     latest_df = db.query(
         """
@@ -493,7 +502,7 @@ def gas_country(cc: str):
         [cc],
     )
 
-    current_year = datetime.now(timezone.utc).year
+    current_year = datetime.now(UTC).year
     current: list[SeasonalPoint] = []
     prior: list[SeasonalPoint] = []
 
@@ -516,10 +525,19 @@ def gas_country(cc: str):
         "SELECT doy, avg5, min5, max5 FROM storage_seasonal WHERE country = ? ORDER BY doy",
         [cc],
     )
-    band = [
-        SeasonalBandPoint(doy=int(row.doy), avg5=_float(row.avg5), min5=_float(row.min5), max5=_float(row.max5))
-        for row in band_df.itertuples()
-    ] if not band_df.empty else []
+    band = (
+        [
+            SeasonalBandPoint(
+                doy=int(row.doy),
+                avg5=_float(row.avg5),
+                min5=_float(row.min5),
+                max5=_float(row.max5),
+            )
+            for row in band_df.itertuples()
+        ]
+        if not band_df.empty
+        else []
+    )
 
     # Year-on-year tracks: daily fill% per calendar year, aligned to day-of-year
     tracks_df = db.query(
@@ -537,10 +555,8 @@ def gas_country(cc: str):
     yearly_tracks: list[GasYearTrack] = []
     if not tracks_df.empty:
         from itertools import groupby
-        rows_iter = (
-            (int(r.year), int(r.doy), _float(r.full_pct))
-            for r in tracks_df.itertuples()
-        )
+
+        rows_iter = ((int(r.year), int(r.doy), _float(r.full_pct)) for r in tracks_df.itertuples())
         for yr, group in groupby(rows_iter, key=lambda x: x[0]):
             pts = [GasDoyPoint(doy=doy, full_pct=fp) for _, doy, fp in group]
             yearly_tracks.append(GasYearTrack(year=yr, data=pts))
@@ -703,8 +719,8 @@ def gas_pace_to_target():
     # Interim EU storage targets (Regulation EU 2022/1369)
     yr = current_date_obj.year
     _INTERIM_TARGETS = [
-        (date(yr, 8, 1),  62.5),
-        (date(yr, 9, 1),  75.0),
+        (date(yr, 8, 1), 62.5),
+        (date(yr, 9, 1), 75.0),
         (date(yr, 10, 1), 83.3),
         (date(yr, 11, 1), 90.0),
     ]
@@ -722,16 +738,14 @@ def gas_pace_to_target():
 
     # 7-day avg net injection (GWh/day)
     recent = hist_df.tail(7)
-    inj_vals = (recent["injection"].fillna(0) - recent["withdrawal"].fillna(0))
+    inj_vals = recent["injection"].fillna(0) - recent["withdrawal"].fillna(0)
     current_rate = float(inj_vals.mean()) if not inj_vals.empty else 0.0
 
     # Required total injection (GWh)
     pct_gap = _GAS_FILL_TARGET_PCT - current_pct
     required_total_gwh = (pct_gap / 100) * wgv_twh * 1000  # TWh -> GWh
     required_rate = required_total_gwh / days_to_target if days_to_target > 0 else None
-    days_at_current = (
-        required_total_gwh / current_rate if current_rate > 0 else None
-    )
+    days_at_current = required_total_gwh / current_rate if current_rate > 0 else None
     on_track = (days_at_current <= days_to_target) if days_at_current is not None else None
 
     # Build history list (actual fill + seasonal avg5 + injection rate + seasonal band)
@@ -740,16 +754,18 @@ def gas_pace_to_target():
         inj = _float(getattr(r, "injection", None)) or 0.0
         wd = _float(getattr(r, "withdrawal", None)) or 0.0
         net = inj - wd
-        history.append(GasPacePoint(
-            gas_day=str(r.gas_day),
-            full_pct=_float(r.full_pct),
-            avg5=_float(r.avg5),
-            projected=None,
-            net_inj_gwh_d=round(net, 1) if (inj or wd) else None,
-            seas_inj_avg=_float(getattr(r, "seas_inj_avg", None)),
-            seas_inj_p25=_float(getattr(r, "seas_inj_p25", None)),
-            seas_inj_p75=_float(getattr(r, "seas_inj_p75", None)),
-        ))
+        history.append(
+            GasPacePoint(
+                gas_day=str(r.gas_day),
+                full_pct=_float(r.full_pct),
+                avg5=_float(r.avg5),
+                projected=None,
+                net_inj_gwh_d=round(net, 1) if (inj or wd) else None,
+                seas_inj_avg=_float(getattr(r, "seas_inj_avg", None)),
+                seas_inj_p25=_float(getattr(r, "seas_inj_p25", None)),
+                seas_inj_p75=_float(getattr(r, "seas_inj_p75", None)),
+            )
+        )
 
     # Append projected trajectory from current date to Nov 1 at current rate
     wgv_gwh = wgv_twh * 1000
@@ -757,12 +773,14 @@ def gas_pace_to_target():
         proj_day = date.fromordinal(current_date_obj.toordinal() + d_offset)
         projected_gwh_stored = (current_pct / 100 * wgv_gwh) + current_rate * d_offset
         projected_pct = max(0.0, min(projected_gwh_stored / wgv_gwh * 100, 100.0))
-        history.append(GasPacePoint(
-            gas_day=proj_day.isoformat(),
-            full_pct=None,
-            avg5=None,
-            projected=round(projected_pct, 2),
-        ))
+        history.append(
+            GasPacePoint(
+                gas_day=proj_day.isoformat(),
+                full_pct=None,
+                avg5=None,
+                projected=round(projected_pct, 2),
+            )
+        )
 
     # Pace to next interim target
     next_interim_date_str: str | None = None
@@ -799,7 +817,9 @@ def gas_pace_to_target():
         pct_gap=round(pct_gap, 2) if pct_gap is not None else None,
         required_gwh_per_day=round(required_rate, 1) if required_rate is not None else None,
         current_rate_gwh_per_day=round(current_rate, 1),
-        days_at_current_rate=round(days_at_current, 0) if days_at_current is not None and not math.isinf(days_at_current) else None,
+        days_at_current_rate=round(days_at_current, 0)
+        if days_at_current is not None and not math.isinf(days_at_current)
+        else None,
         on_track=on_track,
         seasonal_inj_avg_gwh_d=round(seasonal_inj_avg, 1) if seasonal_inj_avg is not None else None,
         seasonal_inj_p25_gwh_d=round(seasonal_inj_p25, 1) if seasonal_inj_p25 is not None else None,
@@ -839,7 +859,11 @@ def gas_pace_countries():
         GROUP BY country
         """
     )
-    rates = {} if rate_df.empty else dict(zip(rate_df["country"], rate_df["rate"].fillna(0)))
+    rates = (
+        {}
+        if rate_df.empty
+        else dict(zip(rate_df["country"], rate_df["rate"].fillna(0), strict=True))
+    )
 
     # Determine target date using the most common gas_day
     sample_date_str = str(latest_df.iloc[0]["gas_day"])
@@ -866,14 +890,16 @@ def gas_pace_countries():
                 on_track = days_at <= days_to_t
         elif pct_gap is not None and pct_gap <= 0:
             on_track = True  # already at or above target
-        rows.append(CountryPaceRow(
-            country=cc,
-            current_pct=round(c_pct, 2) if c_pct is not None else None,
-            current_rate_gwh_per_day=round(c_rate, 1),
-            required_gwh_per_day=round(req_rate, 1) if req_rate is not None else None,
-            pct_gap=round(pct_gap, 2) if pct_gap is not None else None,
-            on_track=on_track,
-        ))
+        rows.append(
+            CountryPaceRow(
+                country=cc,
+                current_pct=round(c_pct, 2) if c_pct is not None else None,
+                current_rate_gwh_per_day=round(c_rate, 1),
+                required_gwh_per_day=round(req_rate, 1) if req_rate is not None else None,
+                pct_gap=round(pct_gap, 2) if pct_gap is not None else None,
+                on_track=on_track,
+            )
+        )
 
     return GasPaceCountriesResponse(target_date=nov1.isoformat(), rows=rows)
 
@@ -1080,7 +1106,9 @@ def gas_lng_country(cc: str):
         for r in (trend_df if trend_df is not None else pd.DataFrame()).itertuples()
     ]
 
-    return LngCountryResponse(country=cc, latest=latest, history=history, seasonal=seasonal, trend=trend)
+    return LngCountryResponse(
+        country=cc, latest=latest, history=history, seasonal=seasonal, trend=trend
+    )
 
 
 @app.get("/api/gas/storage-analogs", response_model=StorageAnalogResponse)
@@ -1094,7 +1122,6 @@ def gas_storage_analogs():
     _rate_limited()
 
     def _compute():
-        import math
         from datetime import date as _date
 
         today = _date.today()
@@ -1285,8 +1312,11 @@ def generation_heat_risk():
 
     if plants_df is None or plants_df.empty:
         return NuclearHeatRiskResponse(
-            plants=[], trend=[], capacity_critical_mw=0,
-            capacity_warning_mw=0, refreshed_at=None,
+            plants=[],
+            trend=[],
+            capacity_critical_mw=0,
+            capacity_warning_mw=0,
+            refreshed_at=None,
         )
 
     plants = [
@@ -1325,7 +1355,7 @@ def generation_heat_risk():
     ]
 
     cap_critical = sum(p.capacity_mw for p in plants if p.alert_level == "critical")
-    cap_warning  = sum(p.capacity_mw for p in plants if p.alert_level == "warning")
+    cap_warning = sum(p.capacity_mw for p in plants if p.alert_level == "warning")
 
     return NuclearHeatRiskResponse(
         plants=plants,
@@ -1364,7 +1394,9 @@ def power_congestion():
     return CongestionResponse(as_of=as_of, rows=rows)
 
 
-@app.get("/api/power/congestion/border/{from_zone}/{to_zone}", response_model=CongestionBorderResponse)
+@app.get(
+    "/api/power/congestion/border/{from_zone}/{to_zone}", response_model=CongestionBorderResponse
+)
 def power_congestion_border(from_zone: str, to_zone: str):
     """Trailing-400d NTC utilization for one directed border pair."""
     fz = from_zone.upper().replace("_", "-")
@@ -1452,11 +1484,15 @@ def power_border_flows(from_zone: str, to_zone: str):
     if df.empty:
         raise HTTPException(status_code=404, detail=f"No flow data for border: {a}-{b}")
     # Sign: positive = a->b. Caller requested fz->tz; if canonical order flipped, negate.
-    flip = (fz != a)
+    flip = fz != a
     rows = [
         BorderFlowHistPoint(
             price_date=str(r.price_date),
-            net_flow_mw=(_float(r.net_flow_mw) * -1 if flip and r.net_flow_mw is not None else _float(r.net_flow_mw)),
+            net_flow_mw=(
+                _float(r.net_flow_mw) * -1
+                if flip and r.net_flow_mw is not None
+                else _float(r.net_flow_mw)
+            ),
         )
         for r in df.itertuples()
     ]
@@ -1518,12 +1554,13 @@ def power_divergence():
 
 @app.get("/api/power/map", response_model=PowerMapResponse)
 def power_map():
+    """Latest day-ahead price metrics per bidding zone, for the choropleth."""
     df = db.query(
         "SELECT zone, price_date::VARCHAR AS price_date, base_eur, peak_eur, vs_30d_pct, day_range_eur, neg_hours, pct_rank_2yr FROM power_latest ORDER BY zone",
     )
     if df.empty:
         return PowerMapResponse(
-            as_of=datetime.now(timezone.utc).isoformat(),
+            as_of=datetime.now(UTC).isoformat(),
             price_date="",
             rows=[],
         )
@@ -1542,12 +1579,13 @@ def power_map():
     ]
     # Use the most recent price_date across all zones as the map date
     price_date = max((r.price_date for r in rows if r.price_date), default="")
-    as_of = _meta_val("refreshed_at_power") or datetime.now(timezone.utc).isoformat()
+    as_of = _meta_val("refreshed_at_power") or datetime.now(UTC).isoformat()
     return PowerMapResponse(as_of=as_of, price_date=price_date, rows=rows)
 
 
 @app.get("/api/power/zone/{zone_id}", response_model=PowerZoneResponse)
 def power_zone(zone_id: str):
+    """Price history, hourly shape and stats for one bidding zone."""
     zone_id = zone_id.upper()
     # Normalise: replace underscore with hyphen for lookup (API uses DE-LU, not DE_LU)
     # The DB stores zone names as they appear in config (e.g. "DE-LU", "SE-1")
@@ -1578,7 +1616,7 @@ def power_zone(zone_id: str):
         ORDER BY ts
         """,
         [zone_id],
-            )
+    )
     hourly = [
         PowerHourlyPoint(ts=str(row.ts), price_eur_mwh=_float(row.price_eur_mwh))
         for row in (hourly_df.itertuples() if not hourly_df.empty else [])
@@ -1593,7 +1631,7 @@ def power_zone(zone_id: str):
         ORDER BY price_date
         """,
         [zone_id],
-            )
+    )
     daily = [
         PowerDailyPoint(
             price_date=str(row.price_date),
@@ -1701,7 +1739,21 @@ def power_zone_seasonality(zone_id: str):
     """Day-of-week and month-of-year avg price for a zone (2-year history)."""
     zone_id = zone_id.upper()
     DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    MONTH_LABELS = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    MONTH_LABELS = [
+        "",
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    ]
 
     dow_df = db.query(
         """
@@ -1775,7 +1827,7 @@ def power_correlations():
 
 
 # 8 most-liquid zones for the monthly heatmap (representative coverage)
-_MONTHLY_ZONES = ['DE-LU', 'FR', 'NL', 'BE', 'AT', 'CH', 'IT-NORD', 'ES']
+_MONTHLY_ZONES = ["DE-LU", "FR", "NL", "BE", "AT", "CH", "IT-NORD", "ES"]
 
 
 @app.get("/api/power/monthly", response_model=PowerMonthlyResponse)
@@ -1801,8 +1853,11 @@ def power_monthly():
     if df is None or df.empty:
         return PowerMonthlyResponse(zones=[], months=[], cells=[])
 
-    zone_set: list[str] = sorted(df["zone"].unique().tolist(), key=lambda z: _MONTHLY_ZONES.index(z) if z in _MONTHLY_ZONES else 99)
-    month_set: list[str] = sorted(set(f"{int(r.yr):04d}-{int(r.mo):02d}" for r in df.itertuples()))
+    zone_set: list[str] = sorted(
+        df["zone"].unique().tolist(),
+        key=lambda z: _MONTHLY_ZONES.index(z) if z in _MONTHLY_ZONES else 99,
+    )
+    month_set: list[str] = sorted({f"{int(r.yr):04d}-{int(r.mo):02d}" for r in df.itertuples()})
 
     cells = [
         PowerMonthlyCell(
@@ -1810,7 +1865,9 @@ def power_monthly():
             yr=int(r.yr),
             mo=int(r.mo),
             avg_eur=round(_float(r.avg_eur) or 0.0, 1) if r.avg_eur is not None else None,
-            neg_day_pct=round(_float(r.neg_day_pct) or 0.0, 1) if r.neg_day_pct is not None else None,
+            neg_day_pct=round(_float(r.neg_day_pct) or 0.0, 1)
+            if r.neg_day_pct is not None
+            else None,
         )
         for r in df.itertuples()
     ]
@@ -1886,6 +1943,7 @@ def multi_zone_spreads():
 
 @app.get("/api/spreads", response_model=SpreadsResponse)
 def spreads():
+    """Spark, dark and fuel-switch spread history."""
     df = db.query(
         """
         SELECT price_date::VARCHAR AS price_date,
@@ -1918,6 +1976,7 @@ def spreads():
 
 @app.get("/api/prices", response_model=PricesResponse)
 def prices():
+    """Commodity price history: TTF, EUA, coal API2 and Henry Hub."""
     df = db.query(
         """
         SELECT price_date::VARCHAR AS price_date,
@@ -1995,8 +2054,7 @@ def prices_curve_snapshots():
     return TtfCurveSnapshotsResponse(rows=rows)
 
 
-_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                 "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+_MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
 @app.get("/api/prices/seasonality", response_model=TtfSeasonalityResponse)
@@ -2032,15 +2090,30 @@ def prices_seasonality():
         HAVING COUNT(*) >= 10
         ORDER BY 1, 2
     """)
-    current_month = int(df.iloc[0]["latest_month"]) if not df.empty and df.iloc[0]["latest_month"] is not None else None
-    current_price = float(df.iloc[0]["latest_price"]) if not df.empty and df.iloc[0]["latest_price"] is not None else None
+    current_month = (
+        int(df.iloc[0]["latest_month"])
+        if not df.empty and df.iloc[0]["latest_month"] is not None
+        else None
+    )
+    current_price = (
+        float(df.iloc[0]["latest_price"])
+        if not df.empty and df.iloc[0]["latest_price"] is not None
+        else None
+    )
 
     # Aggregate across years: min of p0s, max of p100s, percentile of medians
     agg: dict[int, dict] = {}
     for r in df.itertuples():
         m = int(r.month)
         if m not in agg:
-            agg[m] = {"p0_vals": [], "p25_vals": [], "p50_vals": [], "p75_vals": [], "p100_vals": [], "n_years": 0}
+            agg[m] = {
+                "p0_vals": [],
+                "p25_vals": [],
+                "p50_vals": [],
+                "p75_vals": [],
+                "p100_vals": [],
+                "n_years": 0,
+            }
         agg[m]["p0_vals"].append(float(r.p0))
         agg[m]["p25_vals"].append(float(r.p25))
         agg[m]["p50_vals"].append(float(r.p50))
@@ -2051,23 +2124,31 @@ def prices_seasonality():
     months: list[TtfSeasonalMonth] = []
     for m in range(1, 13):
         if m not in agg:
-            months.append(TtfSeasonalMonth(
-                month=m, label=_MONTH_LABELS[m - 1], n_years=0,
-                current=current_price if m == current_month else None,
-            ))
+            months.append(
+                TtfSeasonalMonth(
+                    month=m,
+                    label=_MONTH_LABELS[m - 1],
+                    n_years=0,
+                    current=current_price if m == current_month else None,
+                )
+            )
             continue
         a = agg[m]
-        months.append(TtfSeasonalMonth(
-            month=m,
-            label=_MONTH_LABELS[m - 1],
-            min=round(min(a["p0_vals"]), 2),
-            p25=round(statistics.median(a["p25_vals"]), 2),
-            median=round(statistics.median(a["p50_vals"]), 2),
-            p75=round(statistics.median(a["p75_vals"]), 2),
-            max=round(max(a["p100_vals"]), 2),
-            current=round(current_price, 2) if m == current_month and current_price is not None else None,
-            n_years=a["n_years"],
-        ))
+        months.append(
+            TtfSeasonalMonth(
+                month=m,
+                label=_MONTH_LABELS[m - 1],
+                min=round(min(a["p0_vals"]), 2),
+                p25=round(statistics.median(a["p25_vals"]), 2),
+                median=round(statistics.median(a["p50_vals"]), 2),
+                p75=round(statistics.median(a["p75_vals"]), 2),
+                max=round(max(a["p100_vals"]), 2),
+                current=round(current_price, 2)
+                if m == current_month and current_price is not None
+                else None,
+                n_years=a["n_years"],
+            )
+        )
 
     return TtfSeasonalityResponse(
         current_month=current_month or 0,
@@ -2119,13 +2200,12 @@ def prices_ttf_winter_premium():
         today = date.today()
         # Current gas year: Nov(Y-1)-Oct(Y), so if month >= 11 it's next year
         current_gas_year = today.year + 1 if today.month >= 11 else today.year
+
         # A gas year is complete only if Oct of that year has passed
         # (i.e., today is Nov 1+ of that gas year or later)
         def is_complete(gas_year: int) -> bool:
             # Gas year Y is complete when we are past Oct 31 of year Y
-            return (today.year > gas_year) or (
-                today.year == gas_year and today.month > 10
-            )
+            return (today.year > gas_year) or (today.year == gas_year and today.month > 10)
 
         years = []
         for _, row in df.iterrows():
@@ -2147,8 +2227,7 @@ def prices_ttf_winter_premium():
 
         # Pre-crisis baseline (gas years 2019-2020, full and calm)
         pre_crisis = [
-            y.premium for y in years
-            if y.gas_year in (2019, 2020) and y.premium is not None
+            y.premium for y in years if y.gas_year in (2019, 2020) and y.premium is not None
         ]
         avg_pre_crisis = round(sum(pre_crisis) / len(pre_crisis), 2) if pre_crisis else None
 
@@ -2193,8 +2272,8 @@ def spreads_re_merit_order():
         if df.empty:
             return ReMeritOrderResponse(zones=[], as_of=date.today().isoformat())
 
-        import pandas as pd  # noqa: PLC0415
         import numpy as np  # noqa: PLC0415
+        import pandas as pd  # noqa: PLC0415
 
         # Assign bin index
         bin_edges = BINS
@@ -2276,14 +2355,16 @@ def spreads_neg_price_annual():
             SUM(neg_hours)      AS total_neg_hours,
             COUNT(*)            AS days_observed
         FROM power_daily
-        WHERE zone IN ({', '.join(f"'{z}'" for z in ZONES)})
+        WHERE zone IN ({", ".join(f"'{z}'" for z in ZONES)})
           AND neg_hours IS NOT NULL
         GROUP BY zone, yr
         ORDER BY zone, yr
         """
     )
     if df.empty:
-        return NegPriceAnnualResponse(zones=[], current_year=date.today().year, as_of=date.today().isoformat())
+        return NegPriceAnnualResponse(
+            zones=[], current_year=date.today().year, as_of=date.today().isoformat()
+        )
 
     current_year = date.today().year
     zones_out: list[NegPriceAnnualZone] = []
@@ -2334,7 +2415,7 @@ def spreads_zone_dispersion():
                    MAX(base_eur) - MIN(base_eur) AS range_eur,
                    AVG(base_eur)              AS avg_eur
             FROM power_daily
-            WHERE zone IN ({', '.join(f"'{z}'" for z in ZONES)})
+            WHERE zone IN ({", ".join(f"'{z}'" for z in ZONES)})
               AND base_eur IS NOT NULL
             GROUP BY price_date
             HAVING COUNT(*) = {len(ZONES)}
@@ -2351,7 +2432,14 @@ def spreads_zone_dispersion():
         """
     )
     if df.empty:
-        return ZoneDispersionResponse(months=[], avg_std_2025=None, avg_std_2026_ytd=None, peak_month=None, peak_std=None, as_of=date.today().isoformat())
+        return ZoneDispersionResponse(
+            months=[],
+            avg_std_2025=None,
+            avg_std_2026_ytd=None,
+            peak_month=None,
+            peak_std=None,
+            as_of=date.today().isoformat(),
+        )
 
     months_out = [
         ZoneDispersionMonth(
@@ -2405,14 +2493,20 @@ def spreads_peak_offpeak_trend():
             ROUND(AVG(peak_eur - offpeak_eur), 2) AS spread_eur,
             COUNT(*)                          AS n_days
         FROM power_daily
-        WHERE zone IN ({', '.join(f"'{z}'" for z in ZONES)})
+        WHERE zone IN ({", ".join(f"'{z}'" for z in ZONES)})
           AND peak_eur IS NOT NULL AND offpeak_eur IS NOT NULL
         GROUP BY month, zone
         ORDER BY month, zone
         """
     )
     if df.empty:
-        return PeakOffpeakResponse(data=[], zones=ZONES, inversion_onset={}, current_spread={}, as_of=date.today().isoformat())
+        return PeakOffpeakResponse(
+            data=[],
+            zones=ZONES,
+            inversion_onset={},
+            current_spread={},
+            as_of=date.today().isoformat(),
+        )
 
     points = [
         PeakOffpeakPoint(
@@ -2564,6 +2658,7 @@ def prices_storage_ttf():
 
     # Rolling Pearson using pandas
     import pandas as pd
+
     s_dev = pd.Series(x, name="storage_dev")
     s_ttf = pd.Series(y, name="ttf")
     roll_corr = s_dev.rolling(CORR_WINDOW, min_periods=30).corr(s_ttf).dropna()
@@ -2636,7 +2731,8 @@ def spreads_gas_power_passthrough():
         latest_date = None
 
         for zone in FUNDAMENTAL_ZONES_LOCAL:
-            df = db.query("""
+            df = db.query(
+                """
                 SELECT p.price_date, p.base_eur AS power,
                        pr.ttf_eur_mwh AS ttf, pr.eua_eur_t AS eua
                 FROM power_daily p
@@ -2646,7 +2742,9 @@ def spreads_gas_power_passthrough():
                   AND pr.ttf_eur_mwh IS NOT NULL
                   AND pr.eua_eur_t IS NOT NULL
                 ORDER BY p.price_date
-            """, [zone])
+            """,
+                [zone],
+            )
 
             if df is None or len(df) < ROLLING_WINDOW + 30:
                 continue
@@ -2660,11 +2758,13 @@ def spreads_gas_power_passthrough():
             for i in range(ROLLING_WINDOW, len(df)):
                 sl = slice(i - ROLLING_WINDOW, i)
                 bt, be = ols_two(ttf[sl], eua[sl], power[sl])
-                series.append(PassThroughPoint(
-                    date=str(dates[i]),
-                    beta_ttf=round(bt, 4),
-                    beta_eua=round(be, 4),
-                ))
+                series.append(
+                    PassThroughPoint(
+                        date=str(dates[i]),
+                        beta_ttf=round(bt, 4),
+                        beta_eua=round(be, 4),
+                    )
+                )
 
             if not series:
                 continue
@@ -2672,15 +2772,17 @@ def spreads_gas_power_passthrough():
             fs_ttf, fs_eua = ols_two(ttf, eua, power)
             r90_ttf, r90_eua = ols_two(ttf[-90:], eua[-90:], power[-90:])
 
-            result_zones.append(PassThroughZone(
-                zone=zone,
-                series=series,
-                full_sample_beta_ttf=round(fs_ttf, 4),
-                full_sample_beta_eua=round(fs_eua, 4),
-                recent_90d_beta_ttf=round(r90_ttf, 4),
-                recent_90d_beta_eua=round(r90_eua, 4),
-                theory_beta_ttf=round(THEORY_BETA, 4),
-            ))
+            result_zones.append(
+                PassThroughZone(
+                    zone=zone,
+                    series=series,
+                    full_sample_beta_ttf=round(fs_ttf, 4),
+                    full_sample_beta_eua=round(fs_eua, 4),
+                    recent_90d_beta_ttf=round(r90_ttf, 4),
+                    recent_90d_beta_eua=round(r90_eua, 4),
+                    theory_beta_ttf=round(THEORY_BETA, 4),
+                )
+            )
 
             if latest_date is None:
                 latest_date = str(dates[-1])
@@ -2722,7 +2824,8 @@ def prices_lng_arb():
     _rate_limited()
     BREAKEVEN_EUR_MWH = 12.0
 
-    df = db.query("""
+    df = db.query(
+        """
         SELECT price_date, ttf_eur_mwh,
                hh_eur_mwh,
                ttf_eur_mwh - hh_eur_mwh AS arb_spread,
@@ -2731,7 +2834,9 @@ def prices_lng_arb():
         WHERE ttf_eur_mwh IS NOT NULL
           AND hh_eur_mwh IS NOT NULL
         ORDER BY price_date
-    """, [BREAKEVEN_EUR_MWH])
+    """,
+        [BREAKEVEN_EUR_MWH],
+    )
 
     if df is None or len(df) < 30:
         raise HTTPException(status_code=503, detail="Insufficient data for LNG arb indicator")
@@ -2748,6 +2853,7 @@ def prices_lng_arb():
     ]
 
     import numpy as np
+
     full_arb = np.array([r.arb_spread for r in rows])
     one_year_rows = rows[-365:] if len(rows) >= 365 else rows
     one_year_arb = np.array([r.arb_spread for r in one_year_rows])
@@ -2764,12 +2870,8 @@ def prices_lng_arb():
         current_lng_economic=bool(latest.arb_net > 0),
         avg_arb_spread_1y=round(float(one_year_arb.mean()), 2),
         avg_arb_spread_full=round(float(full_arb.mean()), 2),
-        pct_time_economic_1y=round(
-            float((one_year_arb > BREAKEVEN_EUR_MWH).mean() * 100), 1
-        ),
-        pct_time_economic_full=round(
-            float((full_arb > BREAKEVEN_EUR_MWH).mean() * 100), 1
-        ),
+        pct_time_economic_1y=round(float((one_year_arb > BREAKEVEN_EUR_MWH).mean() * 100), 1),
+        pct_time_economic_full=round(float((full_arb > BREAKEVEN_EUR_MWH).mean() * 100), 1),
     )
 
 
@@ -2898,14 +3000,13 @@ def prices_eua_seasonality():
         if latest_df is None or len(latest_df) < 30:
             raise HTTPException(status_code=503, detail="Insufficient data")
 
-        import numpy as np
-
         latest = latest_df.iloc[-1]
         rolling_30d = latest_df.tail(30)["log_ret"].dropna()
         roll_vol = float(rolling_30d.std() * np.sqrt(252) * 100) if len(rolling_30d) > 2 else 0.0
 
         # Days to April 30 (next surrender deadline)
         from datetime import date
+
         today = date.today()
         # Find next April 30
         apr30 = date(today.year, 4, 30)
@@ -2915,7 +3016,9 @@ def prices_eua_seasonality():
 
         historical_avg_vol = float(df["ann_vol_pct"].mean())
         mar_row = df[df["month_num"] == 3]
-        historical_march_vol = float(mar_row["ann_vol_pct"].values[0]) if len(mar_row) > 0 else historical_avg_vol
+        historical_march_vol = (
+            float(mar_row["ann_vol_pct"].values[0]) if len(mar_row) > 0 else historical_avg_vol
+        )
 
         return EuaSeasonalityResponse(
             monthly=monthly,
@@ -2998,7 +3101,9 @@ def prices_us_gas_storage():
         SELECT hh_usd_mmbtu FROM prices_daily
         WHERE hh_usd_mmbtu IS NOT NULL ORDER BY price_date DESC LIMIT 1
     """)
-    hh_price = float(hh_df.iloc[0]["hh_usd_mmbtu"]) if hh_df is not None and len(hh_df) > 0 else None
+    hh_price = (
+        float(hh_df.iloc[0]["hh_usd_mmbtu"]) if hh_df is not None and len(hh_df) > 0 else None
+    )
 
     return UsStorageResponse(
         week_date=week_date,
@@ -3116,8 +3221,16 @@ def generation_map(date: str | None = None):
     date_range = db.query(
         "SELECT MIN(gen_date)::VARCHAR AS min_date, MAX(gen_date)::VARCHAR AS max_date FROM generation_daily"
     )
-    min_date = str(date_range.iloc[0]["min_date"]) if not date_range.empty and date_range.iloc[0]["min_date"] is not None else None
-    max_date = str(date_range.iloc[0]["max_date"]) if not date_range.empty and date_range.iloc[0]["max_date"] is not None else None
+    min_date = (
+        str(date_range.iloc[0]["min_date"])
+        if not date_range.empty and date_range.iloc[0]["min_date"] is not None
+        else None
+    )
+    max_date = (
+        str(date_range.iloc[0]["max_date"])
+        if not date_range.empty and date_range.iloc[0]["max_date"] is not None
+        else None
+    )
 
     as_of = _meta_val("refreshed_at_power")
     zones = [
@@ -3142,7 +3255,18 @@ def generation_map(date: str | None = None):
     return GenMapResponse(as_of=as_of, zones=zones, min_date=min_date, max_date=max_date)
 
 
-_FUEL_COLS = ("biomass", "coal", "gas", "geothermal", "hydro", "nuclear", "oil", "other", "solar", "wind")
+_FUEL_COLS = (
+    "biomass",
+    "coal",
+    "gas",
+    "geothermal",
+    "hydro",
+    "nuclear",
+    "oil",
+    "other",
+    "solar",
+    "wind",
+)
 
 
 @app.get("/api/generation/zone/{zone_id}", response_model=GenZoneResponse)
@@ -3241,6 +3365,122 @@ def _float(v) -> float | None:
         return None
 
 
+@app.get("/api/island/{zone_id}", response_model=IslandResponse)
+def island_zone(zone_id: str):
+    """Supply mix for a non-interconnected island system (currently FR-COR only).
+
+    These zones have no market price, so this endpoint is what the zone panel shows in
+    place of price analytics: subsea cable flow, the local oil fleet that load-follows
+    behind it, and cable share of total supply.
+
+    `daily` is padded across the EDF source gap with all-null rows. Do not filter them
+    out: they are what stops a chart from drawing a straight line over 19 absent months.
+    """
+    zone_id = zone_id.upper()
+
+    latest_df = db.query(
+        """
+        SELECT zone,
+               gen_date::VARCHAR   AS gen_date,
+               data_start::VARCHAR AS data_start,
+               data_end::VARCHAR   AS data_end,
+               net_import_mw, local_gen_mw, oil_mw, renewable_mw, total_supply_mw,
+               import_share_pct, renewable_share_pct,
+               max_import_mw, peak_supply_mw, gap_days
+        FROM island_latest
+        WHERE zone = ?
+        """,
+        [zone_id],
+    )
+    if latest_df.empty:
+        raise HTTPException(status_code=404, detail=f"No island data for zone {zone_id!r}")
+    lr = latest_df.iloc[0]
+
+    daily_df = db.query(
+        """
+        SELECT gen_date::VARCHAR AS gen_date,
+               net_import_mw, min_import_mw, max_import_mw,
+               local_gen_mw, oil_mw, renewable_mw, total_supply_mw,
+               import_share_pct, renewable_share_pct
+        FROM island_daily
+        WHERE zone = ?
+        ORDER BY gen_date
+        """,
+        [zone_id],
+    )
+    hourly_df = db.query(
+        """
+        SELECT ts::VARCHAR AS ts, net_import_mw, oil_mw, renewable_mw, total_supply_mw
+        FROM island_hourly_recent
+        WHERE zone = ?
+        ORDER BY ts
+        """,
+        [zone_id],
+    )
+    profile_df = db.query(
+        """
+        SELECT hour, net_import_mw, oil_mw, renewable_mw, import_share_pct, n_days
+        FROM island_hourly_profile
+        WHERE zone = ?
+        ORDER BY hour
+        """,
+        [zone_id],
+    )
+
+    return IslandResponse(
+        zone=zone_id,
+        gen_date=str(lr["gen_date"]) if lr["gen_date"] is not None else None,
+        net_import_mw=_float(lr["net_import_mw"]),
+        local_gen_mw=_float(lr["local_gen_mw"]),
+        oil_mw=_float(lr["oil_mw"]),
+        renewable_mw=_float(lr["renewable_mw"]),
+        total_supply_mw=_float(lr["total_supply_mw"]),
+        import_share_pct=_float(lr["import_share_pct"]),
+        renewable_share_pct=_float(lr["renewable_share_pct"]),
+        max_import_mw=_float(lr["max_import_mw"]),
+        peak_supply_mw=_float(lr["peak_supply_mw"]),
+        data_start=str(lr["data_start"]) if lr["data_start"] is not None else None,
+        data_end=str(lr["data_end"]) if lr["data_end"] is not None else None,
+        gap_days=int(lr["gap_days"]) if pd.notna(lr["gap_days"]) else None,
+        profile_days=(int(profile_df.iloc[0]["n_days"]) if not profile_df.empty else None),
+        daily=[
+            IslandDailyPoint(
+                gen_date=str(r.gen_date),
+                net_import_mw=_float(r.net_import_mw),
+                min_import_mw=_float(r.min_import_mw),
+                max_import_mw=_float(r.max_import_mw),
+                local_gen_mw=_float(r.local_gen_mw),
+                oil_mw=_float(r.oil_mw),
+                renewable_mw=_float(r.renewable_mw),
+                total_supply_mw=_float(r.total_supply_mw),
+                import_share_pct=_float(r.import_share_pct),
+                renewable_share_pct=_float(r.renewable_share_pct),
+            )
+            for r in (daily_df.itertuples() if not daily_df.empty else [])
+        ],
+        hourly=[
+            IslandHourlyPoint(
+                ts=str(r.ts),
+                net_import_mw=_float(r.net_import_mw),
+                oil_mw=_float(r.oil_mw),
+                renewable_mw=_float(r.renewable_mw),
+                total_supply_mw=_float(r.total_supply_mw),
+            )
+            for r in (hourly_df.itertuples() if not hourly_df.empty else [])
+        ],
+        profile=[
+            IslandProfilePoint(
+                hour=int(r.hour),
+                net_import_mw=_float(r.net_import_mw),
+                oil_mw=_float(r.oil_mw),
+                renewable_mw=_float(r.renewable_mw),
+                import_share_pct=_float(r.import_share_pct),
+            )
+            for r in (profile_df.itertuples() if not profile_df.empty else [])
+        ],
+    )
+
+
 @app.get("/api/generation/zone/{zone_id}/capacity", response_model=GenCapacityResponse)
 def generation_zone_capacity(zone_id: str):
     """Daily wind/solar capacity factors for a zone (2Y, rolling on full history).
@@ -3325,7 +3565,9 @@ def generation_trends():
     zones_sorted = sorted(latest_re.keys(), key=lambda z: latest_re[z], reverse=True)
 
     rows = [
-        GenAnnualRow(zone=r.zone, year=int(r.year), renewable_pct=round(_float(r.renewable_pct) or 0.0, 1))
+        GenAnnualRow(
+            zone=r.zone, year=int(r.year), renewable_pct=round(_float(r.renewable_pct) or 0.0, 1)
+        )
         for r in df.itertuples()
     ]
 
@@ -3486,10 +3728,17 @@ def generation_eu_cf_latest():
         GROUP BY gen_date
     """)
     if today_df is None or today_df.empty:
-        return EuCfLatestResponse(gen_date=None, wind_cf=None, solar_cf=None,
-                                   wind_installed_gw=None, solar_installed_gw=None,
-                                   wind_cf_month_avg=None, solar_cf_month_avg=None,
-                                   wind_cf_month_pct_rank=None, solar_cf_month_pct_rank=None)
+        return EuCfLatestResponse(
+            gen_date=None,
+            wind_cf=None,
+            solar_cf=None,
+            wind_installed_gw=None,
+            solar_installed_gw=None,
+            wind_cf_month_avg=None,
+            solar_cf_month_avg=None,
+            wind_cf_month_pct_rank=None,
+            solar_cf_month_pct_rank=None,
+        )
 
     r = today_df.iloc[0]
     gen_date = str(r["gen_date"])
@@ -3497,7 +3746,8 @@ def generation_eu_cf_latest():
     solar_cf = _float(r["solar_cf"])
     current_month = int(gen_date[5:7])
 
-    hist_df = db.query("""
+    hist_df = db.query(
+        """
         WITH daily_eu AS (
             SELECT
                 gen_date,
@@ -3514,9 +3764,12 @@ def generation_eu_cf_latest():
             AVG(CASE WHEN MONTH(gen_date) = ? THEN solar_cf END) AS solar_avg,
             COUNT(CASE WHEN MONTH(gen_date) = ? THEN 1 END) AS n
         FROM daily_eu
-    """, [current_month, current_month, current_month])
+    """,
+        [current_month, current_month, current_month],
+    )
 
-    rank_df = db.query("""
+    rank_df = db.query(
+        """
         WITH daily_eu AS (
             SELECT
                 gen_date,
@@ -3535,12 +3788,22 @@ def generation_eu_cf_latest():
             wind_cf, solar_cf
         FROM daily_eu
         ORDER BY ABS(wind_cf - ?) + ABS(solar_cf - ?) LIMIT 1
-    """, [current_month, wind_cf or 0.0, solar_cf or 0.0])
+    """,
+        [current_month, wind_cf or 0.0, solar_cf or 0.0],
+    )
 
-    wind_avg = _float(hist_df.iloc[0]["wind_avg"]) if hist_df is not None and not hist_df.empty else None
-    solar_avg = _float(hist_df.iloc[0]["solar_avg"]) if hist_df is not None and not hist_df.empty else None
-    wind_rank = _float(rank_df.iloc[0]["wind_rank"]) if rank_df is not None and not rank_df.empty else None
-    solar_rank = _float(rank_df.iloc[0]["solar_rank"]) if rank_df is not None and not rank_df.empty else None
+    wind_avg = (
+        _float(hist_df.iloc[0]["wind_avg"]) if hist_df is not None and not hist_df.empty else None
+    )
+    solar_avg = (
+        _float(hist_df.iloc[0]["solar_avg"]) if hist_df is not None and not hist_df.empty else None
+    )
+    wind_rank = (
+        _float(rank_df.iloc[0]["wind_rank"]) if rank_df is not None and not rank_df.empty else None
+    )
+    solar_rank = (
+        _float(rank_df.iloc[0]["solar_rank"]) if rank_df is not None and not rank_df.empty else None
+    )
 
     return EuCfLatestResponse(
         gen_date=gen_date,
@@ -3581,8 +3844,12 @@ def generation_zones_cf():
         ZoneCfRow(
             zone=str(r["zone"]),
             gen_date=str(r["gen_date"]),
-            wind_cf=round(_float(r["wind_cf"]) * 100, 1) if _float(r["wind_cf"]) is not None else None,
-            solar_cf=round(_float(r["solar_cf"]) * 100, 1) if _float(r["solar_cf"]) is not None else None,
+            wind_cf=round(_float(r["wind_cf"]) * 100, 1)
+            if _float(r["wind_cf"]) is not None
+            else None,
+            solar_cf=round(_float(r["solar_cf"]) * 100, 1)
+            if _float(r["solar_cf"]) is not None
+            else None,
             wind_installed_mw=_float(r["wind_installed_mw"]),
             solar_installed_mw=_float(r["solar_installed_mw"]),
         )
@@ -3692,7 +3959,9 @@ def imbalance():
             today_max=_float(r["today_max"]),
         )
 
-    recent_df = db.query("SELECT ts::VARCHAR AS ts, rebap_eur_mwh FROM imbalance_recent ORDER BY ts")
+    recent_df = db.query(
+        "SELECT ts::VARCHAR AS ts, rebap_eur_mwh FROM imbalance_recent ORDER BY ts"
+    )
     recent = [
         ImbalanceRecentPoint(ts=str(r.ts), rebap_eur_mwh=_float(r.rebap_eur_mwh))
         for r in recent_df.itertuples()
@@ -3794,14 +4063,18 @@ def imbalance_dispatch():
 
     summary = None
     if not summary_df.empty:
-        kv = dict(zip(summary_df["key"], summary_df["value"]))
+        kv = dict(zip(summary_df["key"], summary_df["value"], strict=True))
         summary = BatterySummary(
             total_pnl_eur=float(kv["total_pnl_eur"]) if "total_pnl_eur" in kv else None,
             n_charge_hours=int(kv["n_charge_hours"]) if "n_charge_hours" in kv else None,
             n_discharge_hours=int(kv["n_discharge_hours"]) if "n_discharge_hours" in kv else None,
-            avg_spread_captured_eur=float(kv["avg_spread_captured_eur"]) if "avg_spread_captured_eur" in kv else None,
+            avg_spread_captured_eur=float(kv["avg_spread_captured_eur"])
+            if "avg_spread_captured_eur" in kv
+            else None,
             avg_buy_price_eur=float(kv["avg_buy_price_eur"]) if "avg_buy_price_eur" in kv else None,
-            avg_sell_price_eur=float(kv["avg_sell_price_eur"]) if "avg_sell_price_eur" in kv else None,
+            avg_sell_price_eur=float(kv["avg_sell_price_eur"])
+            if "avg_sell_price_eur" in kv
+            else None,
             trailing_days=int(kv["trailing_days"]) if "trailing_days" in kv else None,
         )
 
@@ -3814,16 +4087,15 @@ def imbalance_dispatch():
 
 @app.get("/api/imbalance/signal", response_model=RebapSignalResponse)
 def imbalance_signal():
-    """Walk-forward OLS reBAP direction signal.
+    """Walk-forward OLS reBAP excess-vs-trend signal.
 
     Features (all in the D-1 gate-closure information set):
-      wind_err_lag1  D-1 wind forecast error (actual - DA, %-of-load pp)
-      solar_err_lag1 D-1 solar forecast error
       wind_fc_d      D DA wind forecast (published D-1)
-      rebap_lag1     D-1 daily mean reBAP EUR/MWh
-      rebap_roll5    5-day trailing mean reBAP
+      rebap_dev_lag1 D-1 deviation of reBAP from its 5-day trailing mean
+      nrv_dev_lag1   D-1 deviation of NRV-Saldo from its 5-day trailing mean
 
-    Walk-forward OLS (252-day window, 1-day OOS), P&L net of 2 EUR/MWh round-trip cost.
+    Walk-forward OLS (252-day window, 1-day OOS), P&L net of 2 EUR/MWh round-trip cost,
+    booked on the excess (not the level) - see `analytics.imbalance.compute_rebap_signal`.
     """
     from analytics.imbalance import compute_rebap_signal
 
@@ -3849,15 +4121,17 @@ def imbalance_signal():
         naive_pos_rate_pct=result["naive_pos_rate_pct"],
         cost_per_mwh=result["cost_per_mwh"],
         model=perf(result["model"]),
-        naive=perf(result["naive"]),
+        naive_excess=perf(result["naive_excess"]),
+        structural_long=perf(result["structural_long"]),
         coef=RebapSignalCoef(
-            wind_err_lag1=coef_stab(c["wind_err_lag1"]),
-            solar_err_lag1=coef_stab(c["solar_err_lag1"]),
             wind_fc_d=coef_stab(c["wind_fc_d"]),
             rebap_dev_lag1=coef_stab(c["rebap_dev_lag1"]),
+            nrv_dev_lag1=coef_stab(c["nrv_dev_lag1"]),
         ),
         equity_curve=[RebapEquityPoint(**p) for p in result["equity_curve"]],
-        signal_today=RebapSignalToday(**result["signal_today"]) if result.get("signal_today") else None,
+        signal_today=RebapSignalToday(**result["signal_today"])
+        if result.get("signal_today")
+        else None,
     )
 
 
@@ -4227,14 +4501,38 @@ def generation_forecast_accuracy():
     rows = [
         ForecastAccuracyRow(
             zone=str(r.zone),
-            wind_mae_mw=float(r.wind_mae_mw) if r.wind_mae_mw is not None and not (isinstance(r.wind_mae_mw, float) and math.isnan(r.wind_mae_mw)) else None,
-            wind_avg_mw=float(r.wind_avg_mw) if r.wind_avg_mw is not None and not (isinstance(r.wind_avg_mw, float) and math.isnan(r.wind_avg_mw)) else None,
-            solar_mae_mw=float(r.solar_mae_mw) if r.solar_mae_mw is not None and not (isinstance(r.solar_mae_mw, float) and math.isnan(r.solar_mae_mw)) else None,
-            solar_avg_mw=float(r.solar_avg_mw) if r.solar_avg_mw is not None and not (isinstance(r.solar_avg_mw, float) and math.isnan(r.solar_avg_mw)) else None,
-            wind_installed_mw=float(r.wind_installed_mw) if r.wind_installed_mw is not None and not (isinstance(r.wind_installed_mw, float) and math.isnan(r.wind_installed_mw)) else None,
-            solar_installed_mw=float(r.solar_installed_mw) if r.solar_installed_mw is not None and not (isinstance(r.solar_installed_mw, float) and math.isnan(r.solar_installed_mw)) else None,
-            wind_mae_pct=float(r.wind_mae_pct) if r.wind_mae_pct is not None and not (isinstance(r.wind_mae_pct, float) and math.isnan(r.wind_mae_pct)) else None,
-            solar_mae_pct=float(r.solar_mae_pct) if r.solar_mae_pct is not None and not (isinstance(r.solar_mae_pct, float) and math.isnan(r.solar_mae_pct)) else None,
+            wind_mae_mw=float(r.wind_mae_mw)
+            if r.wind_mae_mw is not None
+            and not (isinstance(r.wind_mae_mw, float) and math.isnan(r.wind_mae_mw))
+            else None,
+            wind_avg_mw=float(r.wind_avg_mw)
+            if r.wind_avg_mw is not None
+            and not (isinstance(r.wind_avg_mw, float) and math.isnan(r.wind_avg_mw))
+            else None,
+            solar_mae_mw=float(r.solar_mae_mw)
+            if r.solar_mae_mw is not None
+            and not (isinstance(r.solar_mae_mw, float) and math.isnan(r.solar_mae_mw))
+            else None,
+            solar_avg_mw=float(r.solar_avg_mw)
+            if r.solar_avg_mw is not None
+            and not (isinstance(r.solar_avg_mw, float) and math.isnan(r.solar_avg_mw))
+            else None,
+            wind_installed_mw=float(r.wind_installed_mw)
+            if r.wind_installed_mw is not None
+            and not (isinstance(r.wind_installed_mw, float) and math.isnan(r.wind_installed_mw))
+            else None,
+            solar_installed_mw=float(r.solar_installed_mw)
+            if r.solar_installed_mw is not None
+            and not (isinstance(r.solar_installed_mw, float) and math.isnan(r.solar_installed_mw))
+            else None,
+            wind_mae_pct=float(r.wind_mae_pct)
+            if r.wind_mae_pct is not None
+            and not (isinstance(r.wind_mae_pct, float) and math.isnan(r.wind_mae_pct))
+            else None,
+            solar_mae_pct=float(r.solar_mae_pct)
+            if r.solar_mae_pct is not None
+            and not (isinstance(r.solar_mae_pct, float) and math.isnan(r.solar_mae_pct))
+            else None,
             n_hours=int(r.n_hours),
         )
         for r in df.itertuples()
@@ -4245,9 +4543,9 @@ def generation_forecast_accuracy():
 # Country -> (ref_zone, all_zones) for cross-zone spread chart
 _COUNTRY_SPREAD_CONFIG: dict[str, tuple[str, list[str]]] = {
     "IT": ("IT-NORD", ["IT-CNOR", "IT-CSUD", "IT-SUD", "IT-SICI", "IT-SARD", "IT-CALA"]),
-    "NO": ("NO-5",   ["NO-1", "NO-2", "NO-3", "NO-4"]),
-    "SE": ("SE-3",   ["SE-1", "SE-2", "SE-4"]),
-    "DK": ("DK-1",   ["DK-2"]),
+    "NO": ("NO-5", ["NO-1", "NO-2", "NO-3", "NO-4"]),
+    "SE": ("SE-3", ["SE-1", "SE-2", "SE-4"]),
+    "DK": ("DK-1", ["DK-2"]),
 }
 
 
@@ -4264,7 +4562,9 @@ def power_cross_zone_spreads(country: str = "IT", window_days: int = 90):
     """
     country = country.upper()
     if country not in _COUNTRY_SPREAD_CONFIG:
-        raise HTTPException(status_code=400, detail=f"Unknown country '{country}'. Use: IT, NO, SE, DK")
+        raise HTTPException(
+            status_code=400, detail=f"Unknown country '{country}'. Use: IT, NO, SE, DK"
+        )
     window_days = max(30, min(730, window_days))
 
     ref_zone, other_zones = _COUNTRY_SPREAD_CONFIG[country]
@@ -4300,11 +4600,13 @@ def power_cross_zone_spreads(country: str = "IT", window_days: int = 90):
         present_zones.append(z)
         spread = (pivot[z] - ref_col).dropna()
         for date_val, spread_val in spread.items():
-            rows.append(CrossZoneSpreadPoint(
-                price_date=pd.Timestamp(date_val).strftime("%Y-%m-%d"),
-                zone=z,
-                spread_eur=round(float(spread_val), 2),
-            ))
+            rows.append(
+                CrossZoneSpreadPoint(
+                    price_date=pd.Timestamp(date_val).strftime("%Y-%m-%d"),
+                    zone=z,
+                    spread_eur=round(float(spread_val), 2),
+                )
+            )
 
     rows.sort(key=lambda r: (r.price_date, r.zone))
     return CrossZoneSpreadResponse(
@@ -4316,9 +4618,8 @@ def power_cross_zone_spreads(country: str = "IT", window_days: int = 90):
     )
 
 
-
-
 # ---- US natural gas storage -----------------------------------------------
+
 
 def _float_us(v) -> float | None:
     try:
@@ -4358,7 +4659,7 @@ def us_gas_map():
         for r in rows_raw.itertuples()
     ]
 
-    as_of = _meta_val("refreshed_at_gas") or datetime.now(timezone.utc).isoformat()
+    as_of = _meta_val("refreshed_at_gas") or datetime.now(UTC).isoformat()
     return UsStorageMapResponse(as_of=as_of, rows=rows)
 
 
@@ -4379,6 +4680,7 @@ def us_gas_region(region: str):
 
     if latest_df.empty:
         from fastapi import HTTPException
+
         raise HTTPException(status_code=404, detail=f"Region '{region}' not found")
 
     r = latest_df.iloc[0]
@@ -4536,14 +4838,16 @@ def us_gas_pace():
         for w in range(1, weeks_to_target_int + 1):
             proj_date = date.fromordinal(current_date_obj.toordinal() + w * 7)
             proj_bcf = current_bcf + current_rate_bcf_w * w
-            history.append(UsPaceWeekPoint(
-                week_date=proj_date.isoformat(),
-                value_bcf=None,
-                avg5=None,
-                min5=None,
-                max5=None,
-                projected=round(min(proj_bcf, 5000.0), 1),
-            ))
+            history.append(
+                UsPaceWeekPoint(
+                    week_date=proj_date.isoformat(),
+                    value_bcf=None,
+                    avg5=None,
+                    min5=None,
+                    max5=None,
+                    projected=round(min(proj_bcf, 5000.0), 1),
+                )
+            )
 
     stats = UsPaceStats(
         current_bcf=current_bcf,
@@ -4565,6 +4869,7 @@ def us_gas_pace():
 # US power generation mix
 # ---------------------------------------------------------------------------
 
+
 @app.get("/api/us-power/mix", response_model=UsPowerMixResponse)
 def us_power_mix():
     """Current generation mix by EIA grid region (latest complete hour)."""
@@ -4577,11 +4882,14 @@ def us_power_mix():
 
     # Group by region
     from collections import defaultdict
+
     by_region: dict[str, list] = defaultdict(list)
     meta: dict[str, tuple[str, str]] = {}
     for _, row in df.iterrows():
         region = row["region"]
-        by_region[region].append((row["fueltype"], row["fuel_name"], float(row["value_mwh"] or 0.0)))
+        by_region[region].append(
+            (row["fueltype"], row["fuel_name"], float(row["value_mwh"] or 0.0))
+        )
         if region not in meta:
             meta[region] = (row["region_name"], row["period"])
 
@@ -4603,15 +4911,17 @@ def us_power_mix():
             UsPowerFuelPoint(fueltype=ft, fuel_name=fn, value_mwh=round(v, 0))
             for ft, fn, v in sorted(fuel_rows, key=lambda x: -x[2])
         ]
-        region_list.append(UsPowerRegionLatest(
-            region=region,
-            region_name=region_name,
-            period=period,
-            fuels=fuels,
-            ng_mwh=round(ng_mwh, 0),
-            ng_pct=ng_pct,
-            total_mwh=round(total_mwh, 0),
-        ))
+        region_list.append(
+            UsPowerRegionLatest(
+                region=region,
+                region_name=region_name,
+                period=period,
+                fuels=fuels,
+                ng_mwh=round(ng_mwh, 0),
+                ng_pct=ng_pct,
+                total_mwh=round(total_mwh, 0),
+            )
+        )
 
     return UsPowerMixResponse(as_of=as_of, regions=region_list)
 
@@ -4630,6 +4940,7 @@ def us_power_history(region: str):
     region_name = df["region_name"].iloc[0]
 
     from collections import defaultdict
+
     by_period: dict[str, dict[str, float]] = defaultdict(lambda: {"ng": 0.0, "total": 0.0})
     for _, row in df.iterrows():
         p = row["period"]
@@ -4702,13 +5013,15 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
     IT-NORD, BE.
     """
     _rate_limited()
-    from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_fundamental_model
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"fundamental_{zone}", lambda: compute_fundamental_model(db.query, zone), ttl=300)
+    result = _cached_compute(
+        f"fundamental_{zone}", lambda: compute_fundamental_model(db.query, zone), ttl=300
+    )
 
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for fundamental model")
@@ -4743,10 +5056,7 @@ def spreads_fundamental_model(zone: str = "DE-LU"):
             pct_rank_1yr=result["current"]["pct_rank_1yr"],
             half_life_days=result["current"].get("half_life_days"),
         ),
-        rolling_coefs=[
-            RollingCoefPoint(**rc)
-            for rc in result.get("rolling_coefs", [])
-        ],
+        rolling_coefs=[RollingCoefPoint(**rc) for rc in result.get("rolling_coefs", [])],
     )
 
 
@@ -4759,7 +5069,7 @@ def spreads_signal_snapshot():
     cross-zone signal dashboard without requiring 5 separate API calls.
     """
     _rate_limited()
-    from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_fundamental_model
 
     def _build_snapshot():
         _rows = []
@@ -4770,15 +5080,17 @@ def spreads_signal_snapshot():
                 continue
             cur = result["current"]
             coef = result["coefficients"]
-            _rows.append({
-                "zone": z,
-                "actual": cur["actual"],
-                "fitted": cur["fitted"],
-                "residual": cur["residual"],
-                "zscore": cur["zscore"],
-                "pct_rank_1yr": cur["pct_rank_1yr"],
-                "r2": coef["r2"],
-            })
+            _rows.append(
+                {
+                    "zone": z,
+                    "actual": cur["actual"],
+                    "fitted": cur["fitted"],
+                    "residual": cur["residual"],
+                    "zscore": cur["zscore"],
+                    "pct_rank_1yr": cur["pct_rank_1yr"],
+                    "r2": coef["r2"],
+                }
+            )
             if not _as_of and result["series"]:
                 _as_of = result["series"][-1]["price_date"]
         _rows.sort(key=lambda r: abs(r["zscore"]), reverse=True)
@@ -4799,13 +5111,15 @@ def spreads_fundamental_backtest(zone: str = "DE-LU"):
     to fit the OLS model) and out-of-sample (all earlier data).
     """
     _rate_limited()
-    from analytics.fundamental import compute_fundamental_backtest, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_fundamental_backtest
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"fundamental_bt_{zone}", lambda: compute_fundamental_backtest(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"fundamental_bt_{zone}", lambda: compute_fundamental_backtest(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for backtest")
 
@@ -4838,13 +5152,15 @@ def spreads_wind_price_analysis(zone: str = "DE-LU"):
     the empirical motivation for nonlinear ML models.
     """
     _rate_limited()
-    from analytics.fundamental import compute_wind_price_analysis, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_wind_price_analysis
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"wind_price_{zone}", lambda: compute_wind_price_analysis(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"wind_price_{zone}", lambda: compute_wind_price_analysis(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for wind-price analysis")
 
@@ -4872,13 +5188,15 @@ def spreads_nonlinear_model(zone: str = "DE-LU"):
     the low-wind convexity the wind-price analysis surfaces is actually capturable.
     """
     _rate_limited()
-    from analytics.fundamental import compute_nonlinear_model, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_nonlinear_model
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"nl_model_{zone}", lambda: compute_nonlinear_model(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"nl_model_{zone}", lambda: compute_nonlinear_model(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for nonlinear model")
 
@@ -4915,13 +5233,15 @@ def spreads_nonlinear_backtest(zone: str = "DE-LU"):
     where the nonlinear edge should concentrate.
     """
     _rate_limited()
-    from analytics.fundamental import compute_nonlinear_backtest, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_nonlinear_backtest
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"nl_backtest_{zone}", lambda: compute_nonlinear_backtest(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"nl_backtest_{zone}", lambda: compute_nonlinear_backtest(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for nonlinear backtest")
 
@@ -4951,13 +5271,15 @@ def spreads_nonlinear_cost_robustness(zone: str = "DE-LU"):
     linear disappears. It hardens the capturable-alpha claim from gross to net of execution.
     """
     _rate_limited()
-    from analytics.fundamental import compute_nonlinear_cost_robustness, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_nonlinear_cost_robustness
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"cost_robust_{zone}", lambda: compute_nonlinear_cost_robustness(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"cost_robust_{zone}", lambda: compute_nonlinear_cost_robustness(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for cost robustness")
 
@@ -4987,7 +5309,9 @@ def spreads_nonlinear_edge_by_zone():
     _rate_limited()
     from analytics.fundamental import compute_nonlinear_edge_by_zone
 
-    result = _cached_compute("edge_by_zone", lambda: compute_nonlinear_edge_by_zone(db.query), ttl=3600)
+    result = _cached_compute(
+        "edge_by_zone", lambda: compute_nonlinear_edge_by_zone(db.query), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for edge-by-zone")
 
@@ -5015,13 +5339,15 @@ def spreads_regime_aware_backtest(zone: str = "DE-LU"):
     regime, and whether conditioning on the regime recovers the drought loss.
     """
     _rate_limited()
-    from analytics.fundamental import compute_regime_aware_backtest, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_regime_aware_backtest
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"regime_aware_{zone}", lambda: compute_regime_aware_backtest(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"regime_aware_{zone}", lambda: compute_regime_aware_backtest(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for regime-aware backtest")
 
@@ -5056,13 +5382,15 @@ def spreads_enriched_model(zone: str = "DE-LU"):
     so realised nuclear would reintroduce look-ahead.
     """
     _rate_limited()
-    from analytics.fundamental import compute_enriched_model, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_enriched_model
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"enriched_{zone}", lambda: compute_enriched_model(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"enriched_{zone}", lambda: compute_enriched_model(db.query, zone), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for enriched model")
 
@@ -5095,15 +5423,19 @@ def spreads_nuclear_wind_interaction(zone: str = "FR"):
     is justified by information criteria (mean ΔAIC < -2 across the walk-forward window).
     """
     _rate_limited()
-    from analytics.fundamental import compute_nuclear_wind_interaction, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_nuclear_wind_interaction
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"nuclear_wind_{zone}", lambda: compute_nuclear_wind_interaction(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"nuclear_wind_{zone}", lambda: compute_nuclear_wind_interaction(db.query, zone), ttl=3600
+    )
     if not result:
-        raise HTTPException(status_code=503, detail="Insufficient data for nuclear-wind interaction")
+        raise HTTPException(
+            status_code=503, detail="Insufficient data for nuclear-wind interaction"
+        )
 
     return NuclearWindInteractionResponse(
         zone=result["zone"],
@@ -5132,7 +5464,7 @@ def spreads_gbm_model(zone: str = "DE-LU"):
     and a wind partial-dependence curve to read its low-wind behaviour against the hinge.
     """
     _rate_limited()
-    from analytics.fundamental import compute_gbm_model, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_gbm_model
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
@@ -5172,7 +5504,9 @@ def spreads_portfolio_backtest():
     _rate_limited()
     from analytics.fundamental import compute_portfolio_backtest
 
-    result = _cached_compute("portfolio_backtest", lambda: compute_portfolio_backtest(db.query), ttl=3600)
+    result = _cached_compute(
+        "portfolio_backtest", lambda: compute_portfolio_backtest(db.query), ttl=3600
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for portfolio backtest")
 
@@ -5193,7 +5527,9 @@ def spreads_portfolio_backtest():
             de_lu=DeflatedSharpe(**result["significance"]["de_lu"])
             if result["significance"].get("de_lu")
             else None,
-            bootstrap_portfolio_oos=BootstrapSharpeCI(**result["significance"]["bootstrap_portfolio_oos"])
+            bootstrap_portfolio_oos=BootstrapSharpeCI(
+                **result["significance"]["bootstrap_portfolio_oos"]
+            )
             if result["significance"].get("bootstrap_portfolio_oos")
             else None,
             bootstrap_de_lu=BootstrapSharpeCI(**result["significance"]["bootstrap_de_lu"])
@@ -5216,7 +5552,9 @@ def spreads_residual_mean_reversion():
     _rate_limited()
     from analytics.fundamental import compute_residual_mean_reversion
 
-    result = _cached_compute("residual_mean_reversion", lambda: compute_residual_mean_reversion(db.query), ttl=3600)
+    result = _cached_compute(
+        "residual_mean_reversion", lambda: compute_residual_mean_reversion(db.query), ttl=3600
+    )
     if not result or not result.get("zones"):
         raise HTTPException(status_code=503, detail="Insufficient data for residual diagnostic")
 
@@ -5286,11 +5624,15 @@ def market_pulse():
     """)
     ttf_latest = _float(px.iloc[0]["ttf_eur_mwh"]) if px is not None and not px.empty else None
     ttf_prev = _float(px.iloc[1]["ttf_eur_mwh"]) if px is not None and len(px) > 1 else None
-    ttf_d1 = round(ttf_latest - ttf_prev, 2) if ttf_latest is not None and ttf_prev is not None else None
+    ttf_d1 = (
+        round(ttf_latest - ttf_prev, 2) if ttf_latest is not None and ttf_prev is not None else None
+    )
 
     eua_latest = _float(px.iloc[0]["eua_eur_t"]) if px is not None and not px.empty else None
     eua_prev = _float(px.iloc[1]["eua_eur_t"]) if px is not None and len(px) > 1 else None
-    eua_d1 = round(eua_latest - eua_prev, 2) if eua_latest is not None and eua_prev is not None else None
+    eua_d1 = (
+        round(eua_latest - eua_prev, 2) if eua_latest is not None and eua_prev is not None else None
+    )
 
     as_of = str(px.iloc[0]["price_date"]) if px is not None and not px.empty else "unknown"
 
@@ -5302,7 +5644,9 @@ def market_pulse():
         LIMIT 1
     """)
     eu_storage_pct = _float(st.iloc[0]["full_pct"]) if st is not None and not st.empty else None
-    eu_storage_vs_avg5 = _float(st.iloc[0]["vs_avg5_pct"]) if st is not None and not st.empty else None
+    eu_storage_vs_avg5 = (
+        _float(st.iloc[0]["vs_avg5_pct"]) if st is not None and not st.empty else None
+    )
 
     # DE-LU DA base price
     pw = db.query("""
@@ -5339,7 +5683,7 @@ def market_pulse():
     rebap_today_mean = _float(im.iloc[0]["today_mean"]) if im is not None and not im.empty else None
 
     # Fair-value z-score signal for each zone - reuse the signal_snapshot cache (TTL 5min)
-    from analytics.fundamental import compute_fundamental_model, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_fundamental_model
 
     def _build_signal_for_pulse():
         _out = []
@@ -5349,11 +5693,17 @@ def market_pulse():
                 if not _res:
                     continue
                 _cur = _res["current"]
-                _out.append({
-                    "zone": _z,
-                    "zscore": round(float(_cur["zscore"]), 2) if _cur.get("zscore") is not None else None,
-                    "pct_rank_1yr": int(_cur["pct_rank_1yr"]) if _cur.get("pct_rank_1yr") is not None else None,
-                })
+                _out.append(
+                    {
+                        "zone": _z,
+                        "zscore": round(float(_cur["zscore"]), 2)
+                        if _cur.get("zscore") is not None
+                        else None,
+                        "pct_rank_1yr": int(_cur["pct_rank_1yr"])
+                        if _cur.get("pct_rank_1yr") is not None
+                        else None,
+                    }
+                )
             except Exception:
                 pass
         return _out
@@ -5387,13 +5737,17 @@ def spreads_holding_period(zone: str = "DE-LU"):
     has decayed toward the OU equilibrium by factor exp(-k*ln2/half_life).
     """
     _rate_limited()
-    from analytics.fundamental import compute_holding_period_sensitivity, FUNDAMENTAL_ZONES
+    from analytics.fundamental import FUNDAMENTAL_ZONES, compute_holding_period_sensitivity
 
     zone = zone.upper()
     if zone not in FUNDAMENTAL_ZONES:
         raise HTTPException(status_code=400, detail=f"Zone must be one of {FUNDAMENTAL_ZONES}")
 
-    result = _cached_compute(f"holding_period_{zone}", lambda: compute_holding_period_sensitivity(db.query, zone), ttl=3600)
+    result = _cached_compute(
+        f"holding_period_{zone}",
+        lambda: compute_holding_period_sensitivity(db.query, zone),
+        ttl=3600,
+    )
     if not result:
         raise HTTPException(status_code=503, detail="Insufficient data for holding period analysis")
 
@@ -5434,7 +5788,9 @@ def spreads_signal_posture():
 
     # Get FR nuclear critical MW from heat risk data
     nuclear_critical_mw = 0.0
-    heat_df = db.query("SELECT capacity_critical_mw FROM meta WHERE key = 'heat_risk_critical_mw' LIMIT 1")
+    heat_df = db.query(
+        "SELECT capacity_critical_mw FROM meta WHERE key = 'heat_risk_critical_mw' LIMIT 1"
+    )
     if heat_df is None or heat_df.empty:
         # Fall back to querying the plants table directly
         nuke_df = db.query("""
@@ -5521,7 +5877,9 @@ def spreads_storage_factor_test(zone: str = "DE-LU"):
         ttl=3600,
     )
     if not result or result.get("n_oos", 0) < 30:
-        raise HTTPException(status_code=503, detail=f"Insufficient data for storage factor test ({zone})")
+        raise HTTPException(
+            status_code=503, detail=f"Insufficient data for storage factor test ({zone})"
+        )
 
     return StorageFactorTestResponse(
         zone=result["zone"],
@@ -5564,7 +5922,9 @@ def spreads_load_error_factor_test(zone: str = "DE-LU"):
         ttl=3600,
     )
     if not result or result.get("n_oos", 0) < 30:
-        raise HTTPException(status_code=503, detail=f"Insufficient data for load error factor test ({zone})")
+        raise HTTPException(
+            status_code=503, detail=f"Insufficient data for load error factor test ({zone})"
+        )
 
     return LoadErrorFactorTestResponse(
         zone=result["zone"],
@@ -5608,7 +5968,9 @@ def spreads_zone_signal_correlations():
         ttl=3600,
     )
     if not result or result.get("n_oos", 0) < 30:
-        raise HTTPException(status_code=503, detail="Insufficient data for zone signal correlations")
+        raise HTTPException(
+            status_code=503, detail="Insufficient data for zone signal correlations"
+        )
 
     return ZoneSignalCorrelationResponse(
         zones=result["zones"],
@@ -5653,8 +6015,9 @@ def spreads_price_variance_decomp():
     _rate_limited()
 
     def _compute():
-        import numpy as np
         from datetime import date as _date
+
+        import numpy as np
 
         WINDOW_DAYS = 365
         FUNDAMENTAL_ZONES_LOCAL = ["DE-LU", "FR", "NL", "IT-NORD", "BE"]
@@ -5878,28 +6241,36 @@ def spreads_congestion_premium():
 # Hydro reservoir endpoints (Phase 84)
 # ---------------------------------------------------------------------------
 
+
 @app.get("/api/hydro/map", response_model=HydroMapResponse)
 def hydro_map():
+    """Latest hydro reservoir level per country, for the choropleth."""
     rows_df = db.query(
         "SELECT country, week_date, stored_twh, vs_avg5_pct, yoy_pct, rank5yr_pct FROM hydro_reservoir_latest ORDER BY stored_twh DESC"
     )
-    countries = [
-        HydroCountryLatest(
-            country=r.country,
-            week_date=str(r.week_date),
-            stored_twh=_float(r.stored_twh),
-            vs_avg5_pct=_float(r.vs_avg5_pct),
-            yoy_pct=_float(r.yoy_pct),
-            rank5yr_pct=_float(r.rank5yr_pct),
-        )
-        for r in rows_df.itertuples()
-    ] if not rows_df.empty else []
+    countries = (
+        [
+            HydroCountryLatest(
+                country=r.country,
+                week_date=str(r.week_date),
+                stored_twh=_float(r.stored_twh),
+                vs_avg5_pct=_float(r.vs_avg5_pct),
+                yoy_pct=_float(r.yoy_pct),
+                rank5yr_pct=_float(r.rank5yr_pct),
+            )
+            for r in rows_df.itertuples()
+        ]
+        if not rows_df.empty
+        else []
+    )
     return HydroMapResponse(countries=countries, refreshed_at=_meta_val("refreshed_at_hydro"))
 
 
 @app.get("/api/hydro/country/{cc}", response_model=HydroCountryResponse)
 def hydro_country(cc: str):
+    """Reservoir history and the five-year seasonal band for one country."""
     import datetime as _dt
+
     cc = cc.upper()
     latest_df = db.query(
         "SELECT country, week_date, stored_twh, vs_avg5_pct, yoy_pct, rank5yr_pct FROM hydro_reservoir_latest WHERE country = ?",
@@ -5918,7 +6289,7 @@ def hydro_country(cc: str):
         rank5yr_pct=_float(r["rank5yr_pct"]),
     )
 
-    current_year = _dt.datetime.now(_dt.timezone.utc).year
+    current_year = _dt.datetime.now(_dt.UTC).year
     hist_df = db.query(
         """
         SELECT week_date::VARCHAR AS week_date, stored_twh
@@ -5928,24 +6299,32 @@ def hydro_country(cc: str):
         """,
         [cc, current_year - 1],
     )
-    history = [
-        HydroHistPoint(week_date=str(row.week_date), stored_twh=_float(row.stored_twh))
-        for row in hist_df.itertuples()
-    ] if not hist_df.empty else []
+    history = (
+        [
+            HydroHistPoint(week_date=str(row.week_date), stored_twh=_float(row.stored_twh))
+            for row in hist_df.itertuples()
+        ]
+        if not hist_df.empty
+        else []
+    )
 
     seasonal_df = db.query(
         "SELECT week_of_year, avg5_twh, min5_twh, max5_twh FROM hydro_reservoir_seasonal WHERE country = ? ORDER BY week_of_year",
         [cc],
     )
-    seasonal = [
-        HydroSeasonalPoint(
-            week_of_year=int(row.week_of_year),
-            avg5_twh=_float(row.avg5_twh),
-            min5_twh=_float(row.min5_twh),
-            max5_twh=_float(row.max5_twh),
-        )
-        for row in seasonal_df.itertuples()
-    ] if not seasonal_df.empty else []
+    seasonal = (
+        [
+            HydroSeasonalPoint(
+                week_of_year=int(row.week_of_year),
+                avg5_twh=_float(row.avg5_twh),
+                min5_twh=_float(row.min5_twh),
+                max5_twh=_float(row.max5_twh),
+            )
+            for row in seasonal_df.itertuples()
+        ]
+        if not seasonal_df.empty
+        else []
+    )
 
     return HydroCountryResponse(country=cc, history=history, seasonal=seasonal, latest=latest)
 
@@ -5966,35 +6345,43 @@ def hydro_price_balance():
         ORDER BY corr
         """
     )
-    countries = [
-        HydroBalanceCountry(
-            country=r.country,
-            n_weeks=int(r.n_weeks),
-            corr=_float(r.corr),
-            corr_diff=_float(r.corr_diff),
-            r2=_float(r.r2),
-            slope_eur_per_pct=_float(r.slope_eur_per_pct),
-            latest_week=str(r.latest_week),
-            current_balance_pct=_float(r.current_balance_pct),
-            current_price_eur=_float(r.current_price_eur),
-            fitted_price_eur=_float(r.fitted_price_eur),
-            residual_eur=_float(r.residual_eur),
-        )
-        for r in summary_df.itertuples()
-    ] if not summary_df.empty else []
+    countries = (
+        [
+            HydroBalanceCountry(
+                country=r.country,
+                n_weeks=int(r.n_weeks),
+                corr=_float(r.corr),
+                corr_diff=_float(r.corr_diff),
+                r2=_float(r.r2),
+                slope_eur_per_pct=_float(r.slope_eur_per_pct),
+                latest_week=str(r.latest_week),
+                current_balance_pct=_float(r.current_balance_pct),
+                current_price_eur=_float(r.current_price_eur),
+                fitted_price_eur=_float(r.fitted_price_eur),
+                residual_eur=_float(r.residual_eur),
+            )
+            for r in summary_df.itertuples()
+        ]
+        if not summary_df.empty
+        else []
+    )
 
     series_df = db.query(
         "SELECT country, week_date, balance_pct, price_eur FROM hydro_price_balance_series ORDER BY country, week_date"
     )
-    series = [
-        HydroBalancePoint(
-            country=r.country,
-            week_date=str(r.week_date),
-            balance_pct=_float(r.balance_pct),
-            price_eur=_float(r.price_eur),
-        )
-        for r in series_df.itertuples()
-    ] if not series_df.empty else []
+    series = (
+        [
+            HydroBalancePoint(
+                country=r.country,
+                week_date=str(r.week_date),
+                balance_pct=_float(r.balance_pct),
+                price_eur=_float(r.price_eur),
+            )
+            for r in series_df.itertuples()
+        ]
+        if not series_df.empty
+        else []
+    )
 
     return HydroBalanceResponse(
         countries=countries, series=series, refreshed_at=_meta_val("refreshed_at_hydro")

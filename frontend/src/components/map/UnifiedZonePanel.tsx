@@ -27,9 +27,11 @@ import {
   type MonthPoint,
   type ZoneCorrelationRow,
   type HydroCountryResponse,
+  type IslandResponse,
 } from '@/lib/api'
-import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS, ZONE_TO_HYDRO_COUNTRY } from '@/lib/scales'
+import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS, ZONE_TO_HYDRO_COUNTRY, hasNoPrice, NO_PRICE_FILL, NO_PRICE_STROKE } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
+import { buildIslandHistory } from '@/lib/island'
 
 type TrendWindow = '3M' | '1Y' | 'ALL'
 type DailyWindow = '1Y' | '2Y'
@@ -46,16 +48,35 @@ interface Props {
   allZones?: PowerLatestRow[]
 }
 
-type PanelTab = 'price' | 'generation'
+type PanelTab = 'price' | 'island' | 'generation'
 
 export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selectedDate, allZones }: Props) {
   const [tab, setTab] = useState<PanelTab>('price')
   const [genWindow, setGenWindow] = useState<TrendWindow>('1Y')
   const [priceWindow, setPriceWindow] = useState<DailyWindow>('1Y')
 
+  const noPrice = hasNoPrice(zone)
+
+  // Derive the active tab rather than syncing state in an effect. The panel is not
+  // remounted when the selected zone changes, so a user sitting on 'price' who clicks
+  // Corsica would otherwise land on a tab that cannot render, and vice versa.
+  const activeTab: PanelTab = noPrice
+    ? tab === 'price' ? 'island' : tab
+    : tab === 'island' ? 'price' : tab
+
   const { data: powerData, isLoading: powerLoading } = useQuery({
     queryKey: ['power-zone', zone],
     queryFn: () => api.powerZone(zone),
+    // These zones 404 by design; asking anyway would put a permanent red error in the
+    // network log and retry it on every zone selection.
+    enabled: !noPrice,
+  })
+
+  const { data: islandData, isLoading: islandLoading } = useQuery({
+    queryKey: ['island', zone],
+    queryFn: () => api.island(zone),
+    staleTime: 15 * 60 * 1000,
+    enabled: noPrice,
   })
 
   const { data: genData, isLoading: genLoading } = useQuery({
@@ -76,6 +97,7 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
     queryFn: () => api.powerZoneProfile(zone),
     staleTime: 60 * 60 * 1000,
     retry: false,
+    enabled: !noPrice,
   })
 
   const { data: seasonalityData } = useQuery({
@@ -83,12 +105,14 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
     queryFn: () => api.powerZoneSeasonality(zone),
     staleTime: 60 * 60 * 1000,
     retry: false,
+    enabled: !noPrice,
   })
 
   const { data: corrData } = useQuery({
     queryKey: ['power-correlations'],
     queryFn: api.powerCorrelations,
     staleTime: 60 * 60 * 1000,
+    enabled: !noPrice,
   })
 
   const hydroCountry = ZONE_TO_HYDRO_COUNTRY[zone] ?? null
@@ -129,10 +153,19 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: priceColor }} />
+          {!noPrice && <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: priceColor }} />}
           <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: reColor }} />
           <span className="font-medium text-sm">{zoneName(zone)}</span>
-          {powerLatest?.base_eur != null && (
+          {noPrice && (
+            <span
+              className="text-xs font-medium px-1.5 py-0.5 rounded-sm"
+              style={{ color: NO_PRICE_STROKE, backgroundColor: NO_PRICE_FILL }}
+              title="Not an ENTSO-E bidding zone - clears inside FR, operated by EDF SEI on a regulated tariff"
+            >
+              No market price
+            </span>
+          )}
+          {!noPrice && powerLatest?.base_eur != null && (
             <span className="text-xs text-sky-400 font-medium">{powerLatest.base_eur.toFixed(0)} €/MWh</span>
           )}
           {genItem?.renewable_pct != null && (
@@ -149,24 +182,24 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
 
       {/* Tab switcher */}
       <div className="flex border-b border-border">
-        {(['price', 'generation'] as const).map((t) => (
+        {((noPrice ? ['island', 'generation'] : ['price', 'generation']) as PanelTab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`flex-1 py-2 text-xs font-medium transition-colors ${
-              tab === t
+              activeTab === t
                 ? 'text-foreground border-b-2 border-sky-500'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            {t === 'price' ? 'Price' : 'Generation'}
+            {t === 'price' ? 'Price' : t === 'island' ? 'Island system' : 'Generation'}
           </button>
         ))}
       </div>
 
       <div className="flex-1 overflow-y-auto">
         {/* ---- PRICE TAB ---- */}
-        {tab === 'price' && <>
+        {activeTab === 'price' && <>
 
         {/* Price stats */}
         {powerLatest && (
@@ -313,8 +346,13 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
 
         </> /* end price tab */}
 
+        {/* ---- ISLAND TAB ---- */}
+        {activeTab === 'island' && (
+          islandLoading ? <Placeholder /> : islandData ? <IslandSection data={islandData} /> : <NoData />
+        )}
+
         {/* ---- GENERATION TAB ---- */}
-        {tab === 'generation' && <>
+        {activeTab === 'generation' && <>
 
         {/* Fuel mix today */}
         <div className="p-3 border-b border-border">
@@ -549,7 +587,7 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
         </> /* end generation tab */}
 
         {/* ---- PRICE TAB (continued: historical charts) ---- */}
-        {tab === 'price' && <>
+        {activeTab === 'price' && <>
 
         {/* Calendar heatmap - 52 weeks of daily base price */}
         {allDaily.length >= 14 && (
@@ -864,6 +902,177 @@ function HourlyProfileChart({ rows }: { rows: HourlyProfilePoint[] }) {
         <div className="flex items-center gap-1"><div className="w-3 h-2 bg-sky-400/15 rounded-sm" /><span>IQR band</span></div>
         <div className="flex items-center gap-1"><div className="w-3 h-2 bg-red-400/35 rounded-sm" /><span>Neg. hour %</span></div>
       </div>
+    </div>
+  )
+}
+
+const CABLE_COLOR = '#38bdf8'      // sky-400 - imported power over the subsea link
+const ISLAND_OIL_COLOR = FUEL_PALETTE['oil']
+const ISLAND_RE_COLOR = FUEL_PALETTE['hydro']
+
+/**
+ * The Island tab: what a zone with no price gets instead of price analytics.
+ *
+ * The story this is built to tell is the one the data actually shows for Corsica: the
+ * subsea cable runs close to flat, so the local oil fleet does all of the load-following,
+ * and midday solar pushes both down. Cable share is the nearest thing the island has to a
+ * price signal, because the cable is its cheap marginal supply.
+ */
+function IslandSection({ data }: { data: IslandResponse }) {
+  const recent = useMemo(
+    () =>
+      data.hourly.map((r) => ({
+        ts: r.ts,
+        label: r.ts.slice(5, 16).replace('T', ' '),
+        oil: r.oil_mw,
+        renewable: r.renewable_mw,
+        cable: r.net_import_mw,
+      })),
+    [data.hourly],
+  )
+
+  const profile = useMemo(
+    () =>
+      data.profile.map((r) => ({
+        h: r.hour.toString().padStart(2, '0'),
+        cable: r.net_import_mw,
+        oil: r.oil_mw,
+        renewable: r.renewable_mw,
+      })),
+    [data.profile],
+  )
+
+  // Monthly means keep 7.5 years legible at panel width. Gap months are emitted with a
+  // null value rather than skipped, so recharts breaks the line instead of drawing a
+  // straight segment across the 19 months EDF never published.
+  const history = useMemo(() => buildIslandHistory(data.daily), [data.daily])
+
+  const fmtMw = (v: number | null | undefined) => (v != null ? `${v.toFixed(0)} MW` : '--')
+  const fmtPct = (v: number | null | undefined) => (v != null ? `${v.toFixed(1)}%` : '--')
+
+  return (
+    <>
+      <div className="p-3 border-b border-border">
+        <p className="text-xs text-muted-foreground mb-2">
+          Island supply{data.gen_date ? ` - ${data.gen_date}` : ''}
+        </p>
+        <div className="grid grid-cols-2 gap-1.5 mb-1.5">
+          <StatBox
+            label="Cable import"
+            value={fmtMw(data.net_import_mw)}
+            big
+            title="Net flow over the SACOI + SARCO subsea links. Negative means the island is exporting."
+          />
+          <StatBox
+            label="Cable share"
+            value={fmtPct(data.import_share_pct)}
+            big
+            title="Cable flow as a share of total supply (local generation + net import)."
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          <StatBox label="Local oil fleet" value={fmtMw(data.oil_mw)} title="Diesel engines + fioul combustion turbines." />
+          <StatBox label="Renewable share" value={fmtPct(data.renewable_share_pct)} />
+          <StatBox label="Peak cable" value={fmtMw(data.max_import_mw)} title="Highest observed net import across the full history." />
+          <StatBox label="Peak supply" value={fmtMw(data.peak_supply_mw)} />
+        </div>
+        <p className="text-xs text-muted-foreground mt-2 leading-relaxed">
+          Not an ENTSO-E bidding zone. Corsica clears inside the French zone and is run by EDF SEI
+          as a non-interconnected system on a regulated tariff, so it has no day-ahead price. The
+          cable is its cheap marginal supply; the oil fleet covers whatever the cable cannot.
+        </p>
+      </div>
+
+      {recent.length > 0 && (
+        <div className="p-3 border-b border-border">
+          <p className="text-xs text-muted-foreground mb-2">Supply stack - last 14 days (MW)</p>
+          <ResponsiveContainer width="100%" height={140}>
+            <AreaChart data={recent} margin={{ top: 2, right: 2, bottom: 2, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="label" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} interval={Math.max(1, Math.floor(recent.length / 5))} />
+              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={36} />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                formatter={(v: unknown, name: unknown) => [
+                  typeof v === 'number' ? `${v.toFixed(0)} MW` : '--',
+                  String(name),
+                ]}
+              />
+              <Area type="monotone" dataKey="oil" stackId="1" stroke={ISLAND_OIL_COLOR} fill={ISLAND_OIL_COLOR} fillOpacity={0.5} name="Oil" />
+              <Area type="monotone" dataKey="renewable" stackId="1" stroke={ISLAND_RE_COLOR} fill={ISLAND_RE_COLOR} fillOpacity={0.5} name="Renewable" />
+              <Area type="monotone" dataKey="cable" stackId="1" stroke={CABLE_COLOR} fill={CABLE_COLOR} fillOpacity={0.5} name="Cable" />
+            </AreaChart>
+          </ResponsiveContainer>
+          <IslandLegend />
+        </div>
+      )}
+
+      {profile.length > 0 && (
+        <div className="p-3 border-b border-border">
+          <p className="text-xs text-muted-foreground mb-2">
+            Avg. intraday shape (UTC)
+            {data.profile_days != null ? ` - ${data.profile_days} days` : ''}
+          </p>
+          <ResponsiveContainer width="100%" height={130}>
+            <LineChart data={profile} margin={{ top: 2, right: 2, bottom: 2, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="h" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} interval={3} />
+              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={36} />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                formatter={(v: unknown, name: unknown) => [
+                  typeof v === 'number' ? `${v.toFixed(0)} MW` : '--',
+                  String(name),
+                ]}
+              />
+              <Line type="monotone" dataKey="cable" stroke={CABLE_COLOR} strokeWidth={1.5} dot={false} name="Cable" />
+              <Line type="monotone" dataKey="oil" stroke={ISLAND_OIL_COLOR} strokeWidth={1.5} dot={false} name="Oil" />
+              <Line type="monotone" dataKey="renewable" stroke={ISLAND_RE_COLOR} strokeWidth={1.5} dot={false} name="Renewable" />
+            </LineChart>
+          </ResponsiveContainer>
+          <IslandLegend />
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            A flat cable line against a swinging oil line means the link runs near baseload and the
+            local fleet absorbs the daily load shape.
+          </p>
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div className="p-3 border-b border-border">
+          <p className="text-xs text-muted-foreground mb-2">Cable share of supply - monthly mean (%)</p>
+          <ResponsiveContainer width="100%" height={120}>
+            <LineChart data={history} margin={{ top: 2, right: 2, bottom: 2, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+              <XAxis dataKey="month" tick={{ fontSize: 8, fill: '#64748b' }} tickLine={false} interval={11} />
+              <YAxis tick={{ fontSize: 9, fill: '#64748b' }} tickLine={false} width={30} tickFormatter={(v) => `${v}%`} />
+              <Tooltip
+                contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 10 }}
+                formatter={(v: unknown) => [typeof v === 'number' ? `${v.toFixed(1)}%` : 'no data', 'Cable share']}
+              />
+              {/* connectNulls stays false so the source gap renders as a break, not a line. */}
+              <Line type="monotone" dataKey="share" stroke={CABLE_COLOR} strokeWidth={1.5} dot={false} connectNulls={false} />
+            </LineChart>
+          </ResponsiveContainer>
+          {data.gap_days != null && data.gap_days > 0 && (
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              The break is real: EDF's hourly history is frozen at 2024-12-31 and its live feed keeps
+              only 14 days, leaving {data.gap_days} days ({data.data_start} to {data.data_end}) with
+              nothing published. No public dataset fills it.
+            </p>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
+function IslandLegend() {
+  return (
+    <div className="flex gap-3 mt-0.5 text-xs text-muted-foreground">
+      <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm" style={{ background: CABLE_COLOR }} /><span>Cable</span></div>
+      <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm" style={{ background: ISLAND_OIL_COLOR }} /><span>Oil</span></div>
+      <div className="flex items-center gap-1"><div className="w-3 h-2 rounded-sm" style={{ background: ISLAND_RE_COLOR }} /><span>Renewable</span></div>
     </div>
   )
 }

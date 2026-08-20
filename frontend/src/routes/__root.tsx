@@ -199,8 +199,8 @@ function AboutModal({ onClose }: { onClose: () => void }) {
               <a href="https://transparency.entsog.eu" className="text-primary hover:underline" target="_blank" rel="noreferrer">transparency.entsog.eu</a>
             </li>
             <li>
-              <span className="text-foreground">German reBAP imbalance prices</span> - SMARD.de (Bundesnetzagentur),{' '}
-              <a href="https://www.smard.de" className="text-primary hover:underline" target="_blank" rel="noreferrer">smard.de</a>
+              <span className="text-foreground">German reBAP imbalance prices</span> - Netztransparenz (the four German TSOs),{' '}
+              <a href="https://www.netztransparenz.de" className="text-primary hover:underline" target="_blank" rel="noreferrer">netztransparenz.de</a>
             </li>
           </ul>
         </div>

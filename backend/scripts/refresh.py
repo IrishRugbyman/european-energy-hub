@@ -8,15 +8,18 @@ Usage:
 Exit codes: 0 = ok, 1 = rebuild failed (ingest failures are warnings only).
 """
 
+# The analytics imports below have to follow the sys.path.insert that puts
+# backend/ on the path, so they cannot move to the top of the file.
+# ruff: noqa: E402
+
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-
-import os
 
 import duckdb
 import pandas as pd
@@ -34,27 +37,78 @@ sys.path.insert(0, str(BACKEND_DIR))
 from analytics.battery import build_battery_tables
 from analytics.congestion import build_congestion_tables
 from analytics.divergence import build_divergence_tables
+from analytics.flows import build_flows_tables
 from analytics.gas import build_facilities_table, build_storage_tables
-from analytics.lng import build_lng_tables
-from analytics.heat_risk import build_heat_risk_tables
 from analytics.gas_flows import build_gas_flows_tables
 from analytics.generation import build_generation_tables, compute_forecast_accuracy
-from analytics.imbalance import build_imbalance_tables
-from analytics.power import build_power_tables, build_power_correlations
-from analytics.spreads import build_spreads_tables
-from analytics.flows import build_flows_tables
-from analytics.us_gas import build_us_storage_tables
+from analytics.heat_risk import build_heat_risk_tables
 from analytics.hydro import build_hydro_tables
 from analytics.hydro_balance import build_hydro_price_balance
+from analytics.imbalance import build_imbalance_tables
+from analytics.island import build_island_tables
+from analytics.lng import build_lng_tables
+from analytics.power import build_power_correlations, build_power_tables
+from analytics.spreads import build_spreads_tables
+from analytics.us_gas import build_us_storage_tables
 from analytics.us_plants import build_us_plants_table
 from analytics.us_power import build_us_power_tables
+
+# Fetchers run before every rebuild. Order matters only in that cheap ones go first,
+# so a hang in a slow ENTSO-E call cannot starve the rest.
+#
+# NOT in this list on purpose:
+#   smard-imbalance-de - disabled fetcher, raises on call. SMARD module 4169 is the
+#     DE/LU day-ahead price, not reBAP. Superseded by rebap-de (Netztransparenz).
+INGEST_FETCHERS = [
+    "agsi",
+    "agsi-facilities",
+    "alsi",
+    "alsi-facilities",
+    "ttf",
+    "nbp",
+    "eia-natgas",
+    "eia-natgas-storage",
+    "eua-carbon",
+    "coal-api2",
+    "entso-e-prices",
+    "entso-e-ntc",
+    "entso-e-scheduled",
+    "entso-e-gen-full",
+    "entso-e-hydro",
+    # Corsica (FR-COR) is not an ENTSO-E zone, so entso-e-gen-full never sees it. EDF's
+    # realtime feed keeps only a rolling 14-day window, so this must run at least once a
+    # fortnight or the intervening days are lost for good.
+    "edf-sei-corsica",
+    "entsog",
+    "rebap-de",
+    # Same table (imbalance_prices_de.nrv_mw), feeds compute_rebap_signal's nrv_dev_lag1
+    # feature (see docs/ROADMAP.md Phase 87). Must run alongside rebap-de or nrv_mean_mw
+    # goes stale while the reBAP columns next to it keep updating.
+    "nrv-saldo-de",
+    "worldmonitor",
+]
+
+# Per-fetcher subprocess timeouts in seconds. Anything unlisted gets DEFAULT_INGEST_TIMEOUT.
+DEFAULT_INGEST_TIMEOUT = 600
+# Ceilings for pathological cases, not expected durations. ENTSO-E answers 429 with a
+# [60, 120, 240, 480]s backoff ladder (see _RATE_LIMIT_BACKOFF), so a fetcher that gets
+# rate-limited can legitimately sit for ~15 min per chunk without being stuck. Keep every
+# value under the unit's TimeoutStartSec (3600s) or it can never fire.
+INGEST_TIMEOUTS = {
+    # 45 zones, ~4 days each since the progress-marker fix - normally under a minute.
+    # Was 10800 back when a broken marker made this re-fetch from 2021 on every run.
+    "entso-e-gen-full": 1800,
+    # Both walk every border pair and regularly ran past the old flat 600s ceiling,
+    # which silently left the congestion tables a day behind the price tables.
+    "entso-e-ntc": 1800,
+    "entso-e-scheduled": 1800,
+}
 
 
 def run_ingest(fetcher: str) -> bool:
     """Run market-data ingest.py for one fetcher. Returns True if OK."""
     try:
-        # entso-e-gen-full fetches up to 45 zones incrementally; allow 3 hours
-        fetch_timeout = 10800 if "gen-full" in fetcher else 600
+        fetch_timeout = INGEST_TIMEOUTS.get(fetcher, DEFAULT_INGEST_TIMEOUT)
         result = subprocess.run(
             [str(MARKET_DATA_VENV), "ingest.py", fetcher],
             cwd=str(MARKET_DATA_DIR),
@@ -76,8 +130,9 @@ def run_ingest(fetcher: str) -> bool:
 
 
 def rebuild(skip_ingest: bool = False) -> None:
+    """Rebuild energy_hub.duckdb into a temp file and atomically swap it in."""
     if not skip_ingest:
-        for fetcher in ["agsi", "agsi-facilities", "alsi", "ttf", "nbp", "eia-natgas", "eia-natgas-storage", "eua-carbon", "coal-api2", "entso-e-prices", "entso-e-ntc", "entso-e-scheduled", "entso-e-gen-full", "entsog", "smard-imbalance-de", "worldmonitor"]:
+        for fetcher in INGEST_FETCHERS:
             run_ingest(fetcher)
     else:
         logger.info("--skip-ingest: skipping market-data fetch")
@@ -112,6 +167,9 @@ def rebuild(skip_ingest: bool = False) -> None:
     logger.info("Building generation mix from market_data (PostgreSQL)...")
     generation_tables = build_generation_tables()
 
+    logger.info("Building island (FR-COR) system tables from market_data (PostgreSQL)...")
+    island_tables = build_island_tables()
+
     logger.info("Building wind/solar forecast accuracy from market_data (PostgreSQL)...")
     forecast_accuracy_df = compute_forecast_accuracy(window_days=90)
 
@@ -132,7 +190,11 @@ def rebuild(skip_ingest: bool = False) -> None:
 
     logger.info("Building US power generation mix from EIA API...")
     eia_key = _read_eia_key()
-    us_power_tables = build_us_power_tables(eia_key) if eia_key else {"us_power_hourly": pd.DataFrame(), "us_power_latest": pd.DataFrame()}
+    us_power_tables = (
+        build_us_power_tables(eia_key)
+        if eia_key
+        else {"us_power_hourly": pd.DataFrame(), "us_power_latest": pd.DataFrame()}
+    )
 
     logger.info("Building hydro reservoir tables from market_data (PostgreSQL)...")
     hydro_tables = build_hydro_tables()
@@ -162,6 +224,7 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_spreads(conn, spreads_tables)
         _write_flows(conn, flows_tables)
         _write_generation(conn, generation_tables)
+        _write_island(conn, island_tables)
         _write_capacity_factors(conn, generation_tables)
         _write_forecast_accuracy(conn, forecast_accuracy_df)
         _write_gas_flows(conn, gas_flows_tables)
@@ -175,19 +238,27 @@ def rebuild(skip_ingest: bool = False) -> None:
         _write_hydro_balance(conn, hydro_balance_tables)
         _write_heat_risk(conn, heat_risk_tables)
 
-        now_iso = datetime.now(timezone.utc).isoformat()
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR)"
-        )
+        now_iso = datetime.now(UTC).isoformat()
+        conn.execute("CREATE TABLE IF NOT EXISTS meta (key VARCHAR PRIMARY KEY, value VARCHAR)")
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas", now_iso])
-        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", now_iso])
+        conn.execute(
+            "INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_gas_flows", now_iso]
+        )
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_lng", now_iso])
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_power", now_iso])
-        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_congestion", now_iso])
+        conn.execute(
+            "INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_congestion", now_iso]
+        )
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_spreads", now_iso])
-        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso])
-        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_us_power", now_iso])
-        conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", now_iso])
+        conn.execute(
+            "INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_imbalance", now_iso]
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_us_power", now_iso]
+        )
+        conn.execute(
+            "INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_heat_risk", now_iso]
+        )
         conn.execute("INSERT OR REPLACE INTO meta VALUES (?, ?)", ["refreshed_at_hydro", now_iso])
         conn.execute("COMMIT")
     except Exception:
@@ -299,7 +370,9 @@ def _write_lng(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not latest.empty:
-        conn.execute("INSERT INTO lng_latest SELECT country, gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct, d7_sendout_gwh, vs_avg5_sendout, avg5_sendout FROM latest")
+        conn.execute(
+            "INSERT INTO lng_latest SELECT country, gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct, d7_sendout_gwh, vs_avg5_sendout, avg5_sendout FROM latest"
+        )
 
     conn.execute("""
         CREATE OR REPLACE TABLE lng_trend (
@@ -314,7 +387,9 @@ def _write_lng(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not trend.empty:
-        conn.execute("INSERT INTO lng_trend SELECT gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct, avg5_sendout FROM trend")
+        conn.execute(
+            "INSERT INTO lng_trend SELECT gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct, avg5_sendout FROM trend"
+        )
 
     conn.execute("""
         CREATE OR REPLACE TABLE lng_seasonal (
@@ -329,7 +404,9 @@ def _write_lng(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not seasonal.empty:
-        conn.execute("INSERT INTO lng_seasonal SELECT country, doy, avg5_sendout, min5_sendout, max5_sendout, avg5_fill, min5_fill, max5_fill FROM seasonal")
+        conn.execute(
+            "INSERT INTO lng_seasonal SELECT country, doy, avg5_sendout, min5_sendout, max5_sendout, avg5_fill, min5_fill, max5_fill FROM seasonal"
+        )
 
     conn.execute("""
         CREATE OR REPLACE TABLE lng_history (
@@ -344,7 +421,9 @@ def _write_lng(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         )
     """)
     if not history.empty:
-        conn.execute("INSERT INTO lng_history SELECT country, gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct FROM history")
+        conn.execute(
+            "INSERT INTO lng_history SELECT country, gas_day, inventory_gwh, sendout_gwh, dtmi_gwh, dtrs_gwh, fill_pct, sendout_util_pct FROM history"
+        )
 
     logger.info(
         f"LNG: {len(latest)} latest rows, {len(trend)} trend rows, {len(seasonal)} seasonal rows"
@@ -445,7 +524,7 @@ def _write_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     )
 
 
-def _write_power_correlations(conn: duckdb.DuckDBPyConnection, df: "pd.DataFrame") -> None:
+def _write_power_correlations(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> None:
     conn.execute("""
         CREATE OR REPLACE TABLE power_correlation_30d (
             zone_a VARCHAR,
@@ -581,9 +660,7 @@ def _write_gas_flows(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_gfd", daily)
         conn.execute("INSERT INTO gas_flows_daily SELECT * FROM _gfd")
 
-    logger.info(
-        f"gas flows: {len(latest)} latest rows, {len(daily)} daily rows"
-    )
+    logger.info(f"gas flows: {len(latest)} latest rows, {len(daily)} daily rows")
 
 
 def _write_congestion(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
@@ -601,9 +678,7 @@ def _write_congestion(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         conn.register("_cd", daily)
         conn.execute("INSERT INTO congestion_daily SELECT * FROM _cd")
 
-    logger.info(
-        f"congestion: {len(latest)} latest border pairs, {len(daily)} daily rows"
-    )
+    logger.info(f"congestion: {len(latest)} latest border pairs, {len(daily)} daily rows")
 
 
 def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
@@ -663,6 +738,68 @@ def _write_generation(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     )
 
 
+def _write_island(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
+    """Island (non-interconnected) system tables - currently FR-COR only.
+
+    `island_daily.net_import_mw` is deliberately nullable and the table is padded across
+    the EDF source gap, so a NULL row means "no data published", not "zero flow".
+    """
+    daily = tables["island_daily"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE island_daily (
+            zone VARCHAR, gen_date DATE,
+            net_import_mw REAL, min_import_mw REAL, max_import_mw REAL,
+            local_gen_mw REAL, oil_mw REAL, renewable_mw REAL, total_supply_mw REAL,
+            import_share_pct REAL, renewable_share_pct REAL
+        )
+    """)
+    if not daily.empty:
+        conn.register("_island_daily", daily)
+        conn.execute("INSERT INTO island_daily SELECT * FROM _island_daily")
+
+    hourly = tables["island_hourly_recent"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE island_hourly_recent (
+            zone VARCHAR, ts TIMESTAMP,
+            net_import_mw REAL, oil_mw REAL, renewable_mw REAL, total_supply_mw REAL
+        )
+    """)
+    if not hourly.empty:
+        conn.register("_island_hourly", hourly)
+        conn.execute("INSERT INTO island_hourly_recent SELECT * FROM _island_hourly")
+
+    profile = tables["island_hourly_profile"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE island_hourly_profile (
+            zone VARCHAR, hour INTEGER,
+            net_import_mw REAL, oil_mw REAL, renewable_mw REAL,
+            import_share_pct REAL, n_days INTEGER
+        )
+    """)
+    if not profile.empty:
+        conn.register("_island_profile", profile)
+        conn.execute("INSERT INTO island_hourly_profile SELECT * FROM _island_profile")
+
+    latest = tables["island_latest"]
+    conn.execute("""
+        CREATE OR REPLACE TABLE island_latest (
+            zone VARCHAR, gen_date DATE,
+            net_import_mw REAL, local_gen_mw REAL, oil_mw REAL, renewable_mw REAL,
+            total_supply_mw REAL, import_share_pct REAL, renewable_share_pct REAL,
+            max_import_mw REAL, peak_supply_mw REAL,
+            data_start DATE, data_end DATE, gap_days INTEGER
+        )
+    """)
+    if not latest.empty:
+        conn.register("_island_latest", latest)
+        conn.execute("INSERT INTO island_latest SELECT * FROM _island_latest")
+
+    logger.info(
+        f"island: {len(latest)} zones, {len(daily)} daily rows, {len(hourly)} hourly rows, "
+        f"{len(profile)} profile rows"
+    )
+
+
 def _write_capacity_factors(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     cf = tables.get("capacity_factors_daily")
     conn.execute("""
@@ -704,7 +841,8 @@ def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
             mean_eur REAL,
             min_eur REAL,
             max_eur REAL,
-            count INTEGER
+            count INTEGER,
+            nrv_mean_mw REAL
         )
     """)
     if not daily.empty:
@@ -746,7 +884,7 @@ def _write_imbalance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
 def _write_battery(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
     dispatch = tables["battery_dispatch_recent"]
-    summary  = tables["battery_summary"]
+    summary = tables["battery_summary"]
     conn.execute("""
         CREATE OR REPLACE TABLE battery_dispatch_recent (
             ts TIMESTAMP,
@@ -820,8 +958,18 @@ def _write_forecast_accuracy(conn: duckdb.DuckDBPyConnection, df) -> None:  # ty
     """)
     if df is not None and not df.empty:
         conn.register("_fa", df)
-        cols = ["zone", "wind_mae_mw", "wind_avg_mw", "solar_mae_mw", "solar_avg_mw",
-                "wind_installed_mw", "solar_installed_mw", "wind_mae_pct", "solar_mae_pct", "n_hours"]
+        cols = [
+            "zone",
+            "wind_mae_mw",
+            "wind_avg_mw",
+            "solar_mae_mw",
+            "solar_avg_mw",
+            "wind_installed_mw",
+            "solar_installed_mw",
+            "wind_mae_pct",
+            "solar_mae_pct",
+            "n_hours",
+        ]
         conn.execute(f"INSERT INTO forecast_accuracy SELECT {', '.join(cols)} FROM _fa")
     logger.info(f"forecast_accuracy: {len(df) if df is not None else 0} rows")
 
@@ -846,7 +994,9 @@ def _write_us_plants(conn: duckdb.DuckDBPyConnection, df: pd.DataFrame) -> None:
     """)
     if df is not None and not df.empty:
         conn.register("_unp", df)
-        conn.execute("INSERT INTO us_ng_plants SELECT plant_id, name, state, county, lat, lon, nameplate_mw, entity_name, ba_code, op_year, gen_gwh, category, cleanview_url FROM _unp")
+        conn.execute(
+            "INSERT INTO us_ng_plants SELECT plant_id, name, state, county, lat, lon, nameplate_mw, entity_name, ba_code, op_year, gen_gwh, category, cleanview_url FROM _unp"
+        )
     n = len(df) if df is not None else 0
     logger.info(f"us_ng_plants: {n} plants")
 
@@ -900,9 +1050,9 @@ def _write_us_power(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
 
 def _write_us_storage(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
-    latest = tables.get("us_storage_latest", None)
-    history = tables.get("us_storage_history", None)
-    seasonal = tables.get("us_storage_seasonal", None)
+    latest = tables.get("us_storage_latest")
+    history = tables.get("us_storage_history")
+    seasonal = tables.get("us_storage_seasonal")
 
     conn.execute("""
         CREATE OR REPLACE TABLE us_storage_latest (
@@ -1022,8 +1172,8 @@ def _write_hydro_balance(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
 
 
 def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
-    latest   = tables.get("nuclear_heat_risk_latest",   pd.DataFrame())
-    trend    = tables.get("nuclear_heat_risk_trend",    pd.DataFrame())
+    latest = tables.get("nuclear_heat_risk_latest", pd.DataFrame())
+    trend = tables.get("nuclear_heat_risk_trend", pd.DataFrame())
     seasonal = tables.get("nuclear_heat_risk_seasonal", pd.DataFrame())
 
     conn.execute("""
@@ -1097,7 +1247,7 @@ def _write_heat_risk(conn: duckdb.DuckDBPyConnection, tables: dict) -> None:
         """)
 
     n_plants = len(latest) if not latest.empty else 0
-    n_trend  = len(trend)  if not trend.empty  else 0
+    n_trend = len(trend) if not trend.empty else 0
     logger.info(f"heat_risk: {n_plants} plants, {n_trend} trend rows")
 
 

@@ -88,6 +88,14 @@ function ImbalanceDashboard() {
     ? (Date.now() - new Date(data.as_of).getTime()) > 48 * 3600 * 1000
     : false
 
+  // Quality-assured reBAP structurally lags ~2 weeks at the source (Netztransparenz) - this is
+  // a publication characteristic, not a refresh-pipeline problem, so it gets its own neutral
+  // note rather than sharing the amber "may be stale" banner below.
+  const lagDays = latest?.current_ts
+    ? Math.floor((Date.now() - new Date(latest.current_ts).getTime()) / 86400000)
+    : null
+  const latestDateStr = latest?.current_ts ? latest.current_ts.slice(0, 10) : null
+
   return (
     <div className="h-full overflow-y-auto bg-background">
       <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
@@ -95,7 +103,7 @@ function ImbalanceDashboard() {
         <div>
           <h1 className="text-lg font-semibold text-foreground">German reBAP Imbalance Prices</h1>
           <p className="text-xs text-muted-foreground mt-0.5">
-            15-minute balancing settlement prices from SMARD/Bundesnetzagentur
+            15-minute balancing settlement prices from Netztransparenz (the four German TSOs)
           </p>
         </div>
 
@@ -110,6 +118,14 @@ function ImbalanceDashboard() {
           <NowCard label="Today min" value={fmt(latest?.today_min)} />
           <NowCard label="Today max" value={fmt(latest?.today_max)} />
         </div>
+
+        {latestDateStr && (
+          <div className="text-xs text-muted-foreground bg-muted/20 border border-border/60 rounded px-3 py-2">
+            Data through {latestDateStr}{lagDays != null ? ` (${lagDays}d behind real time)` : ''}.
+            Quality-assured reBAP is published by Netztransparenz with a structural ~2-week lag -
+            this page reports settled prices, not a live feed.
+          </div>
+        )}
 
         {isStale && (
           <div className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-3 py-2">
@@ -282,7 +298,7 @@ function ImbalanceDashboard() {
         {/* Extreme reBAP events */}
         {daily.length > 0 && <ExtremeEvents daily={daily} />}
 
-        {/* Renewable forecast-error signal */}
+        {/* reBAP trend-deviation signal */}
         {signalData && <ImbalanceSignalSection data={signalData} />}
 
         {/* DA z-score vs RT reBAP cross-signal correlation */}
@@ -296,7 +312,8 @@ function ImbalanceDashboard() {
           <p className="text-foreground font-medium text-xs">What is reBAP?</p>
           <p>
             reBAP (Regelenergie-Bilanzierungspreis) is the German TSO balancing settlement price,
-            published at 15-minute resolution by SMARD (Bundesnetzagentur). It represents the
+            published at 15-minute resolution by Netztransparenz, the joint platform of the four
+            German TSOs (50Hertz, Amprion, TenneT, TransnetBW). It represents the
             cost TSOs incur to balance the grid after renewable forecast errors and load deviations.
           </p>
           <p>
@@ -305,10 +322,11 @@ function ImbalanceDashboard() {
             Negative prices reflect excess generation that had to be curtailed or exported at a loss.
           </p>
           <p>
-            The renewable forecast-error signal below uses ENTSO-E DA generation forecasts vs
-            actuals to predict whether the next day's reBAP will be above or below its 5-day
-            trailing mean (the "excess-above-trend" signal, walk-forward OLS, D-1 gate-closure
-            information only).
+            The signal below predicts whether the next day's reBAP will land above or below its
+            own 5-day trailing mean (walk-forward OLS, D-1 gate-closure information only) from
+            the DA wind forecast, reBAP's own recent persistence, and the system's NRV-Saldo
+            imbalance relative to its own trend. Renewable forecast-error features were tested
+            here originally but did not survive revalidation on real reBAP data and were dropped.
           </p>
         </div>
       </div>
@@ -319,7 +337,7 @@ function ImbalanceDashboard() {
 }
 
 // ---------------------------------------------------------------------------
-// Renewable forecast-error signal section
+// reBAP trend-deviation signal section
 // ---------------------------------------------------------------------------
 
 function SignalStatCard({ label, value, sub, highlight = false }: {
@@ -335,17 +353,15 @@ function SignalStatCard({ label, value, sub, highlight = false }: {
 }
 
 const COEF_LABELS: Record<string, string> = {
-  wind_err_lag1: 'Wind err D-1',
-  solar_err_lag1: 'Solar err D-1',
   wind_fc_d: 'Wind DA fc',
   rebap_dev_lag1: 'reBAP dev D-1',
+  nrv_dev_lag1: 'NRV-Saldo dev D-1',
 }
 
 const COEF_DESCS: Record<string, string> = {
-  wind_err_lag1: 'D-1 wind underperformance → system short → above trend',
-  solar_err_lag1: 'D-1 solar underperformance → above trend',
   wind_fc_d: 'High DA wind forecast → excess supply expected → below trend',
   rebap_dev_lag1: 'Yesterday above trend → mild persistence',
+  nrv_dev_lag1: 'D-1 system imbalance vs its own 5-day trend',
 }
 
 function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
@@ -365,10 +381,11 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
     <div className="bg-card border border-border rounded-lg p-4 space-y-4">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-foreground">Renewable Forecast-Error Signal</h2>
+          <h2 className="text-sm font-semibold text-foreground">reBAP Trend-Deviation Signal</h2>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Walk-forward OLS predicting reBAP excess above 5-day trend from D-1 renewable errors
-            ({data.n_oos} OOS days, {data.cost_per_mwh} €/MWh round-trip cost)
+            Walk-forward OLS predicting reBAP excess above its 5-day trend from D-1 wind
+            forecast, reBAP persistence and system imbalance ({data.n_oos} OOS days,{' '}
+            {data.cost_per_mwh} €/MWh round-trip cost)
           </p>
         </div>
         {st && (
@@ -395,18 +412,18 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
               <div className="text-muted-foreground">vs roll5={st.rebap_roll5.toFixed(0)} €</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Wind err D-1</div>
-              <div className={`font-semibold ${st.wind_err_lag1 < 0 ? 'text-amber-400' : 'text-sky-400'}`}>
-                {st.wind_err_lag1 >= 0 ? '+' : ''}{st.wind_err_lag1.toFixed(2)} pp
+              <div className="text-muted-foreground">reBAP dev D-1</div>
+              <div className={`font-semibold ${st.rebap_dev_lag1 < 0 ? 'text-amber-400' : 'text-sky-400'}`}>
+                {st.rebap_dev_lag1 >= 0 ? '+' : ''}{st.rebap_dev_lag1.toFixed(1)} €
               </div>
-              <div className="text-muted-foreground">{st.wind_err_lag1 < 0 ? 'underperf' : 'overperf'}</div>
+              <div className="text-muted-foreground">{st.rebap_dev_lag1 < 0 ? 'below trend' : 'above trend'}</div>
             </div>
             <div>
-              <div className="text-muted-foreground">Solar err D-1</div>
-              <div className={`font-semibold ${st.solar_err_lag1 < 0 ? 'text-amber-400' : 'text-sky-400'}`}>
-                {st.solar_err_lag1 >= 0 ? '+' : ''}{st.solar_err_lag1.toFixed(2)} pp
+              <div className="text-muted-foreground">NRV-Saldo dev D-1</div>
+              <div className={`font-semibold ${st.nrv_dev_lag1 < 0 ? 'text-amber-400' : 'text-sky-400'}`}>
+                {st.nrv_dev_lag1 >= 0 ? '+' : ''}{st.nrv_dev_lag1.toFixed(0)} MW
               </div>
-              <div className="text-muted-foreground">{st.solar_err_lag1 < 0 ? 'underperf' : 'overperf'}</div>
+              <div className="text-muted-foreground">{st.nrv_dev_lag1 < 0 ? 'more short than usual' : 'more long than usual'}</div>
             </div>
             <div>
               <div className="text-muted-foreground">Wind DA fc (D)</div>
@@ -417,7 +434,7 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
         </div>
       )}
 
-      {/* Stats grid */}
+      {/* Stats grid - model and naive_excess are both booked on the excess, apples-to-apples */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <SignalStatCard
           label="Model Sharpe (net)"
@@ -431,9 +448,9 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
           sub={`vs ${data.naive_accuracy_pct}% naive baseline`}
         />
         <SignalStatCard
-          label="Naive Sharpe (always long)"
-          value={fmtSharpe(data.naive.sharpe)}
-          sub={`${data.naive_pos_rate_pct}% days positive`}
+          label="Naive Sharpe (excess)"
+          value={fmtSharpe(data.naive_excess.sharpe)}
+          sub="always predicts above-trend"
         />
         <SignalStatCard
           label="Max drawdown (net)"
@@ -442,10 +459,21 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
         />
       </div>
 
+      {/* structural_long is a different question ("is reBAP usually positive") from the
+          excess-timing stats above and is deliberately not in that grid or the equity chart -
+          mixing them reads as a comparison neither number is meant to support. */}
+      <div className="text-[11px] text-muted-foreground bg-muted/20 border border-border/60 rounded px-3 py-2">
+        For context, unconditionally holding reBAP long every day (a different, much simpler
+        strategy - not a timing signal) would score Sharpe {fmtSharpe(data.structural_long.sharpe)}{' '}
+        ({data.naive_pos_rate_pct}% of days positive at the level). It answers "is reBAP usually
+        positive," not "is today above its own trend," so it is not a fair comparison to the
+        excess-timing numbers above.
+      </div>
+
       {/* Equity curve */}
       <div>
         <div className="text-xs text-muted-foreground mb-2">
-          Cumulative P&L (net, €/MWh notional) - model vs always-long naive
+          Cumulative P&L (net, excess basis, €/MWh notional) - model vs naive (always above-trend)
         </div>
         <ResponsiveContainer width="100%" height={180}>
           <LineChart data={chartData} margin={{ top: 2, right: 4, bottom: 0, left: 0 }}>
@@ -459,7 +487,7 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
             <YAxis tick={{ fontSize: 10, fill: '#64748b' }} width={50} tickFormatter={(v: number) => `${(v / 1000).toFixed(0)}k`} />
             <Tooltip
               contentStyle={{ background: '#0f1117', border: '1px solid #1e293b', fontSize: 11 }}
-              formatter={(v: unknown, name: unknown) => [`${Number(v).toFixed(0)} €`, name === 'model' ? 'Model (excess signal)' : 'Naive (always long)']}
+              formatter={(v: unknown, name: unknown) => [`${Number(v).toFixed(0)} €`, name === 'model' ? 'Model (excess signal)' : 'Naive (always above-trend)']}
               labelFormatter={(l: unknown) => String(l)}
             />
             <Line type="monotone" dataKey="model" stroke="#34d399" strokeWidth={1.5} dot={false} name="model" />
@@ -471,7 +499,7 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
             <span className="w-4 border-t-2 border-emerald-400 inline-block" /> model (excess signal)
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-4 border-t border-slate-400 border-dashed inline-block" /> naive (always long)
+            <span className="w-4 border-t border-slate-400 border-dashed inline-block" /> naive (always above-trend)
           </span>
         </div>
       </div>

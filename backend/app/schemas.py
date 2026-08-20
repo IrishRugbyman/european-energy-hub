@@ -20,6 +20,7 @@ class MetaResponse(BaseModel):
 
 # Gas map
 
+
 class StorageLatestRow(BaseModel):
     country: str
     gas_day: str
@@ -54,6 +55,7 @@ class StorageFacilitiesResponse(BaseModel):
 
 
 # Gas pace-to-target
+
 
 class GasPacePoint(BaseModel):
     gas_day: str
@@ -120,6 +122,7 @@ class ImbalanceProfileResponse(BaseModel):
 
 # Gas physical flows (ENTSOG)
 
+
 class GasFlowItem(BaseModel):
     country: str
     period_date: str
@@ -139,6 +142,7 @@ class GasFlowCountryResponse(BaseModel):
 
 
 # Gas country detail
+
 
 class SeasonalPoint(BaseModel):
     gas_day: str
@@ -171,10 +175,11 @@ class GasCountryResponse(BaseModel):
     prior_year: list[SeasonalPoint]
     seasonal_band: list[SeasonalBandPoint]
     yearly_tracks: list[GasYearTrack] = []
-    pace: "GasPaceStats | None" = None
+    pace: GasPaceStats | None = None
 
 
 # Power map
+
 
 class PowerLatestRow(BaseModel):
     zone: str
@@ -194,6 +199,7 @@ class PowerMapResponse(BaseModel):
 
 
 # Power zone detail
+
 
 class PowerHourlyPoint(BaseModel):
     ts: str
@@ -217,7 +223,7 @@ class PowerZoneResponse(BaseModel):
     hourly_recent: list[PowerHourlyPoint]
     daily_history: list[PowerDailyPoint]
     generation_mix: GenerationMixRow | None = None
-    generation_hourly: list["GenHourlyPoint"] = []
+    generation_hourly: list[GenHourlyPoint] = []
     net_import_mw: float | None = None
     net_import_date: str | None = None
 
@@ -257,6 +263,7 @@ class PowerSeasonalityResponse(BaseModel):
 
 # Spreads
 
+
 class SpreadsDailyPoint(BaseModel):
     price_date: str
     power_de: float | None
@@ -276,6 +283,7 @@ class SpreadsResponse(BaseModel):
 
 
 # Prices
+
 
 class PricesDailyPoint(BaseModel):
     price_date: str
@@ -333,6 +341,7 @@ class TtfSeasonalityResponse(BaseModel):
 
 # Flows
 
+
 class BorderFlowRow(BaseModel):
     from_zone: str
     to_zone: str
@@ -345,6 +354,7 @@ class FlowsResponse(BaseModel):
 
 
 # Power congestion (NTC vs scheduled)
+
 
 class CongestionRow(BaseModel):
     from_zone: str
@@ -389,6 +399,7 @@ class ZoneNetFlowsResponse(BaseModel):
 
 # Generation mix (used in PowerZoneResponse)
 
+
 class GenerationMixRow(BaseModel):
     zone: str
     gen_date: str | None
@@ -407,6 +418,7 @@ class GenerationMixRow(BaseModel):
 
 
 # Generation map + zone endpoints
+
 
 class GenMapItem(BaseModel):
     zone: str
@@ -470,6 +482,63 @@ class GenZoneResponse(BaseModel):
     dominant_fuel: str | None = None
     hourly: list[GenHourlyPoint]
     daily: list[GenDailyPoint]
+
+
+class IslandDailyPoint(BaseModel):
+    """One day of island supply. Every field is nullable: days inside the source gap are
+    present with all-null values so charts render a break rather than interpolating."""
+
+    gen_date: str
+    net_import_mw: float | None = None
+    min_import_mw: float | None = None
+    max_import_mw: float | None = None
+    local_gen_mw: float | None = None
+    oil_mw: float | None = None
+    renewable_mw: float | None = None
+    total_supply_mw: float | None = None
+    import_share_pct: float | None = None
+    renewable_share_pct: float | None = None
+
+
+class IslandHourlyPoint(BaseModel):
+    ts: str
+    net_import_mw: float | None = None
+    oil_mw: float | None = None
+    renewable_mw: float | None = None
+    total_supply_mw: float | None = None
+
+
+class IslandProfilePoint(BaseModel):
+    hour: int
+    net_import_mw: float | None = None
+    oil_mw: float | None = None
+    renewable_mw: float | None = None
+    import_share_pct: float | None = None
+
+
+class IslandResponse(BaseModel):
+    zone: str
+    gen_date: str | None = None
+    net_import_mw: float | None = None
+    local_gen_mw: float | None = None
+    oil_mw: float | None = None
+    renewable_mw: float | None = None
+    total_supply_mw: float | None = None
+    import_share_pct: float | None = None
+    renewable_share_pct: float | None = None
+    max_import_mw: float | None = None
+    peak_supply_mw: float | None = None
+    data_start: str | None = None
+    data_end: str | None = None
+    # Days inside [data_start, data_end] with no published data. Surfaced so the UI can
+    # state the gap instead of leaving an unexplained hole in the history chart.
+    gap_days: int | None = None
+    # Distinct days behind each hour of `profile`. The window is capped at a year but is
+    # currently far shorter, because the source gap swallows most of it.
+    profile_days: int | None = None
+    daily: list[IslandDailyPoint]
+    hourly: list[IslandHourlyPoint]
+    profile: list[IslandProfilePoint]
 
 
 class GenAnnualRow(BaseModel):
@@ -664,10 +733,9 @@ class RebapCoefStability(BaseModel):
 
 
 class RebapSignalCoef(BaseModel):
-    wind_err_lag1: RebapCoefStability
-    solar_err_lag1: RebapCoefStability
     wind_fc_d: RebapCoefStability
     rebap_dev_lag1: RebapCoefStability
+    nrv_dev_lag1: RebapCoefStability
 
 
 class RebapEquityPoint(BaseModel):
@@ -681,10 +749,9 @@ class RebapSignalToday(BaseModel):
     pred_excess: float
     direction: str
     rebap_roll5: float
-    wind_err_lag1: float
-    solar_err_lag1: float
     wind_fc_d: float
     rebap_dev_lag1: float
+    nrv_dev_lag1: float
 
 
 class RebapSignalResponse(BaseModel):
@@ -694,7 +761,8 @@ class RebapSignalResponse(BaseModel):
     naive_pos_rate_pct: float
     cost_per_mwh: float
     model: RebapSignalPerfBlock
-    naive: RebapSignalPerfBlock
+    naive_excess: RebapSignalPerfBlock
+    structural_long: RebapSignalPerfBlock
     coef: RebapSignalCoef
     equity_curve: list[RebapEquityPoint]
     signal_today: RebapSignalToday | None
@@ -808,8 +876,6 @@ class EuGenHourlyPoint(BaseModel):
 
 class EuGenHourlyResponse(BaseModel):
     rows: list[EuGenHourlyPoint]
-
-
 
 
 class EuDuckCurvePoint(BaseModel):
@@ -967,6 +1033,7 @@ class CrossZoneSpreadResponse(BaseModel):
 
 # US natural gas storage (EIA weekly regional)
 
+
 class UsStorageLatestRow(BaseModel):
     region: str
     week_date: str
@@ -1017,13 +1084,13 @@ class UsPaceWeekPoint(BaseModel):
 class UsPaceStats(BaseModel):
     current_bcf: float | None
     current_date: str
-    target_date: str          # Nov 1
+    target_date: str  # Nov 1
     target_bcf: float | None  # 5yr avg end-of-season Bcf (week 43)
     days_to_target: int
-    bcf_gap: float | None     # target_bcf - current_bcf
-    current_rate_bcf_w: float | None   # current weekly injection rate
+    bcf_gap: float | None  # target_bcf - current_bcf
+    current_rate_bcf_w: float | None  # current weekly injection rate
     seasonal_rate_bcf_w: float | None  # 5yr avg weekly injection rate at same woy
-    weeks_to_target: float | None      # bcf_gap / current_rate
+    weeks_to_target: float | None  # bcf_gap / current_rate
     on_track: bool | None
     history: list[UsPaceWeekPoint]
 
@@ -1033,6 +1100,7 @@ class UsPaceResponse(BaseModel):
 
 
 # US power generation
+
 
 class UsPowerFuelPoint(BaseModel):
     fueltype: str
@@ -1070,6 +1138,7 @@ class UsPowerHistoryResponse(BaseModel):
 
 # US NG power plants (cleanview + EIA-860)
 
+
 class UsNgPlant(BaseModel):
     plant_id: int
     name: str
@@ -1092,6 +1161,7 @@ class UsNgPlantsResponse(BaseModel):
 
 
 # Fundamental value model
+
 
 class FundamentalCoefficients(BaseModel):
     intercept: float
@@ -1896,30 +1966,30 @@ class UsStorageResponse(BaseModel):
     avg5_bcf: float
     min5_bcf: float
     max5_bcf: float
-    vs_avg5_pct: float          # % above/below 5yr avg
+    vs_avg5_pct: float  # % above/below 5yr avg
     regions: list[UsStorageRegionPoint]
     history: list[UsStorageHistPoint]
-    hh_usd_mmbtu: float | None    # latest HH price for context
+    hh_usd_mmbtu: float | None  # latest HH price for context
 
 
 # Phase 74: EUA surrender calendar seasonality
 class EuaMonthlySeasonalPoint(BaseModel):
-    month_num: int    # 1-12
-    month: str        # "Jan", "Feb", etc.
+    month_num: int  # 1-12
+    month: str  # "Jan", "Feb", etc.
     avg_eua: float
     ann_vol_pct: float
-    n: int            # number of trading days in history
+    n: int  # number of trading days in history
 
 
 class EuaSeasonalityResponse(BaseModel):
     monthly: list[EuaMonthlySeasonalPoint]
     current_month: int
     current_eua: float
-    current_rolling_30d_vol: float    # current 30d realized vol annualized
-    days_to_surrender: int            # days until April 30 surrender deadline
-    surrender_month: str              # "Apr"
-    historical_march_vol: float       # avg March annualized vol (pre-surrender)
-    historical_avg_vol: float         # full-history avg annualized vol
+    current_rolling_30d_vol: float  # current 30d realized vol annualized
+    days_to_surrender: int  # days until April 30 surrender deadline
+    surrender_month: str  # "Apr"
+    historical_march_vol: float  # avg March annualized vol (pre-surrender)
+    historical_avg_vol: float  # full-history avg annualized vol
 
 
 # Phase 73: Rolling gas-to-power pass-through coefficients
@@ -1952,13 +2022,13 @@ class LngArbPoint(BaseModel):
     date: str
     ttf: float
     hh_eur: float
-    arb_spread: float   # ttf - hh_eur; positive = EU premium
-    arb_net: float      # arb_spread - breakeven_cost; positive = LNG to EU economic
+    arb_spread: float  # ttf - hh_eur; positive = EU premium
+    arb_net: float  # arb_spread - breakeven_cost; positive = LNG to EU economic
 
 
 class LngArbResponse(BaseModel):
     rows: list[LngArbPoint]
-    breakeven_cost: float   # EUR/MWh all-in LNG cost assumption
+    breakeven_cost: float  # EUR/MWh all-in LNG cost assumption
     current_date: str
     current_ttf: float
     current_hh_eur: float
@@ -1967,7 +2037,7 @@ class LngArbResponse(BaseModel):
     current_lng_economic: bool
     avg_arb_spread_1y: float
     avg_arb_spread_full: float
-    pct_time_economic_1y: float     # % of last 365d where arb > breakeven
+    pct_time_economic_1y: float  # % of last 365d where arb > breakeven
     pct_time_economic_full: float
 
 
@@ -2002,8 +2072,8 @@ class FuelSwitchingEuaPoint(BaseModel):
     date: str
     eua_actual: float
     eua_switching: float
-    eua_premium: float   # eua_actual - eua_switching; >0 = gas marginal, <0 = coal marginal
-    regime: str          # 'gas' | 'coal' | 'transition'
+    eua_premium: float  # eua_actual - eua_switching; >0 = gas marginal, <0 = coal marginal
+    regime: str  # 'gas' | 'coal' | 'transition'
 
 
 class FuelSwitchingEuaResponse(BaseModel):
@@ -2012,8 +2082,8 @@ class FuelSwitchingEuaResponse(BaseModel):
     current_eua_switching: float
     current_eua_premium: float
     current_regime: str
-    eua_gap_to_switch: float   # how many EUR/t needed to change regime
-    days_gas_regime: int       # days out of last 90 that EUA was above switching price
+    eua_gap_to_switch: float  # how many EUR/t needed to change regime
+    days_gas_regime: int  # days out of last 90 that EUA was above switching price
     days_coal_regime: int
 
 
@@ -2035,7 +2105,7 @@ class StorageTtfFundamentalResponse(BaseModel):
     rolling_corr: list[StorageTtfRollingCorrPoint]
     full_pearson: float
     ols_alpha: float
-    ols_beta: float   # EUR/MWh per pp of storage deviation
+    ols_beta: float  # EUR/MWh per pp of storage deviation
     current_date: str
     current_storage_dev: float
     current_ttf: float
@@ -2236,6 +2306,7 @@ class ZoneDispersionResponse(BaseModel):
 
 # Phase 84: Hydro reservoir levels
 
+
 class HydroCountryLatest(BaseModel):
     country: str
     week_date: str
@@ -2270,6 +2341,7 @@ class HydroCountryResponse(BaseModel):
 
 
 # Hydro balance vs power price (hydrological balance as a price fundamental)
+
 
 class HydroBalanceCountry(BaseModel):
     country: str
