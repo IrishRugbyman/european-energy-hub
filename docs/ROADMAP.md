@@ -390,6 +390,68 @@ temperature. It does no fetching.
 - [ ] Test before display: does SPI lead the `hydro_reservoir` deviation and the Nordic price
       residual (Phase 85)? Ship a tile only if it adds over the reservoir level itself.
 
+## Next arc: from display to decisions (priority, ahead of every other phase)
+
+Audit of 2026-10-29: the hub is wide (10 pages, 109 endpoints, ~47k LOC) but almost all of it
+re-displays public data a desk already has. The decision content (spreads posture, imbalance
+call) is buried, stale or unscored, and nothing says what changed or how the models have done.
+No new pages until Phases 90-93 land. Freight runs the same arc (freight ROADMAP Phases 7-9).
+
+### Phase 90 - Credibility fixes: no live page may show stale data as current
+
+- [ ] reBAP stopped at **2026-07-27 21:45** in `imbalance_prices_de` while NRV is current, and
+      `ingest rebap-de` logs OK on every refresh. Find out whether Netztransparenz stopped
+      publishing or the fetcher broke, fix it, backfill, and make the fetcher fail loudly
+      (non-zero exit, so `OnFailure=alert-email` fires) when it returns zero new rows past the
+      expected lag.
+- [ ] Data-age staleness, not refresh-age: each endpoint reports its own latest data timestamp
+      and an expected max lag; `StaleBanner` and the `/imbalance` `isStale` check use that,
+      so a frozen dataset under a fresh refresh stamp shows as stale.
+- [ ] Correct the "~2 week lag" claim on `/imbalance` and in `CLAUDE.md` once the real
+      publication lag is measured.
+- [ ] README: signal numbers (says 70.3% / Sharpe 3.75; live endpoint returns 64.3% / 3.697 on
+      n_oos=667) and test count (says 108; 182 backend + ~75 vitest). Generate the headline
+      numbers from the endpoint instead of hand-typing them.
+- [ ] `/spreads` posture: the 4-7 Sharpes pick best-k by Sharpe. Either select k walk-forward
+      or report the deflated Sharpe beside the raw one, and label it on the page.
+- [ ] `/api/spreads/signal-posture` takes 3.6 s; precompute it in the refresh job.
+
+### Phase 91 - Forecast ledger: every live call logged before its outcome, then scored
+
+The single highest-value change: turns backtests into a live out-of-sample track record.
+
+- [ ] Append-only `forecast_ledger` table (decide: `market_data` via a loaders write path, shared
+      with freight, vs a hub-local store): `issued_at`, `model`, `model_version`, `target`,
+      `horizon`, `prediction` (point, direction, interval), `outcome`, `scored_at`. Insert-only;
+      a DB-level guard (trigger or revoked UPDATE) so a past call cannot be edited.
+- [ ] Writers in the refresh job, issued strictly before the target is observable: `/spreads`
+      posture per zone, `/imbalance` next-day direction, the `p2-imbalance` p2_d1 model
+      (AUC 0.647 vs 0.591 calendar), nuclear heat-risk alert level.
+- [ ] Scorer: fills `outcome` once the target publishes (respecting the reBAP lag), computes hit
+      rate, Brier/log-loss for probabilities, P&L net of costs where the call is a trade.
+- [ ] Unit tests: no-look-ahead guard (a call issued after its target's publication time is
+      rejected), scoring on a DST fall-back day, immutability.
+- [ ] `/track-record` page: per model, live hit rate and cumulative P&L since the ledger
+      started, beside the backtest number it was promised, with the start date stated.
+      No backfilled history.
+
+### Phase 92 - Daily brief: the page a trader would open first
+
+- [ ] `/brief` as the landing page: what moved since the previous gas/power day (DA by zone,
+      spreads, TTF/EUA, storage vs the 5-year band, flows), ranked by z-score of the move, not
+      a fixed list.
+- [ ] Today's live calls from the ledger with each model's trailing 30-day score.
+- [ ] Email digest via Resend after the 13:45 refresh (DA auction results are in by then),
+      with threshold alerts: spread residual |z| > 2, storage pace off target, heat-risk level.
+- [ ] Tests for the change-ranking and threshold logic, including a missing-zone day.
+
+### Phase 93 - Usability basics
+
+- [ ] CSV export on every chart-backing endpoint.
+- [ ] Arbitrary date range on the time-series pages (`/prices`, `/spreads`, `/imbalance`).
+- [ ] Split `spreads.tsx` (5,952 lines): the live posture/snapshot as the top section, the
+      research arc (Phases 46-85) collapsed below as documented research.
+
 ### Tooling - entsoemcp.com as an ad-hoc query tool (not a pipeline source)
 
 - [ ] `claude mcp add --transport http entsoe https://entsoemcp.com/mcp`. Free and keyless,
