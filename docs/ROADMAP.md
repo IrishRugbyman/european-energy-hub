@@ -373,6 +373,50 @@ fabricate a series to "complete" a factor.
 ### Phase 82 - Monthly cross-zone price dispersion (market integration metric) on /spreads [COMPLETE 2026-06-28]
 
 ### Phase 83 - Peak-offpeak spread inversion (EU duck curve) on /spreads [COMPLETE 2026-06-28]
+### Phase 88 - GB onto the map: NESO + Elexon fetchers (future)
+
+GB is the largest hole on /power: `power_prices` holds 45 zones and none is GB, because GB
+left the ENTSO-E Transparency Platform after Brexit. Both GB publishers are open and keyless
+(NESO CKAN `api.neso.energy/api/3/action/...` and Elexon `data.elexon.co.uk/bmrs/api/v1/...`
+both answered 200 on 2026-10-29) and both allow re-use with attribution.
+
+- [ ] `market-data/fetchers/elexon.py`: market index price (the GB day-ahead proxy), system
+      buy/sell price, transmission demand outturn. Half-hourly settlement periods: the 46- and
+      50-period clock-change days are mandatory fixtures, keyed in UTC.
+- [ ] `market-data/fetchers/neso.py`: historic generation mix (half-hourly from 2009, includes
+      embedded wind and solar), historic demand, embedded wind/solar forecasts. Call CKAN
+      directly (`datastore_search`, `datastore_search_sql`). Do not depend on `neso-energy-py`
+      (v0.1.0 of 2026-10-22, one commit, adds only name-to-resource lookup over the same API).
+- [ ] Currency: Elexon prices are GBP. Convert with the `fx` series at ingest time into a
+      separate column, never overwriting the native-currency value.
+- [ ] GB polygon in `bidding_zones.geojson`, GB rows in the price/generation analytics, and the
+      GB-FR/NL/BE/NO/DK interconnectors on the flows layer where ENTSO-E still publishes the
+      continental side.
+- [ ] Attribution on every surface showing GB: "Contains BMRS data (c) Elexon Limited copyright
+      and database right" and "Supported by National Energy SO Open Data".
+
+### Phase 89 - Drought indices as a hydro and nuclear-cooling fundamental (future)
+
+Drought moves Alpine and Nordic hydro (we already ingest `hydro_reservoir`) and French
+river-cooled nuclear (Phase 61 heat alert). `climate-indices` (v3.1.0, 2026-10-26,
+monocongo/climate_indices, Python 3.10-3.14) computes SPI/SPEI/PET from precipitation and
+temperature. It does no fetching.
+
+- [ ] Data first: ERA5 precipitation (`tp`) does not exist in our store, and the zarr covers DE
+      only. Extend the ERA5 ingest to `tp` + `t2m` over the NO/SE/CH/AT/FR hydro catchments at
+      monthly resolution (SPI needs 30+ years, so start the backfill in 1991).
+- [ ] SPI-3/SPI-6 and SPEI per catchment, computed in a shared module so freight's Rhine/Panama
+      signal (freight ROADMAP Phase 6) reuses it.
+- [ ] Test before display: does SPI lead the `hydro_reservoir` deviation and the Nordic price
+      residual (Phase 85)? Ship a tile only if it adds over the reservoir level itself.
+
+### Tooling - entsoemcp.com as an ad-hoc query tool (not a pipeline source)
+
+- [ ] `claude mcp add --transport http entsoe https://entsoemcp.com/mcp`. Free and keyless,
+      exposes ENTSO-E + Elexon + NESO series and derived metrics (capture price, TB spreads)
+      for one-off questions. Never a dependency of `refresh.py`: it is run by one person, with
+      no SLA, and ENTSO-E prices/generation carry no onward re-use licence. Useful to
+      cross-check our own ingests, and GB numbers before Phase 88 lands.
 
 ## 10. Deliberately NOT building (v1)
 
