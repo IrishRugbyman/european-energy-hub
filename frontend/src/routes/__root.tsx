@@ -189,6 +189,12 @@ function AboutModal({ onClose }: { onClose: () => void }) {
               <span className="text-foreground">Henry Hub</span> - CME NYMEX via yfinance
             </li>
             <li>
+              <span className="text-foreground">Great Britain price</span> - Elexon BMRS Market Index (EPEX), GBP converted at the ECB reference rate. Contains BMRS data &copy; Elexon Limited copyright and database right
+            </li>
+            <li>
+              <span className="text-foreground">Great Britain generation mix</span> - NESO Data Portal. Supported by National Energy SO Open Data
+            </li>
+            <li>
               <span className="text-foreground">Cross-border flows</span> - ENTSO-E Transparency Platform
             </li>
             <li>

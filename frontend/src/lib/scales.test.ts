@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE, carbonIntensityColor, computeCarbonIntensity, EMISSION_FACTORS, gasFlowColor, priceDivergenceColor } from './scales'
+import { gasFillColor, powerPriceColor, renewablePctColor, countryName, zoneName, dominantFuelColor, FUEL_PALETTE, carbonIntensityColor, computeCarbonIntensity, EMISSION_FACTORS, gasFlowColor, priceDivergenceColor, ZONE_PRICE_NOTES } from './scales'
 
 describe('gasFillColor', () => {
   it('returns grey for null/undefined', () => {
@@ -342,5 +342,15 @@ describe('priceDivergenceColor', () => {
     expect(priceDivergenceColor(50)).toBe('#7f1d1d')
     expect(priceDivergenceColor(-50)).toBe('#7f1d1d')
     expect(priceDivergenceColor(76)).toBe('#7f1d1d')
+  })
+})
+
+describe('GB zone', () => {
+  it('has a display name', () => {
+    expect(zoneName('GB')).toBe('Great Britain')
+  })
+  it('carries a price note saying it is not a day-ahead auction price', () => {
+    expect(ZONE_PRICE_NOTES.GB.detail).toMatch(/not a day-ahead auction/i)
+    expect(ZONE_PRICE_NOTES['DE-LU']).toBeUndefined()
   })
 })

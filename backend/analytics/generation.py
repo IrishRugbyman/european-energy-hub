@@ -20,6 +20,8 @@ from loaders._base import _query, get_read_conn
 from loaders.power import load_installed_capacity
 from loguru import logger
 
+from analytics.gb import daily_from_long, load_generation_long
+
 # Fuel types stored in power_generation_actual after fetch_generation_full
 _SOURCE_TECHS = (
     "biomass",
@@ -296,6 +298,14 @@ def _build_generation_daily() -> pd.DataFrame:
     if df.empty:
         return _empty_daily()
 
+    # GB (NESO) rows, clipped to the ENTSO-E window: NESO reaches back to 2009, and GB
+    # alone in the pre-2021 years would turn the all-zone annual aggregates into GB.
+    first = pd.Timestamp(df["gen_date"].min())
+    gb = daily_from_long(load_generation_long(since=first))
+    if not gb.empty:
+        gb["gen_date"] = gb["gen_date"].dt.date
+        df = pd.concat([df, gb[gb["gen_date"] >= first.date()]], ignore_index=True)
+
     wide = _pivot_and_merge_wind(df, "gen_date")
     wide["gen_date"] = wide["gen_date"].astype(str)
     cols = ["zone", "gen_date"] + list(FUEL_COLS) + ["renewable_pct", "total_mw"]
@@ -318,6 +328,12 @@ def _build_generation_hourly_recent() -> pd.DataFrame:
     except Exception:
         logger.exception("_build_generation_hourly_recent failed")
         return _empty_hourly()
+
+    gb = load_generation_long(
+        since=pd.Timestamp.now(tz="UTC").tz_localize(None) - pd.Timedelta(days=10)
+    )
+    if not gb.empty:
+        df = pd.concat([df, gb], ignore_index=True) if not df.empty else gb
 
     if df.empty:
         return _empty_hourly()

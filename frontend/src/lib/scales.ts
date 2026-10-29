@@ -148,6 +148,7 @@ const ZONE_NAMES: Record<string, string> = {
   'FI':     'Finland',
   'FR':     'France',
   'FR-COR': 'Corsica (France)',
+  'GB':     'Great Britain',
   'GR':     'Greece',
   'HR':     'Croatia',
   'HU':     'Hungary',
@@ -185,6 +186,17 @@ const ZONE_NAMES: Record<string, string> = {
 
 export function zoneName(zone: string): string {
   return ZONE_NAMES[zone] ?? zone
+}
+
+/** Zones whose price is not an ENTSO-E day-ahead auction result, with what it is instead.
+ *  GB left the ENTSO-E platform after Brexit; its price comes from Elexon. */
+export const ZONE_PRICE_NOTES: Record<string, { badge: string; detail: string }> = {
+  GB: {
+    badge: 'Market index',
+    detail:
+      'Elexon Market Index Price (EPEX short-term trades), converted from GBP at the ECB ' +
+      'reference rate. Not a day-ahead auction price, so compare levels with care.',
+  },
 }
 
 // Zones that share a country and whose prices should be compared side-by-side.

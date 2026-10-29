@@ -79,6 +79,11 @@ INGEST_FETCHERS = [
     # realtime feed keeps only a rolling 14-day window, so this must run at least once a
     # fortnight or the intervening days are lost for good.
     "edf-sei-corsica",
+    # Great Britain is not an ENTSO-E zone since Brexit: prices from Elexon (converted at
+    # the ECB fixing, so ecb-fx must run with them), generation mix from NESO.
+    "ecb-fx",
+    "gb-market-index",
+    "gb-generation",
     "entsog",
     "rebap-de",
     # Same table (imbalance_prices_de.nrv_mw), feeds compute_rebap_signal's nrv_dev_lag1

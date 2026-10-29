@@ -10,6 +10,8 @@ from __future__ import annotations
 import pandas as pd
 from loaders._base import _query, get_read_conn
 
+from analytics.gb import cap_at_day, load_price_rows
+
 
 def build_power_tables() -> dict[str, pd.DataFrame]:
     """Return three DataFrames ready to write into energy_hub.duckdb.
@@ -35,6 +37,12 @@ def build_power_tables() -> dict[str, pd.DataFrame]:
         )
     finally:
         conn.close()
+
+    # GB is not on ENTSO-E since Brexit: its rows come from Elexon via analytics.gb.
+    since = pd.Timestamp.now().normalize() - pd.DateOffset(years=2) - pd.Timedelta(days=35)
+    gb = cap_at_day(load_price_rows(since), raw["ts"].max() if not raw.empty else None)
+    if not gb.empty:
+        raw = pd.concat([raw, gb], ignore_index=True).sort_values(["zone", "ts"])
 
     if raw.empty:
         empty_daily = pd.DataFrame(

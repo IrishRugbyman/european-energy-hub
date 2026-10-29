@@ -4,6 +4,45 @@
 
 - [2026-Q2](changelog/2026-Q2.md) - 108 entries, 2026-06-12 to 2026-06-28
 
+## 2026-10-29 - Phase 88: Great Britain on /power and /generation
+
+GB is now zone `GB` on the map, in the zone panel and in the generation views. It was the
+largest hole: GB left the ENTSO-E Transparency Platform after Brexit, so the 45 ENTSO-E
+zones never included it. Data comes from the new market-data fetchers (`gb-market-index`,
+`gb-generation`, `ecb-fx`; detail in `shared/market-data/docs/CHANGELOG.md`, 2026-10-29),
+now in `INGEST_FETCHERS`.
+
+- **`analytics/gb.py`** reshapes GB into the long formats the ENTSO-E readers already
+  produce, so GB flows through `build_power_tables` and the generation builders unchanged
+  (the FR-COR pattern). Prices are hourly means of the half-hourly EUR price, and an hour
+  with no trades is dropped, not filled. Generation uses the ENTSO-E tech vocabulary:
+  transmission and embedded wind are summed into wind, pumped-storage output stays in hydro
+  as it does for the ENTSO-E zones, and imports and storage discharge are left out.
+- **Same delivery day as everyone else.** ENTSO-E prices land one day behind (the ingest on
+  day D covers D-1), while Elexon's index is complete for D-1 from midnight. Uncapped, GB
+  alone pushed `/api/power/map`'s `price_date` to a day 45 zones did not have. GB is capped
+  at the ENTSO-E zones' last day (`cap_at_day`), and the UTC day in progress is dropped
+  (`complete_days_only`) so the current day never shows as a null or night-only base.
+- **GB generation is clipped to the ENTSO-E window.** NESO reaches back to 2009, and GB
+  alone in the pre-2021 years would have turned the all-zone annual aggregates into GB.
+- **The price is labelled for what it is.** The zone panel carries a "Market index" badge
+  saying it is the Elexon Market Index Price (EPEX short-term trades), not a day-ahead
+  auction price (`ZONE_PRICE_NOTES`). The About sources list carries both required
+  attributions.
+- **Polygon:** `frontend/scripts/add_gb_zone.py` adds the electricitymaps `GB` feature
+  (Great Britain without Northern Ireland, which is in IE-SEM), simplified like the other
+  zones.
+- **Verified live:** all 46 zones share `price_date` 2026-10-27. GB base was 148.8 EUR/MWh
+  that day, against FR 163.8 and NL 160.1. GB on 2026-10-28 averaged 199.6 GBP/MWh
+  (238 EUR) in the source table, before the cap.
+- Tests: `tests/test_gb.py` (11, pure reshaping and day logic) and the GB name/note cases
+  in `scales.test.ts`. The first version of the aware-`now` test agreed with a bug: it
+  dropped the timezone instead of converting to UTC. Both were fixed.
+
+**Observed, not changed:** ENTSO-E prices are always a day behind because `fetch_prices`
+ends its window at `date.today()`. The next day's auction (published around 12:45 CET)
+is never fetched, although it is available at the 13:45 refresh.
+
 ## 2026-08-19 - Phases 86+87: the /imbalance signal re-framed, NRV-Saldo wired in, the lag surfaced
 
 **Verified before touching anything**: `nrv-saldo-de` had already been fetched into

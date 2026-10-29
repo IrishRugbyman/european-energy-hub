@@ -29,7 +29,7 @@ import {
   type HydroCountryResponse,
   type IslandResponse,
 } from '@/lib/api'
-import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS, ZONE_TO_HYDRO_COUNTRY, hasNoPrice, NO_PRICE_FILL, NO_PRICE_STROKE } from '@/lib/scales'
+import { powerPriceColor, renewablePctColor, computeCarbonIntensity, FUEL_PALETTE, zoneName, ZONE_SIBLINGS, ZONE_TO_HYDRO_COUNTRY, hasNoPrice, NO_PRICE_FILL, NO_PRICE_STROKE, ZONE_PRICE_NOTES } from '@/lib/scales'
 import { fmtDelta } from '@/lib/utils'
 import { buildIslandHistory } from '@/lib/island'
 
@@ -163,6 +163,14 @@ export function UnifiedZonePanel({ zone, powerLatest, genItem, onClose, selected
               title="Not an ENTSO-E bidding zone - clears inside FR, operated by EDF SEI on a regulated tariff"
             >
               No market price
+            </span>
+          )}
+          {ZONE_PRICE_NOTES[zone] && (
+            <span
+              className="text-xs font-medium px-1.5 py-0.5 rounded-sm bg-muted text-muted-foreground"
+              title={ZONE_PRICE_NOTES[zone].detail}
+            >
+              {ZONE_PRICE_NOTES[zone].badge}
             </span>
           )}
           {!noPrice && powerLatest?.base_eur != null && (

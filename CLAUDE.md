@@ -57,6 +57,10 @@ FastAPI + DuckDB + uv venv. Nginx + certbot TLS. Cloudflare proxy.
 - AGSI+ gas storage (agsi.gie.eu) - gas dashboard
 - ENTSO-E Transparency (transparency.entsoe.eu) - power prices, cross-border flows (NTC, scheduled, congestion), generation mix (A75 full fuel mix including nuclear; replaces Rebase Grid API as of Phase 12)
 - ENTSOG (entsog.eu) - physical gas flows overlay on /gas
+- Elexon BMRS + NESO Data Portal - Great Britain (zone `GB`, not on ENTSO-E since Brexit). Price is
+  the Elexon Market Index (EPEX short-term trades), not a day-ahead auction price, converted from
+  GBP at the ECB fixing; generation mix from NESO. Reshaped into the ENTSO-E long formats by
+  `analytics/gb.py` and capped at the ENTSO-E zones' last day so the map compares one day.
 - Netztransparenz (netztransparenz.de) - German reBAP imbalance prices (/imbalance), via the
   four TSOs' Daten-API (fetcher `rebap-de`). Not SMARD: the earlier SMARD module-4169 series was
   the DE/LU day-ahead price mislabelled as reBAP and has been purged. See the post-mortem in
