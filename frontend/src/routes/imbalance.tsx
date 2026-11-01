@@ -445,7 +445,7 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
         <SignalStatCard
           label="Excess accuracy"
           value={`${data.accuracy_pct}%`}
-          sub={`vs ${data.naive_accuracy_pct}% naive baseline`}
+          sub={`vs ${data.naive_accuracy_pct}% naive, ${data.weekday_accuracy_pct}% weekday alone`}
         />
         <SignalStatCard
           label="Naive Sharpe (excess)"
@@ -457,6 +457,16 @@ function ImbalanceSignalSection({ data }: { data: RebapSignalResponse }) {
           value={`${data.model.max_dd_eur.toFixed(0)} €`}
           sub="excess-signal strategy"
         />
+      </div>
+
+      {/* Weekday-only baseline: an offline head-to-head (quant/power-balancing/imbalance-compare,
+          2026-11-01) found this signal does not reliably beat the calendar, so the page says so. */}
+      <div className="text-[11px] text-muted-foreground bg-muted/20 border border-border/60 rounded px-3 py-2">
+        Most of this accuracy is calendar. Predicting each day from its weekday alone, fitted on
+        the same trailing 252-day window, scores {data.weekday_accuracy_pct}% on the same days, so
+        the model's own contribution is the {(data.accuracy_pct - data.weekday_accuracy_pct).toFixed(1)}{' '}
+        point gap above that. A paired block-bootstrap test in Nov 2026 could not separate that gap
+        from zero at 95%.
       </div>
 
       {/* structural_long is a different question ("is reBAP usually positive") from the

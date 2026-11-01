@@ -4120,6 +4120,7 @@ def imbalance_signal():
         n_oos=result["n_oos"],
         accuracy_pct=result["accuracy_pct"],
         naive_accuracy_pct=result["naive_accuracy_pct"],
+        weekday_accuracy_pct=result["weekday_accuracy_pct"],
         naive_pos_rate_pct=result["naive_pos_rate_pct"],
         cost_per_mwh=result["cost_per_mwh"],
         model=perf(result["model"]),

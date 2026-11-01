@@ -674,6 +674,7 @@ def test_imbalance_signal(client):
     assert data["n_oos"] > 0
     assert 0 < data["accuracy_pct"] <= 100
     assert 0 < data["naive_accuracy_pct"] <= 100
+    assert 0 < data["weekday_accuracy_pct"] <= 100
     assert 0 < data["naive_pos_rate_pct"] <= 100
     assert data["cost_per_mwh"] == 2.0
     # model / naive_excess (excess-basis) and structural_long (level-basis, reported

@@ -758,6 +758,7 @@ class RebapSignalResponse(BaseModel):
     n_oos: int
     accuracy_pct: float
     naive_accuracy_pct: float
+    weekday_accuracy_pct: float
     naive_pos_rate_pct: float
     cost_per_mwh: float
     model: RebapSignalPerfBlock

@@ -1160,6 +1160,8 @@ export interface RebapSignalResponse {
   n_oos: number
   accuracy_pct: number
   naive_accuracy_pct: number
+  /** Causal day-of-week-only baseline on the same OOS days: the calendar the model must beat. */
+  weekday_accuracy_pct: number
   naive_pos_rate_pct: number
   cost_per_mwh: number
   /** Booked on the reBAP excess above its 5-day trend (see backend compute_rebap_signal). */

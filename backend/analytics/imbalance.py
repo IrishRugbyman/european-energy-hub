@@ -208,6 +208,41 @@ def _coef_stability(arr: np.ndarray) -> dict:
     return {"mean": round(m, 4), "std": round(s, 4), "cv": cv}
 
 
+def weekday_baseline_signs(
+    dow: np.ndarray, y: np.ndarray, start: int, train: int = _SIGNAL_TRAIN
+) -> np.ndarray:
+    """Causal day-of-week baseline: predict each OOS day's excess sign from its weekday alone.
+
+    For every ``t >= start`` the share of positive excesses per weekday is taken over the same
+    trailing window the model trains on (``[max(0, t - train), t)``, so day ``t`` never sees
+    itself), and the prediction is +1 when that share is at least one half, else -1. A
+    weekday absent from the window falls back to +1, the naive baseline's call.
+
+    It exists because ``imbalance-compare`` (2026-11-01) found this signal's excess accuracy
+    is what the weekday alone delivers (0.612 vs 0.646 on 2024-01..2025-03), and a page that
+    shows only the always-above-trend baseline overstates the model.
+
+    Args:
+        dow: Weekday per row, 0 = Monday.
+        y: The target excess per row.
+        start: First out-of-sample row.
+        train: Trailing window length in rows.
+
+    Returns:
+        Array of +1/-1 predictions, one per row from ``start`` to the end.
+    """
+    if not 0 <= start <= len(y):
+        raise ValueError(f"start must be within [0, {len(y)}], got {start}")
+    pos = (np.asarray(y, dtype=float) > 0).astype(float)
+    dow = np.asarray(dow)
+    out = np.empty(len(y) - start)
+    for i, t in enumerate(range(start, len(y))):
+        t0 = max(0, t - train)
+        same = dow[t0:t] == dow[t]
+        out[i] = 1.0 if not same.any() or pos[t0:t][same].mean() >= 0.5 else -1.0
+    return out
+
+
 def compute_rebap_signal(db_query: Callable) -> dict:
     """Walk-forward OLS reBAP excess-above-trend signal.
 
@@ -332,6 +367,12 @@ def compute_rebap_signal(db_query: Callable) -> dict:
     )
     # Naive excess accuracy: always predict positive excess (unconditionally optimistic)
     naive_excess_accuracy = round(float(np.mean(actuals_excess > 0) * 100), 1)
+    # Weekday-only baseline on the same OOS days and window: the comparator the model has to
+    # beat for its features to be adding anything beyond the calendar.
+    weekday_signs = weekday_baseline_signs(
+        df["price_date"].dt.dayofweek.to_numpy(), y_excess, start
+    )
+    weekday_accuracy = round(float(np.mean(weekday_signs == np.sign(actuals_excess)) * 100), 1)
 
     # Equity curve: model vs naive_excess only, both on the excess basis. structural_long is
     # a different question (see docstring) and is not plotted alongside them - a shared chart
@@ -378,6 +419,7 @@ def compute_rebap_signal(db_query: Callable) -> dict:
         "n_oos": int(len(preds_excess)),
         "accuracy_pct": excess_accuracy,
         "naive_accuracy_pct": naive_excess_accuracy,
+        "weekday_accuracy_pct": weekday_accuracy,
         "naive_pos_rate_pct": naive_pos_rate,
         "cost_per_mwh": _SIGNAL_COST,
         "model": {
