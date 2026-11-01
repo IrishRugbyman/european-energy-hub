@@ -1362,7 +1362,7 @@ export interface DigitalResult {
   call_price: number; put_price: number
   parity_sum: number; disc: number
   call_delta: number; call_gamma: number; call_vega: number; call_theta: number
-  put_delta: number; put_gamma: number
+  put_delta: number; put_gamma: number; put_vega: number; put_theta: number
 }
 
 export interface AsianRequest {

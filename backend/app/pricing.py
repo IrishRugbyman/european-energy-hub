@@ -15,7 +15,9 @@ monkeypatch them.
 from __future__ import annotations
 
 import json
+import math
 import subprocess
+import threading
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
@@ -32,6 +34,14 @@ _CRACK_CLI = quant_project_dir("pricing", "crack-options") / "cli.py"
 BINARY_TIMEOUT_S = 15
 CALIBRATE_TIMEOUT_S = 30
 
+#: Pricer subprocesses allowed at once. The box has 8 shared vCPUs and one uvicorn
+#: process serving the whole hub; a Monte Carlo request can hold a core for 15 s, and the
+#: app's slowapi limiter is not wired, so this is the only thing between a public form and
+#: a pegged CPU. A request that cannot get a slot within BUSY_WAIT_S gets a 503.
+MAX_CONCURRENT_RUNS = 2
+BUSY_WAIT_S = 5.0
+_slots = threading.BoundedSemaphore(MAX_CONCURRENT_RUNS)
+
 
 def _run(*args: str) -> dict:
     """Run the C++ pricer with ``args`` and return its JSON object.
@@ -47,6 +57,8 @@ def _run(*args: str) -> dict:
             "cd ~/quant/pricing/options-pricing-and-simulation && "
             "g++ -std=c++17 -Isrc src/*.cpp apps/pricer_api.cpp -o build/pricer_api",
         )
+    if not _slots.acquire(timeout=BUSY_WAIT_S):
+        raise HTTPException(status_code=503, detail="Pricer busy; try again in a few seconds.")
     try:
         result = subprocess.run(
             [str(BINARY), *args],
@@ -61,6 +73,8 @@ def _run(*args: str) -> dict:
         ) from exc
     except OSError as exc:
         raise HTTPException(status_code=503, detail=f"Pricing binary not runnable: {exc}") from exc
+    finally:
+        _slots.release()
     try:
         data = json.loads(result.stdout)
     except json.JSONDecodeError as exc:
@@ -317,10 +331,51 @@ def lsm(req: LSMRequest):
     )
 
 
+def digital_greeks(S: float, K: float, T: float, r: float, sigma: float) -> dict[str, float]:
+    """Black-Scholes Greeks of cash-or-nothing digitals paying 1, no dividend.
+
+    The C++ binary returns the vanilla option's Greeks for these fields (its gamma equals
+    its delta at S=K, its vega is the vanilla S*phi(d1)*sqrt(T)), so they are recomputed
+    here; its prices are right and kept. Units match the vanilla pricer: vega per unit of
+    sigma, theta per year (dV/dt = -dV/dT).
+
+    With D = exp(-rT), d2 = (ln(S/K) + (r - sigma^2/2)T) / (sigma sqrt T), d1 = d2 + sigma sqrt T:
+    C = D N(d2), P = D N(-d2); dC/dS = D phi(d2) / (S sigma sqrt T);
+    d2C/dS2 = -D phi(d2) d1 / (S^2 sigma^2 T); dC/dsigma = -D phi(d2) d1 / sigma;
+    dC/dT = -r C + D phi(d2) dd2/dT with dd2/dT = -ln(S/K) / (2 sigma T^1.5) + (r - sigma^2/2) / (2 sigma sqrt T).
+    The put's Greeks follow from P = D - C.
+    """
+    sq = math.sqrt(T)
+    d2 = (math.log(S / K) + (r - 0.5 * sigma**2) * T) / (sigma * sq)
+    d1 = d2 + sigma * sq
+    disc = math.exp(-r * T)
+    pdf = math.exp(-0.5 * d2 * d2) / math.sqrt(2 * math.pi)
+    cdf = 0.5 * (1 + math.erf(d2 / math.sqrt(2)))
+    call = disc * cdf
+    delta = disc * pdf / (S * sigma * sq)
+    gamma = -disc * pdf * d1 / (S**2 * sigma**2 * T)
+    vega = -disc * pdf * d1 / sigma
+    dd2_dT = -math.log(S / K) / (2 * sigma * T**1.5) + (r - 0.5 * sigma**2) / (2 * sigma * sq)
+    dC_dT = -r * call + disc * pdf * dd2_dT
+    dP_dT = -r * disc - dC_dT  # P = D - C, dD/dT = -r D
+    return {
+        "call_delta": delta,
+        "call_gamma": gamma,
+        "call_vega": vega,
+        "call_theta": -dC_dT,
+        "put_delta": -delta,
+        "put_gamma": -gamma,
+        "put_vega": -vega,
+        "put_theta": -dP_dT,
+    }
+
+
 @router.post("/digital")
 def digital(req: DigitalRequest):
     """Price cash-or-nothing digital call and put options (Black-Scholes closed form)."""
-    return _run("digital", str(req.S), str(req.K), str(req.T), str(req.r), str(req.sigma))
+    out = _run("digital", str(req.S), str(req.K), str(req.T), str(req.r), str(req.sigma))
+    out.update(digital_greeks(req.S, req.K, req.T, req.r, req.sigma))
+    return out
 
 
 @router.post("/asian")
@@ -387,6 +442,8 @@ def _calibrate_crack(window: int = 252) -> dict:
     if not _CRACK_CLI.exists():
         raise HTTPException(status_code=503, detail="crack-options calibration is not available")
     py = str(_CRACK_VENV_PY) if _CRACK_VENV_PY.exists() else "python3"
+    if not _slots.acquire(timeout=BUSY_WAIT_S):
+        raise HTTPException(status_code=503, detail="Pricer busy; try again in a few seconds.")
     try:
         result = subprocess.run(
             [py, str(_CRACK_CLI), "calibrate", "--window", str(window)],
@@ -400,6 +457,8 @@ def _calibrate_crack(window: int = 252) -> dict:
         ) from exc
     except OSError as exc:
         raise HTTPException(status_code=503, detail=f"Calibration not runnable: {exc}") from exc
+    finally:
+        _slots.release()
     if result.returncode != 0:
         raise HTTPException(
             status_code=500, detail=f"Calibration failed: {result.stderr or result.stdout}"

@@ -378,3 +378,72 @@ def test_pricing_crack_manual_inputs_price_is_consistent(client):
     assert out["crack_spot"] == pytest.approx((2 * 2.50 * 42 + 2.60 * 42) / 3 - 70.0, abs=1e-3)
     assert out["mc"] == pytest.approx(out["kirk"], rel=0.1)
     assert out["mc"] >= 0
+
+
+# ---- digital Greeks: closed forms checked against the binary's own prices ---------------
+# The oracle is a central finite difference of the C++ pricer's digital PRICE (correct, and
+# independent of `digital_greeks`). The binary prints 6 decimals, so the steps are chosen
+# for rounding error well under the tolerances. Two points, neither where a Greek is zero
+# by construction (d1 = 0 would zero gamma and vega).
+
+_DIGITAL_POINTS = [(100.0, 100.0, 1.0, 0.05, 0.20), (110.0, 100.0, 0.5, 0.03, 0.25)]
+
+
+def _digital_prices(S, K, T, r, sigma):
+    out = pricing._run("digital", str(S), str(K), str(T), str(r), str(sigma))
+    return out["call_price"], out["put_price"]
+
+
+@pytest.mark.skipif(not pricing.BINARY.exists(), reason="pricer binary not built")
+@pytest.mark.parametrize("point", _DIGITAL_POINTS)
+@pytest.mark.parametrize("leg", [0, 1], ids=["call", "put"])
+def test_digital_greeks_match_finite_differences_of_the_binary_price(point, leg):
+    S, K, T, r, sigma = point
+    name = "call" if leg == 0 else "put"
+    g = pricing.digital_greeks(S, K, T, r, sigma)
+
+    def price(**kw):
+        p = {"S": S, "K": K, "T": T, "r": r, "sigma": sigma} | kw
+        return _digital_prices(p["S"], p["K"], p["T"], p["r"], p["sigma"])[leg]
+
+    hs, hv, ht = 1.0, 0.01, 0.01
+    v0 = price()
+    fd_delta = (price(S=S + hs) - price(S=S - hs)) / (2 * hs)
+    fd_gamma = (price(S=S + hs) - 2 * v0 + price(S=S - hs)) / hs**2
+    fd_vega = (price(sigma=sigma + hv) - price(sigma=sigma - hv)) / (2 * hv)
+    fd_theta = -(price(T=T + ht) - price(T=T - ht)) / (2 * ht)
+    assert g[f"{name}_delta"] == pytest.approx(fd_delta, abs=2e-5)
+    assert g[f"{name}_gamma"] == pytest.approx(fd_gamma, abs=2e-5)
+    assert g[f"{name}_vega"] == pytest.approx(fd_vega, abs=2e-3)
+    assert g[f"{name}_theta"] == pytest.approx(fd_theta, abs=2e-3)
+
+
+def test_digital_greeks_put_call_relations():
+    g = pricing.digital_greeks(95.0, 100.0, 0.75, 0.04, 0.3)
+    disc = math.exp(-0.04 * 0.75)
+    assert g["put_delta"] == -g["call_delta"]
+    assert g["put_gamma"] == -g["call_gamma"]
+    assert g["put_vega"] == -g["call_vega"]
+    # P = D - C, so theta_P = -dP/dT = r D + dC/dT = r D - theta_C
+    assert g["put_theta"] == pytest.approx(0.04 * disc - g["call_theta"], abs=1e-12)
+
+
+# ---- the concurrency cap ----------------------------------------------------------------
+
+
+def test_pricer_returns_503_when_every_slot_is_taken(monkeypatch):
+    monkeypatch.setattr(pricing, "BUSY_WAIT_S", 0.01)
+    taken = 0
+    try:
+        while pricing._slots.acquire(blocking=False):
+            taken += 1
+        assert taken == pricing.MAX_CONCURRENT_RUNS
+        if not pricing.BINARY.exists():
+            pytest.skip("pricer binary not built")
+        with pytest.raises(pricing.HTTPException) as info:
+            pricing._run("digital", "100", "100", "1", "0.05", "0.2")
+        assert info.value.status_code == 503
+    finally:
+        for _ in range(taken):
+            pricing._slots.release()
+    assert pricing._run("digital", "100", "100", "1", "0.05", "0.2")["call_price"] > 0

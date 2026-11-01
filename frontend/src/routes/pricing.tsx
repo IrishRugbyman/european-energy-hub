@@ -13,7 +13,8 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { CHART, SERIES, SMILE_COLORS, TOOLTIP_STYLE } from '@/lib/pricingTheme'
 import {
   averagingVol, bsPrice, bsProfile, geometricAsian, heatTextColor, HEAT_LEGEND_GRADIENT,
-  mertonSeries, normCDF, normPDF, rgbCss, spreadPayoffData, volHeatRgb,
+  mertonSeries, normCDF, normPDF, perCalendarDay, perRatePoint, perVolPoint, rgbCss,
+  spreadPayoffData, volHeatRgb,
 } from '@/lib/pricingMath'
 import { api, type PricingRequest, type BSResult, type CRRResult,
   type SpreadRequest, type SpreadResult, type SurfaceResult, type OptionType,
@@ -192,9 +193,9 @@ function BSPricerPanel() {
                   {([
                     ['Delta', result.delta,  `P&L per +$1 in spot`],
                     ['Gamma', result.gamma,  'Delta change per +$1 in spot'],
-                    ['Vega',  result.vega,   'P&L per +1pp in vol'],
-                    ['Theta', result.theta,  'Daily time decay'],
-                    ['Rho',   result.rho,    'P&L per +1pp in rate'],
+                    ['Vega',  perVolPoint(result.vega),     'P&L per +1pp in vol'],
+                    ['Theta', perCalendarDay(result.theta), 'Time decay per calendar day'],
+                    ['Rho',   perRatePoint(result.rho),     'P&L per +1pp in rate'],
                   ] as [string, number, string][]).map(([name, val, desc]) => (
                     <tr key={name} className="border-b border-border last:border-0">
                       <td className="py-1.5 pr-4 text-primary font-semibold">{name}</td>
@@ -1455,9 +1456,9 @@ function DigitalPanel() {
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Call vega / theta</span>
+                    <span className="text-muted-foreground">Call vega (1pp) / theta (day)</span>
                     <span className="font-mono text-foreground">
-                      {result.call_vega.toFixed(4)} / {result.call_theta.toFixed(4)}
+                      {perVolPoint(result.call_vega).toFixed(5)} / {perCalendarDay(result.call_theta).toFixed(5)}
                     </span>
                   </div>
                 </div>

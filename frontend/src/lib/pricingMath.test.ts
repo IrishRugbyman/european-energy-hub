@@ -9,6 +9,9 @@ import {
   normCDF,
   normPDF,
   spreadPayoffData,
+  perCalendarDay,
+  perRatePoint,
+  perVolPoint,
   volHeatRgb,
 } from './pricingMath'
 import { HEAT_TEXT_DARK, HEAT_TEXT_LIGHT } from './pricingTheme'
@@ -144,5 +147,24 @@ describe('volHeatRgb / heatTextColor', () => {
     expect(heatTextColor(volHeatRgb(0.5, 0, 1))).toBe(HEAT_TEXT_DARK)
     expect(heatTextColor(volHeatRgb(1, 0, 1))).toBe(HEAT_TEXT_LIGHT)
     expect(heatTextColor(volHeatRgb(0, 0, 1))).toBe(HEAT_TEXT_LIGHT)
+  })
+})
+
+describe('Greek unit conversions', () => {
+  // Black-Scholes call, S=K=100, T=1, r=5%, sigma=20%: the pricer returns
+  // vega 37.524035 per unit vol, rho 53.232482 per unit rate, theta -6.414028 per year.
+  it('vega per 1pp of vol is the per-unit vega over 100', () => {
+    expect(perVolPoint(37.524035)).toBeCloseTo(0.37524, 5)
+  })
+  it('rho per 1pp of rate is the per-unit rho over 100', () => {
+    expect(perRatePoint(53.232482)).toBeCloseTo(0.532325, 6)
+  })
+  it('theta per calendar day is the annual theta over 365', () => {
+    expect(perCalendarDay(-6.414028)).toBeCloseTo(-0.017573, 6)
+  })
+  it('a 1pp vol move matches the per-1pp vega to first order', () => {
+    const up = bsPrice(100, 100, 1, 0.05, 0.21, 'call')
+    const dn = bsPrice(100, 100, 1, 0.05, 0.19, 'call')
+    expect((up - dn) / 2).toBeCloseTo(perVolPoint(37.524035), 3)
   })
 })

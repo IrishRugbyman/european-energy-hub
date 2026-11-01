@@ -154,3 +154,20 @@ export function heatTextColor([r, g, b]: [number, number, number]): string {
 }
 
 export const HEAT_LEGEND_GRADIENT = `linear-gradient(to right,${rgbCss(volHeatRgb(0, 0, 1))},${rgbCss(volHeatRgb(0.5, 0, 1))},${rgbCss(volHeatRgb(1, 0, 1))})`
+
+/**
+ * Greek units. The C++ pricer returns vega and rho per unit (1.00 = 100 percentage points
+ * of vol or rate) and theta per year (dV/dt). Traders read them per 1pp and per calendar
+ * day, which is how the tables label them, so the displayed numbers are converted here.
+ */
+export function perVolPoint(perUnit: number): number {
+  return perUnit / 100
+}
+
+export function perRatePoint(perUnit: number): number {
+  return perUnit / 100
+}
+
+export function perCalendarDay(perYear: number): number {
+  return perYear / 365
+}
