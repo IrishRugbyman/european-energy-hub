@@ -4,6 +4,31 @@
 
 - [2026-Q2](changelog/2026-Q2.md) - 108 entries, 2026-06-12 to 2026-06-28
 
+## 2026-11-01 - Tools: option pricing and the vol surface, moved from quant-portfolio
+
+**Done.** `/pricing` (Black-Scholes and Greeks, CRR, spread options with Margrabe and Kirk,
+Heston, LSM American, digital, Asian, Merton, crack 3:2:1 with live calibration) and
+`/vol-surface` (parametric surface, 3D) moved here from quant.lbzgiu.xyz, under a new
+"Tools" nav group. Backend: `app/pricing.py`, an `APIRouter` mounted with one
+`include_router` (main.py stays one module), 13 endpoints at `/api/pricing/*` with the
+same paths and shapes as before, wrapping the C++ `pricer_api` binary
+(~/quant/pricing/options-pricing-and-simulation) and `crack-options/cli.py calibrate`.
+Frontend: the ui primitives the pages need, rewritten without Radix; plotly only in a
+lazily loaded chunk (4.6 MB, 1.4 MB gzip) reached from `/vol-surface`.
+
+**Fixed on the way.** The binary returns the vanilla option's gamma, vega and theta for
+digitals (its gamma equals its delta at S=K); they are recomputed from the closed form,
+tested against finite differences of the binary's own digital price. The Greeks table
+labelled vega and rho "per +1pp" and theta "daily" while showing per-unit and per-year
+values; the numbers are now converted. S, K <= 0 made the binary print `nan` (a 500);
+they are 422 now. A pricer timeout is a 504, a missing binary a 503.
+
+**Found.** The hub's slowapi limiter is not wired (no middleware, no decorator), so the
+"120/min" applies nowhere. Pricing therefore caps itself: at most two pricer or
+calibration subprocesses at once, 503 when busy. The rest of the API is unthrottled.
+
+Tests: backend 182 -> 241, frontend 77 -> 139.
+
 ## 2026-10-29 - Phase 88: Great Britain on /power and /generation
 
 GB is now zone `GB` on the map, in the zone panel and in the generation views. It was the
