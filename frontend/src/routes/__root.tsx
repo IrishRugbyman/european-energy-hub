@@ -1,5 +1,5 @@
 import { Link, Outlet, createRootRoute } from '@tanstack/react-router'
-import { Flame, Zap, TrendingUp, DollarSign, Activity, Wind, Info, X, Globe, BarChart2, Factory, Menu } from 'lucide-react'
+import { Flame, Zap, TrendingUp, DollarSign, Activity, Wind, Info, X, Globe, BarChart2, Factory, Menu, Calculator, Box } from 'lucide-react'
 import { Fragment, useState } from 'react'
 
 export const Route = createRootRoute({
@@ -19,6 +19,16 @@ const NAV = [
   { to: '/us-gas',     label: 'US Gas',     icon: Globe,      group: 'US' as const },
   { to: '/us-power',   label: 'US Power',   icon: BarChart2,  group: 'US' as const },
   { to: '/us-plants',  label: 'US Plants',  icon: Factory,    group: 'US' as const },
+  // Interactive tools
+  { to: '/pricing',      label: 'Pricing',         icon: Calculator, group: 'Tools' as const },
+  { to: '/vol-surface',  label: 'Vol Surface',     icon: Box,        group: 'Tools' as const },
+]
+
+type NavGroup = (typeof NAV)[number]['group']
+const GROUPS: { id: NavGroup; heading: string }[] = [
+  { id: 'EU', heading: 'Europe' },
+  { id: 'US', heading: 'United States' },
+  { id: 'Tools', heading: 'Tools' },
 ]
 
 function Root() {
@@ -32,7 +42,7 @@ function Root() {
           Energy Hub
         </Link>
 
-        {/* Desktop nav - EU and US clusters separated by a divider */}
+        {/* Desktop nav - clusters separated by a divider */}
         <nav className="hidden sm:flex items-center gap-0.5 overflow-x-auto scrollbar-none">
           {NAV.map(({ to, label, icon: Icon, group }, i) => (
             <Fragment key={to}>
@@ -78,13 +88,13 @@ function Root() {
         </div>
       </header>
 
-      {/* Mobile nav sheet - full labels, grouped by region */}
+      {/* Mobile nav sheet - full labels, grouped by cluster */}
       {menuOpen && (
         <nav className="sm:hidden border-b border-border bg-card shrink-0 z-40 px-2 py-2 space-y-2">
-          {(['EU', 'US'] as const).map((g) => (
+          {GROUPS.map(({ id: g, heading }) => (
             <div key={g}>
               <p className="px-2 pb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">
-                {g === 'EU' ? 'Europe' : 'United States'}
+                {heading}
               </p>
               <div className="grid grid-cols-2 gap-1">
                 {NAV.filter((n) => n.group === g).map(({ to, label, icon: Icon }) => (
@@ -207,6 +217,9 @@ function AboutModal({ onClose }: { onClose: () => void }) {
             <li>
               <span className="text-foreground">German reBAP imbalance prices</span> - Netztransparenz (the four German TSOs),{' '}
               <a href="https://www.netztransparenz.de" className="text-primary hover:underline" target="_blank" rel="noreferrer">netztransparenz.de</a>
+            </li>
+            <li>
+              <span className="text-foreground">Tools (options pricing, vol surface)</span> - in-house C++ pricing library; the crack option pricer calibrates from front-month WTI, RBOB and heating oil futures in the market-data store
             </li>
           </ul>
         </div>

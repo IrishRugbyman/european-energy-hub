@@ -9,10 +9,12 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as VolSurfaceRouteImport } from './routes/vol-surface'
 import { Route as UsPowerRouteImport } from './routes/us-power'
 import { Route as UsPlantsRouteImport } from './routes/us-plants'
 import { Route as UsGasRouteImport } from './routes/us-gas'
 import { Route as SpreadsRouteImport } from './routes/spreads'
+import { Route as PricingRouteImport } from './routes/pricing'
 import { Route as PricesRouteImport } from './routes/prices'
 import { Route as PowerRouteImport } from './routes/power'
 import { Route as MapRouteImport } from './routes/map'
@@ -21,6 +23,11 @@ import { Route as GenerationRouteImport } from './routes/generation'
 import { Route as GasRouteImport } from './routes/gas'
 import { Route as IndexRouteImport } from './routes/index'
 
+const VolSurfaceRoute = VolSurfaceRouteImport.update({
+  id: '/vol-surface',
+  path: '/vol-surface',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const UsPowerRoute = UsPowerRouteImport.update({
   id: '/us-power',
   path: '/us-power',
@@ -39,6 +46,11 @@ const UsGasRoute = UsGasRouteImport.update({
 const SpreadsRoute = SpreadsRouteImport.update({
   id: '/spreads',
   path: '/spreads',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PricingRoute = PricingRouteImport.update({
+  id: '/pricing',
+  path: '/pricing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const PricesRoute = PricesRouteImport.update({
@@ -85,10 +97,12 @@ export interface FileRoutesByFullPath {
   '/map': typeof MapRoute
   '/power': typeof PowerRoute
   '/prices': typeof PricesRoute
+  '/pricing': typeof PricingRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
   '/us-plants': typeof UsPlantsRoute
   '/us-power': typeof UsPowerRoute
+  '/vol-surface': typeof VolSurfaceRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -98,10 +112,12 @@ export interface FileRoutesByTo {
   '/map': typeof MapRoute
   '/power': typeof PowerRoute
   '/prices': typeof PricesRoute
+  '/pricing': typeof PricingRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
   '/us-plants': typeof UsPlantsRoute
   '/us-power': typeof UsPowerRoute
+  '/vol-surface': typeof VolSurfaceRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -112,10 +128,12 @@ export interface FileRoutesById {
   '/map': typeof MapRoute
   '/power': typeof PowerRoute
   '/prices': typeof PricesRoute
+  '/pricing': typeof PricingRoute
   '/spreads': typeof SpreadsRoute
   '/us-gas': typeof UsGasRoute
   '/us-plants': typeof UsPlantsRoute
   '/us-power': typeof UsPowerRoute
+  '/vol-surface': typeof VolSurfaceRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -127,10 +145,12 @@ export interface FileRouteTypes {
     | '/map'
     | '/power'
     | '/prices'
+    | '/pricing'
     | '/spreads'
     | '/us-gas'
     | '/us-plants'
     | '/us-power'
+    | '/vol-surface'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -140,10 +160,12 @@ export interface FileRouteTypes {
     | '/map'
     | '/power'
     | '/prices'
+    | '/pricing'
     | '/spreads'
     | '/us-gas'
     | '/us-plants'
     | '/us-power'
+    | '/vol-surface'
   id:
     | '__root__'
     | '/'
@@ -153,10 +175,12 @@ export interface FileRouteTypes {
     | '/map'
     | '/power'
     | '/prices'
+    | '/pricing'
     | '/spreads'
     | '/us-gas'
     | '/us-plants'
     | '/us-power'
+    | '/vol-surface'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -167,14 +191,23 @@ export interface RootRouteChildren {
   MapRoute: typeof MapRoute
   PowerRoute: typeof PowerRoute
   PricesRoute: typeof PricesRoute
+  PricingRoute: typeof PricingRoute
   SpreadsRoute: typeof SpreadsRoute
   UsGasRoute: typeof UsGasRoute
   UsPlantsRoute: typeof UsPlantsRoute
   UsPowerRoute: typeof UsPowerRoute
+  VolSurfaceRoute: typeof VolSurfaceRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/vol-surface': {
+      id: '/vol-surface'
+      path: '/vol-surface'
+      fullPath: '/vol-surface'
+      preLoaderRoute: typeof VolSurfaceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/us-power': {
       id: '/us-power'
       path: '/us-power'
@@ -201,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/spreads'
       fullPath: '/spreads'
       preLoaderRoute: typeof SpreadsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/pricing': {
+      id: '/pricing'
+      path: '/pricing'
+      fullPath: '/pricing'
+      preLoaderRoute: typeof PricingRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/prices': {
@@ -263,10 +303,12 @@ const rootRouteChildren: RootRouteChildren = {
   MapRoute: MapRoute,
   PowerRoute: PowerRoute,
   PricesRoute: PricesRoute,
+  PricingRoute: PricingRoute,
   SpreadsRoute: SpreadsRoute,
   UsGasRoute: UsGasRoute,
   UsPlantsRoute: UsPlantsRoute,
   UsPowerRoute: UsPowerRoute,
+  VolSurfaceRoute: VolSurfaceRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

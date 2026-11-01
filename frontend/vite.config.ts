@@ -23,6 +23,7 @@ export default defineConfig({
           if (!id.includes('node_modules')) return
           if (id.includes('@tanstack/react-router')) return 'tanstack-router'
           if (id.includes('@tanstack/react-query')) return 'tanstack-query'
+          if (id.includes('plotly')) return 'plotly'
           if (id.includes('leaflet')) return 'leaflet'
           if (id.includes('lucide-react')) return 'lucide'
           if (id.includes('recharts') || id.includes('/d3-') || id.includes('/d3/')) return 'recharts'
