@@ -23,6 +23,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 
 from . import db
+from .pricing import router as pricing_router
 from .schemas import (
     AnalogTrajectoryPoint,
     BacktestEquityPoint,
@@ -347,6 +348,7 @@ limiter = Limiter(key_func=get_remote_address, default_limits=["120/minute"])
 app = FastAPI(title="energy-api", version="0.1.0")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, lambda r, e: _rate_limited())
+app.include_router(pricing_router)
 app.add_middleware(GZipMiddleware, minimum_size=1024)
 app.add_middleware(
     CORSMiddleware,
