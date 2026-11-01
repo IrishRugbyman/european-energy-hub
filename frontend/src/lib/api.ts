@@ -1,8 +1,20 @@
+import { errorMessageFromBody } from '@/lib/apiError'
+
 const BASE = '/api'
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+  return res.json() as Promise<T>
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(errorMessageFromBody(res.status, await res.text().catch(() => '')))
   return res.json() as Promise<T>
 }
 
@@ -1242,6 +1254,143 @@ export interface UsPaceResponse {
   us48: UsPaceStats
 }
 
+// ---- Tools: option pricing (POST /api/pricing/*) ----
+
+export type OptionType = 'call' | 'put'
+
+export interface PricingRequest {
+  S: number; K: number; T: number; r: number; sigma: number
+  option_type: OptionType
+}
+
+export interface BSResult {
+  price: number; delta: number; gamma: number
+  vega: number; theta: number; rho: number
+  bachelier_price: number
+}
+
+export interface CRRResult {
+  bs_price: number
+  steps: { n: number; price: number }[]
+}
+
+export interface SpreadRequest {
+  S1: number; S2: number; K: number; T: number; r: number
+  sig1: number; sig2: number; rho: number
+}
+
+export interface SpreadResult {
+  margrabe: number; kirk: number; mc: number
+}
+
+export interface SurfaceRequest {
+  sigma_atm: number; skew: number; convexity: number
+}
+
+export interface SurfaceResult {
+  grid: { k_rel: number; t: number; vol: number }[]
+}
+
+export interface CrackRequest {
+  S_WTI: number; S_RBOB: number; S_HO: number
+  K: number; T: number; r: number
+  sig_WTI: number; sig_RBOB: number; sig_HO: number
+  rho_WR: number; rho_WH: number; rho_RH: number
+  nb_paths?: number
+  calibrate?: boolean
+  calib_window?: number
+}
+
+export interface CrackResult {
+  crack_spot: number
+  crack_vol_n: number
+  crack_vol_n_uncorr: number
+  kirk: number
+  bachelier: number
+  mc: number
+  mc_stderr: number
+  portfolio_vanilla: number
+  basis: number
+  as_of?: string
+  crack_spot_calib?: number
+}
+
+export interface CrackCalibration {
+  S_WTI: number; S_RBOB: number; S_HO: number
+  sig_WTI: number; sig_RBOB: number; sig_HO: number
+  rho_WR: number; rho_WH: number; rho_RH: number
+  crack_spot: number
+  as_of: string
+}
+
+export interface HestonSurfaceRequest {
+  S: number; r: number; v0: number; kappa: number; theta: number; xi: number; rho_sv: number
+}
+
+export interface MertonSurfaceRequest {
+  S: number; r: number; sigma: number; lambda: number; muJ: number; sigmaJ: number
+}
+
+export interface HestonRequest {
+  S: number; K: number; T: number; r: number
+  v0: number; kappa: number; theta: number; xi: number; rho_sv: number
+  option_type: OptionType
+  nb_paths: number; nb_steps: number
+}
+
+export interface LSMRequest {
+  S: number; K: number; T: number; r: number; sigma: number
+  option_type: OptionType
+  nb_paths: number; nb_steps: number
+}
+
+export interface HestonResult {
+  price: number; ci_lo: number; ci_hi: number; bs_ref: number
+  nb_paths: number; nb_steps: number
+}
+
+export interface LSMResult {
+  lsm_price: number; crr_price: number; eu_price: number
+  nb_paths: number; nb_steps: number
+}
+
+export interface DigitalRequest {
+  S: number; K: number; T: number; r: number; sigma: number
+}
+
+export interface DigitalResult {
+  call_price: number; put_price: number
+  parity_sum: number; disc: number
+  call_delta: number; call_gamma: number; call_vega: number; call_theta: number
+  put_delta: number; put_gamma: number
+}
+
+export interface AsianRequest {
+  S: number; K: number; T: number; r: number; sigma: number
+  option_type: OptionType
+  n_fixings: number; nb_paths: number
+}
+
+export interface AsianResult {
+  asian_price: number; ci_lo: number; ci_hi: number
+  eu_price: number; ratio: number
+  n_fixings: number; nb_paths: number
+}
+
+export interface MertonRequest {
+  S: number; K: number; T: number; r: number; sigma: number
+  lambda: number; muJ: number; sigmaJ: number
+  option_type: OptionType
+  nb_paths: number
+}
+
+export interface MertonResult {
+  analytic: number; mc: number; mc_stderr: number
+  ci_lo: number; ci_hi: number
+  bs_ref: number; total_vol: number; k_hat: number
+  nb_paths: number
+}
+
 export const api = {
   meta: () => get<MetaResponse>('/meta'),
   health: () => get<{ ok: boolean; refreshed_at_gas: string | null }>('/health'),
@@ -1352,6 +1501,25 @@ export const api = {
   spreadsNegPriceAnnual: () => get<NegPriceAnnualResponse>('/spreads/neg-price-annual'),
   spreadsZoneDispersion: () => get<ZoneDispersionResponse>('/spreads/zone-dispersion'),
   spreadsPeakOffpeakTrend: () => get<PeakOffpeakResponse>('/spreads/peak-offpeak-trend'),
+
+  // ---- Tools: option pricing ----
+  pricing: {
+    price: (body: PricingRequest) => post<BSResult>('/pricing/price', body),
+    crr: (body: PricingRequest) => post<CRRResult>('/pricing/crr', body),
+    spread: (body: SpreadRequest) => post<SpreadResult>('/pricing/spread', body),
+    surface: (body: SurfaceRequest) => post<SurfaceResult>('/pricing/surface', body),
+    surfaceHeston: (body: HestonSurfaceRequest) =>
+      post<SurfaceResult>('/pricing/surface/heston', body),
+    surfaceMerton: (body: MertonSurfaceRequest) =>
+      post<SurfaceResult>('/pricing/surface/merton', body),
+    heston: (body: HestonRequest) => post<HestonResult>('/pricing/heston', body),
+    lsm: (body: LSMRequest) => post<LSMResult>('/pricing/lsm', body),
+    digital: (body: DigitalRequest) => post<DigitalResult>('/pricing/digital', body),
+    asian: (body: AsianRequest) => post<AsianResult>('/pricing/asian', body),
+    merton: (body: MertonRequest) => post<MertonResult>('/pricing/merton', body),
+    crack: (body: CrackRequest) => post<CrackResult>('/pricing/crack', body),
+    crackCalibrate: () => get<CrackCalibration>('/pricing/crack/calibrate'),
+  },
 }
 
 // Phase 78: Interconnection congestion premium
