@@ -367,3 +367,9 @@ connection, no DB), `energy/backend/scripts/refresh.py` (`INGEST_TIMEOUTS`), `en
 **Decision:** Phase 55's forecast-error framing is retracted; the signal is kept but must be re-described around `wind_fc_d` and mean-reversion. Phase 65's finding stands and its numbers are restated above. Two follow-ups moved to ROADMAP: settle the P&L basis in `compute_rebap_signal`, and surface the ~11-day Netztransparenz publication lag in the /imbalance UI - the quality-assured reBAP is inherently ~2 weeks behind, which the page currently does not say.
 
 **Artifacts:** `backend/scripts/refresh.py` (`INGEST_FETCHERS` / `INGEST_TIMEOUTS`, `smard-imbalance-de` to `rebap-de`, `entso-e-hydro` added, ENTSO-E NTC/scheduled timeouts 600s to 1800s), `backend/analytics/imbalance.py` (corrected module docstring), `backend/tests/test_refresh_fetchers.py` (6 new guards; verified to fail against the old list). 141 tests passing.
+
+## 2026-11-01 - Moved from PROJECTS.md registry row (2026-11-01)
+
+Verbatim from the registry row (status/headline text; shortened there, kept here):
+
+> **Energy Hub**: /gas (AGSI+ storage choropleth + ENTSOG flows + LNG terminals + UGS facilities), /power (unified 45-zone DA price/generation choropleth, ENTSO-E, congestion + interconnections), /generation (full fuel mix incl. nuclear via A75), /spreads (CSS/CDS/FSS + nonlinear fair-value signal research arc), /prices (TTF/EUA/coal/HH), /imbalance (German reBAP + battery oracle + trend-deviation signal), US cluster (/us-gas, /us-power, /us-plants). ENTSO-E generation backfill **complete** (45 zones, 2020-12-31 to present, verified 2026-07-31); Corsica (FR-COR) is a 46th generation-only zone with no market price (EDF SEI, no ENTSO-E coverage). `energy-api` :8004, twice-daily refresh timer. `/imbalance`'s signal was reworked 2026-08-19 (dropped two noise features, added an NRV-Saldo one, fixed the P&L basis - see `energy/docs/CHANGELOG.md`).
